@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import 'features/backup/backup_page.dart';
 import 'features/dashboard/dashboard_page.dart';
 import 'features/dashboard/today_meals_page.dart';
 import 'features/food_library/food_library_page.dart';
@@ -55,6 +56,10 @@ final _router = GoRouter(
     GoRoute(
       path: '/insight',
       builder: (context, state) => const InsightPage(),
+    ),
+    GoRoute(
+      path: '/backup',
+      builder: (context, state) => const BackupPage(),
     ),
   ],
 );
