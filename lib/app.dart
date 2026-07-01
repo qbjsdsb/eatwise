@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'features/dashboard/dashboard_page.dart';
 import 'features/dashboard/today_meals_page.dart';
 import 'features/food_library/food_library_page.dart';
+import 'features/insight/insight_page.dart';
 import 'features/manual_entry/manual_entry_page.dart';
 import 'features/profile/profile_page.dart';
 import 'features/weight/weight_page.dart';
@@ -50,6 +51,10 @@ final _router = GoRouter(
     GoRoute(
       path: '/weight',
       builder: (context, state) => const WeightPage(),
+    ),
+    GoRoute(
+      path: '/insight',
+      builder: (context, state) => const InsightPage(),
     ),
   ],
 );
