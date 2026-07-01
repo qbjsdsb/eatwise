@@ -24,10 +24,10 @@ class JsonImporter {
     }
 
     final tables = data['tables'] as Map<String, dynamic>;
-    // 临时关闭外键约束（清空时避免级联删除顺序问题）
-    await _db.customStatement('PRAGMA foreign_keys = OFF;');
-    try {
-      // 清空 6 表（顺序无所谓，因外键已关闭）
+    // 用 transaction 包裹：DELETE + 批量 INSERT 原子化，中途失败回滚避免半库
+    // PRAGMA foreign_keys 在事务外设置无效，故用批量 DELETE 顺序（先子后父）规避级联
+    return _db.transaction(() async {
+      // 清空 6 表（顺序：先子表后父表，避免外键约束冲突）
       await _db.customStatement('DELETE FROM recognition_feedbacks;');
       await _db.customStatement('DELETE FROM insight_summaries;');
       await _db.customStatement('DELETE FROM weight_logs;');
@@ -82,10 +82,7 @@ class JsonImporter {
         insights: insights,
         feedbacks: feedbacks,
       );
-    } finally {
-      // 恢复外键约束
-      await _db.customStatement('PRAGMA foreign_keys = ON;');
-    }
+    });
   }
 
   ProfilesCompanion _profileFromJson(Map<String, dynamic> j) =>
