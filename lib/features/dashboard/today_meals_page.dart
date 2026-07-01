@@ -29,7 +29,7 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   Future<void> _load() async {
     final repo = await ref.read(recognize.mealLogRepoProvider.future);
     _meals = await repo.getMealsByDate(_today);
-    setState(() => _loading = false);
+    if (mounted) setState(() => _loading = false);
   }
 
   @override
@@ -80,9 +80,19 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
           alignment: Alignment.centerRight,
           child: const Icon(Icons.delete, color: Colors.white)),
       onDismissed: (_) async {
-        final repo = await ref.read(recognize.mealLogRepoProvider.future);
-        await repo.deleteMealLog(m.id);
-        setState(() => _meals.remove(m));
+        try {
+          final repo = await ref.read(recognize.mealLogRepoProvider.future);
+          await repo.deleteMealLog(m.id);
+          if (mounted) setState(() => _meals.remove(m));
+        } catch (e) {
+          // 删除失败：回滚 UI（重新加载）+ 提示
+          if (!mounted) return;
+          await _load();
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('删除失败：$e')),
+          );
+        }
       },
       child: ListTile(
         title: Text('食物ID ${m.foodItemId}'), // MVP：显示 ID（T9 食物库可反查名称）
@@ -102,27 +112,33 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   Future<void> _showEditDialog(MealLog m) async {
     final servingCtrl =
         TextEditingController(text: m.actualServingG.toStringAsFixed(0));
-    final result = await showDialog<double>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('编辑份量'),
-        content: TextField(
-            controller: servingCtrl,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(labelText: '份量 (g)')),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('取消')),
-          TextButton(
+    double? result;
+    try {
+      result = await showDialog<double>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('编辑份量'),
+          content: TextField(
+              controller: servingCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: '份量 (g)')),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消')),
+            TextButton(
               onPressed: () =>
                   Navigator.pop(context, double.tryParse(servingCtrl.text)),
               child: const Text('保存')),
-        ],
-      ),
-    );
+          ],
+        ),
+      );
+    } finally {
+      servingCtrl.dispose();
+    }
     if (result == null || result <= 0) return;
-    // 按比例重算营养素
+    // 除零保护：原份量为 0 时直接用新值（比例 1:1 重算为 0）
+    if (m.actualServingG <= 0) return;
     final ratio = result / m.actualServingG;
     final repo = await ref.read(recognize.mealLogRepoProvider.future);
     await repo.updateMealLog(
@@ -133,7 +149,7 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       actualFatG: m.actualFatG * ratio,
       actualCarbsG: m.actualCarbsG * ratio,
     );
-    _load();
+    if (mounted) _load();
   }
 
   Future<void> _showFeedbackDialog(MealLog m) async {

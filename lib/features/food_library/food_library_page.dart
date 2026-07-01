@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -22,6 +24,9 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
   List<FoodItem> _frequent = [];
   List<FoodItem> _searchResults = [];
   bool _searching = false;
+  // 搜索防抖 + 竞态保护：debounce 计时器 + 请求序列号
+  Timer? _debounce;
+  int _searchSeq = 0;
 
   @override
   void initState() {
@@ -31,6 +36,7 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -42,15 +48,31 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _search(String keyword) async {
+  /// 防抖搜索：300ms 内连续输入只发最后一次查询；
+  /// 序列号校验：丢弃乱序到达的旧结果，避免覆盖新结果
+  void _search(String keyword) {
+    _debounce?.cancel();
     if (keyword.isEmpty) {
-      setState(() => _searching = false);
+      setState(() {
+        _searching = false;
+        _searchResults = [];
+      });
       return;
     }
+    _debounce = Timer(const Duration(milliseconds: 300), () => _doSearch(keyword));
+  }
+
+  Future<void> _doSearch(String keyword) async {
+    final seq = ++_searchSeq;
     final db = await ref.read(recognize.databaseProvider.future);
     final repo = FoodItemRepository(db);
-    _searchResults = await repo.searchByName(keyword);
-    if (mounted) setState(() => _searching = true);
+    final results = await repo.searchByName(keyword);
+    // 序列号校验：若期间用户又输入了新关键词，丢弃本次结果
+    if (seq != _searchSeq || !mounted) return;
+    setState(() {
+      _searchResults = results;
+      _searching = true;
+    });
   }
 
   @override

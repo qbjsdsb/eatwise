@@ -42,8 +42,8 @@ class OfflineQueueController {
     _sub = Connectivity().onConnectivityChanged.listen((results) {
       final isOnline = results.any((r) => r != ConnectivityResult.none);
       if (_wasOffline && isOnline) {
-        // 网络恢复 → 触发回补
-        processPending();
+        // 网络恢复 → 触发回补（fire-and-forget，内部已 catch）
+        processPending().catchError((_) {});
       }
       _wasOffline = !isOnline;
     });
@@ -71,17 +71,19 @@ class OfflineQueueController {
 
       for (final p in pending) {
         try {
-          // 读图片 base64
+          // 读图片 base64（异步 exists 避免阻塞 UI）
           final imageFile = File(p.imagePath);
-          if (!imageFile.existsSync()) {
+          if (!await imageFile.exists()) {
             // 图片缺失是不可恢复错误，直接标记 failed（不重试）
             await pendingRepo.markFailed(p.id, '图片文件不存在', permanent: true);
             continue;
           }
           final imageBase64 = base64Encode(await imageFile.readAsBytes());
 
-          // 调视觉模型
-          final result = await _visionProvider.recognize(imageBase64);
+          // 调视觉模型（30s 超时，避免单条卡死整队列）
+          final result = await _visionProvider
+              .recognize(imageBase64)
+              .timeout(const Duration(seconds: 30));
 
           // 查库回填营养素
           final nutrition = await _nutritionLookup.lookupSingleItem(
@@ -122,6 +124,8 @@ class OfflineQueueController {
           await pendingRepo.markFailed(p.id, e.toString());
         }
       }
+    } catch (_) {
+      // listPending / DB 异常：吞掉避免未观察异常，下次网络恢复重试
     } finally {
       _processing = false;
     }
@@ -135,9 +139,12 @@ final offlineQueueControllerProvider =
   final db = await ref.read(recognize.databaseProvider.future);
   final qwen = ref.read(recognize.qwenVlProviderProvider);
   final lookup = await ref.read(recognize.nutritionLookupProvider.future);
-  return OfflineQueueController(
+  final controller = OfflineQueueController(
     db: db,
     visionProvider: qwen,
     nutritionLookup: lookup,
   );
+  // Provider 销毁时停止 connectivity 订阅，避免 StreamSubscription 泄漏
+  ref.onDispose(controller.stop);
+  return controller;
 });

@@ -107,10 +107,14 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
   }
 
   Future<void> _saveServingOnly() async {
+    final serving = double.tryParse(_servingCtrl.text);
+    if (serving == null || serving <= 0) {
+      _showError('请输入有效的份量');
+      return;
+    }
     final db = await ref.read(recognize.databaseProvider.future);
     final repo = FoodItemRepository(db);
-    await repo.updateDefaultServing(
-        widget.foodItem.id, double.parse(_servingCtrl.text));
+    await repo.updateDefaultServing(widget.foodItem.id, serving);
     if (mounted) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('已保存默认份量')));
@@ -119,22 +123,40 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
   }
 
   Future<void> _saveAll() async {
+    final serving = double.tryParse(_servingCtrl.text);
+    final cal = double.tryParse(_calCtrl.text);
+    final protein = double.tryParse(_proteinCtrl.text);
+    final fat = double.tryParse(_fatCtrl.text);
+    final carbs = double.tryParse(_carbsCtrl.text);
+    if (serving == null || serving <= 0) {
+      _showError('请输入有效的份量');
+      return;
+    }
+    if (cal == null || protein == null || fat == null || carbs == null) {
+      _showError('热量/蛋白质/脂肪/碳水 必须为数字');
+      return;
+    }
     final db = await ref.read(recognize.databaseProvider.future);
     final repo = FoodItemRepository(db);
-    await repo.updateDefaultServing(
-        widget.foodItem.id, double.parse(_servingCtrl.text));
+    await repo.updateDefaultServing(widget.foodItem.id, serving);
     await repo.updateNutrients(
       id: widget.foodItem.id,
-      caloriesPer100g: double.parse(_calCtrl.text),
-      proteinPer100g: double.parse(_proteinCtrl.text),
-      fatPer100g: double.parse(_fatCtrl.text),
-      carbsPer100g: double.parse(_carbsCtrl.text),
+      caloriesPer100g: cal,
+      proteinPer100g: protein,
+      fatPer100g: fat,
+      carbsPer100g: carbs,
     );
     if (mounted) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('已保存')));
       Navigator.of(context).pop();
     }
+  }
+
+  void _showError(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
   }
 
   String _sourceLabel(String source) {

@@ -18,6 +18,12 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
   RecognizeController? _controller;
   String _mealType = 'snack'; // Sprint 2 T0：餐次选择，默认加餐
 
+  @override
+  void dispose() {
+    _controller?.dispose(); // 释放 StateNotifier
+    super.dispose();
+  }
+
   Future<RecognizeController> _ensureController() async {
     if (_controller != null) return _controller!;
     final qwen = ref.read(qwenVlProviderProvider);
@@ -61,7 +67,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
                   DropdownMenuItem(value: 'dinner', child: Text('晚餐')),
                   DropdownMenuItem(value: 'snack', child: Text('加餐')),
                 ],
-                onChanged: (v) => setState(() => _mealType = v!),
+                onChanged: (v) => setState(() => _mealType = v ?? _mealType),
               ),
             ),
             const SizedBox(height: 24),

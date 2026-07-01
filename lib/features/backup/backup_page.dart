@@ -48,44 +48,60 @@ class BackupPage extends ConsumerWidget {
   }
 
   Future<void> _export(BuildContext context, WidgetRef ref) async {
-    final db = await ref.read(recognize.databaseProvider.future);
-    final exporter = JsonExporter(db);
-    final jsonStr = await exporter.exportAsString();
-    final dir = await getApplicationDocumentsDirectory();
-    final now = DateTime.now();
-    final fileName =
-        'eatwise_backup_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}.json';
-    final file = await File('${dir.path}/$fileName').writeAsString(jsonStr);
-    if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已导出到 ${file.path}'), duration: const Duration(seconds: 5)),
-    );
+    try {
+      final db = await ref.read(recognize.databaseProvider.future);
+      final exporter = JsonExporter(db);
+      final jsonStr = await exporter.exportAsString();
+      final dir = await getApplicationDocumentsDirectory();
+      final now = DateTime.now();
+      final fileName =
+          'eatwise_backup_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}.json';
+      final file = await File('${dir.path}/$fileName').writeAsString(jsonStr);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('已导出到 ${file.path}'),
+            duration: const Duration(seconds: 5)),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('导出失败：$e'),
+            duration: const Duration(seconds: 5)),
+      );
+    }
   }
 
   Future<void> _import(BuildContext context, WidgetRef ref) async {
     final ctrl = TextEditingController();
-    final jsonStr = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('导入 JSON'),
-        content: TextField(
-          controller: ctrl,
-          maxLines: 12,
-          decoration: const InputDecoration(
-            hintText: '粘贴之前导出的 JSON 文本',
-            border: OutlineInputBorder(),
+    String? jsonStr;
+    try {
+      jsonStr = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('导入 JSON'),
+          content: TextField(
+            controller: ctrl,
+            maxLines: 12,
+            decoration: const InputDecoration(
+              hintText: '粘贴之前导出的 JSON 文本',
+              border: OutlineInputBorder(),
+            ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: const Text('导入'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text),
-            child: const Text('导入'),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      ctrl.dispose();
+    }
     if (jsonStr == null || jsonStr.trim().isEmpty) return;
 
     final db = await ref.read(recognize.databaseProvider.future);

@@ -39,12 +39,13 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     final db = await ref.read(recognize.databaseProvider.future);
     final repo = InsightRepository(db);
     final existing = await repo.find('weekly', _weekStart, _weekEnd);
-    if (existing != null) {
+    if (existing != null && mounted) {
       setState(() => _summary = existing.summaryText);
     }
   }
 
   Future<void> _generate() async {
+    if (!mounted) return;
     setState(() => _loading = true);
     try {
       final db = await ref.read(recognize.databaseProvider.future);
@@ -69,6 +70,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
 
       final apiKey = const String.fromEnvironment('GLM_API_KEY');
       if (apiKey.isEmpty) {
+        if (!mounted) return;
         setState(() =>
             _summary = '未配置 GLM_API_KEY（用 --dart-define=GLM_API_KEY=xxx 启动）');
         return;
@@ -88,8 +90,10 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         periodEnd: _weekEnd,
         summaryText: text,
       );
+      if (!mounted) return;
       setState(() => _summary = text);
     } catch (e) {
+      if (!mounted) return;
       setState(() => _summary = '生成失败：$e');
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -99,32 +103,37 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   Future<void> _edit() async {
     if (_summary == null) return;
     final ctrl = TextEditingController(text: _summary);
-    final edited = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('编辑汇总'),
-        content: TextField(
-          controller: ctrl,
-          maxLines: 10,
-          decoration: const InputDecoration(border: OutlineInputBorder()),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text),
-            child: const Text('保存'),
+    try {
+      final edited = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('编辑汇总'),
+          content: TextField(
+            controller: ctrl,
+            maxLines: 10,
+            decoration: const InputDecoration(border: OutlineInputBorder()),
           ),
-        ],
-      ),
-    );
-    if (edited == null) return;
-    final db = await ref.read(recognize.databaseProvider.future);
-    final repo = InsightRepository(db);
-    final existing = await repo.find('weekly', _weekStart, _weekEnd);
-    if (existing != null) {
-      await repo.updateText(existing.id, edited);
-      setState(() => _summary = edited);
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text),
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      );
+      if (edited == null) return;
+      final db = await ref.read(recognize.databaseProvider.future);
+      final repo = InsightRepository(db);
+      final existing = await repo.find('weekly', _weekStart, _weekEnd);
+      if (existing != null) {
+        await repo.updateText(existing.id, edited);
+        if (!mounted) return;
+        setState(() => _summary = edited);
+      }
+    } finally {
+      ctrl.dispose();
     }
   }
 

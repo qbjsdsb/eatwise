@@ -9,11 +9,54 @@ import '../recognize/recognize_page.dart';
 import 'today_meals_page.dart';
 
 /// 看板：环形进度（热量）+ 三宏量进度条 + 余额预警
-class DashboardPage extends ConsumerWidget {
+class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
+  @override
+  ConsumerState<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends ConsumerState<DashboardPage> {
+  // 缓存 future 避免每次 build 重建 Future 导致反复查询 + 闪烁
+  Future<({double cal, double protein, double fat, double carbs, int target, double proteinGoal, double fatGoal, double carbGoal})>?
+      _future;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+    _future = _loadData();
+  }
+
+  Future<({double cal, double protein, double fat, double carbs, int target, double proteinGoal, double fatGoal, double carbGoal})>
+      _loadData() async {
+    final db = await ref.read(recognize.databaseProvider.future);
+    final mealRepo = MealLogRepository(db);
+    final profileRepo = ProfileRepository(db);
+    final now = DateTime.now();
+    final today =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final macros = await mealRepo.getMacrosByDate(today);
+    final profile = await profileRepo.get();
+    final proteinGoal = profile.proteinGPerKg * profile.weightKg;
+    final fatGoal = profile.fatGPerKg * profile.weightKg;
+    // carbGPerKg 可空（减脂/维持时碳水填剩余热量），clamp 避免负值
+    final carbGoalRaw = profile.carbGPerKg != null
+        ? profile.carbGPerKg! * profile.weightKg
+        : (profile.dailyCalorieTarget - proteinGoal * 4 - fatGoal * 9) / 4;
+    final carbGoal = carbGoalRaw < 0 ? 0.0 : carbGoalRaw;
+    return (
+      cal: macros.calories,
+      protein: macros.protein,
+      fat: macros.fat,
+      carbs: macros.carbs,
+      target: profile.dailyCalorieTarget,
+      proteinGoal: proteinGoal,
+      fatGoal: fatGoal,
+      carbGoal: carbGoal,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('今日'),
@@ -41,8 +84,18 @@ class DashboardPage extends ConsumerWidget {
             double fatGoal,
             double carbGoal
           })>(
-        future: _loadData(ref),
+        future: _future,
         builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text('数据加载失败：${snapshot.error}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.red)),
+              ),
+            );
+          }
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -133,43 +186,6 @@ class DashboardPage extends ConsumerWidget {
               minHeight: 8),
         ],
       ),
-    );
-  }
-
-  Future<
-      ({
-        double cal,
-        double protein,
-        double fat,
-        double carbs,
-        int target,
-        double proteinGoal,
-        double fatGoal,
-        double carbGoal
-      })> _loadData(WidgetRef ref) async {
-    final db = await ref.read(recognize.databaseProvider.future);
-    final mealRepo = MealLogRepository(db);
-    final profileRepo = ProfileRepository(db);
-    final now = DateTime.now();
-    final today =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    final macros = await mealRepo.getMacrosByDate(today);
-    final profile = await profileRepo.get();
-    final proteinGoal = profile.proteinGPerKg * profile.weightKg;
-    final fatGoal = profile.fatGPerKg * profile.weightKg;
-    // carbGPerKg 可空（减脂/维持时碳水填剩余热量）
-    final carbGoal = profile.carbGPerKg != null
-        ? profile.carbGPerKg! * profile.weightKg
-        : (profile.dailyCalorieTarget - proteinGoal * 4 - fatGoal * 9) / 4;
-    return (
-      cal: macros.calories,
-      protein: macros.protein,
-      fat: macros.fat,
-      carbs: macros.carbs,
-      target: profile.dailyCalorieTarget,
-      proteinGoal: proteinGoal,
-      fatGoal: fatGoal,
-      carbGoal: carbGoal,
     );
   }
 }

@@ -32,6 +32,7 @@ class RecognizeUiState {
   RecognizeUiState copyWith({
     RecognizeState? state,
     String? errorMessage,
+    bool clearError = false,
     VisionRecognitionResult? recognitionResult,
     NutritionResult? singleNutrition,
     CompositeNutritionResult? compositeNutrition,
@@ -40,7 +41,8 @@ class RecognizeUiState {
   }) {
     return RecognizeUiState(
       state: state ?? this.state,
-      errorMessage: errorMessage,
+      // clearError=true 时显式清空（如重新拍照），否则保留旧错误信息
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
       recognitionResult: recognitionResult ?? this.recognitionResult,
       singleNutrition: singleNutrition ?? this.singleNutrition,
       compositeNutrition: compositeNutrition ?? this.compositeNutrition,
@@ -77,7 +79,7 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   Future<void> pickAndRecognize(ImageSource source,
       {required String mealType}) async {
     state = state.copyWith(
-        state: RecognizeState.pickingImage, mealType: mealType);
+        state: RecognizeState.pickingImage, mealType: mealType, clearError: true);
     XFile? xFile;
     try {
       final picker = ImagePicker();
@@ -144,13 +146,22 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         final now = DateTime.now();
         final today =
             '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-        await _onOfflineEnqueue(xFile.path, mealType, today);
-        state = state.copyWith(
-          state: RecognizeState.queued,
-          errorMessage: '当前离线，已加入队列，联网后自动识别',
-          imagePath: xFile.path,
-        );
-        return;
+        try {
+          await _onOfflineEnqueue(xFile.path, mealType, today);
+          state = state.copyWith(
+            state: RecognizeState.queued,
+            errorMessage: '当前离线，已加入队列，联网后自动识别',
+            imagePath: xFile.path,
+          );
+          return;
+        } catch (enqueueErr) {
+          // 入队失败 → 回退到 error 状态
+          state = state.copyWith(
+            state: RecognizeState.error,
+            errorMessage: '离线入队失败：$enqueueErr',
+          );
+          return;
+        }
       }
       state = state.copyWith(state: RecognizeState.error, errorMessage: e.toString());
     }

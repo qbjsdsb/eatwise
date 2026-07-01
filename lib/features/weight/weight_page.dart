@@ -34,7 +34,7 @@ class _WeightPageState extends ConsumerState<WeightPage> {
     final db = await ref.read(recognize.databaseProvider.future);
     final repo = WeightLogRepository(db);
     _logs = await repo.getRecent(days: 30);
-    setState(() => _loading = false);
+    if (mounted) setState(() => _loading = false);
   }
 
   @override
@@ -134,12 +134,20 @@ class _WeightPageState extends ConsumerState<WeightPage> {
 
   Future<void> _save() async {
     if (_weightCtrl.text.isEmpty) return;
+    final weight = double.tryParse(_weightCtrl.text);
+    if (weight == null || weight <= 0) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入有效的体重数字')),
+      );
+      return;
+    }
     final db = await ref.read(recognize.databaseProvider.future);
     final repo = WeightLogRepository(db);
     final now = DateTime.now();
     final today =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    await repo.insert(date: today, weightKg: double.parse(_weightCtrl.text));
+    await repo.insert(date: today, weightKg: weight);
     _weightCtrl.clear();
     await _load();
     if (mounted) {

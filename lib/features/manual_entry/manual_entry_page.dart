@@ -54,7 +54,7 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
               DropdownMenuItem(value: 'dinner', child: Text('晚餐')),
               DropdownMenuItem(value: 'snack', child: Text('加餐')),
             ],
-            onChanged: (v) => setState(() => _mealType = v!),
+            onChanged: (v) => setState(() => _mealType = v ?? _mealType),
           ),
           const SizedBox(height: 16),
           if (!_customMode) ...[
@@ -129,8 +129,11 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
 
   Future<void> _logFromLibrary() async {
     if (_selected == null) return;
-    final serving = double.parse(_servingCtrl.text);
-    if (serving <= 0) return;
+    final serving = double.tryParse(_servingCtrl.text);
+    if (serving == null || serving <= 0) {
+      _showError('请输入有效的份量');
+      return;
+    }
     final ratio = serving / 100;
     final db = await ref.read(recognize.databaseProvider.future);
     final mealRepo = MealLogRepository(db);
@@ -156,7 +159,24 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
   }
 
   Future<void> _logCustom() async {
-    if (_nameCtrl.text.isEmpty) return;
+    if (_nameCtrl.text.isEmpty) {
+      _showError('请输入食物名称');
+      return;
+    }
+    // 自定义模式：5 个数值字段需逐个校验
+    final cal = double.tryParse(_calCtrl.text);
+    final protein = double.tryParse(_proteinCtrl.text);
+    final fat = double.tryParse(_fatCtrl.text);
+    final carbs = double.tryParse(_carbsCtrl.text);
+    final serving = double.tryParse(_servingCtrl.text);
+    if (cal == null || protein == null || fat == null || carbs == null) {
+      _showError('热量/蛋白质/脂肪/碳水 必须为数字');
+      return;
+    }
+    if (serving == null || serving <= 0) {
+      _showError('请输入有效的份量');
+      return;
+    }
     final db = await ref.read(recognize.databaseProvider.future);
     final foodRepo = FoodItemRepository(db);
     final mealRepo = MealLogRepository(db);
@@ -164,13 +184,12 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
     // 先存库（source=manual，用 T9 新增的 insertManual 方法）
     final foodId = await foodRepo.insertManual(
       name: _nameCtrl.text,
-      caloriesPer100g: double.parse(_calCtrl.text),
-      proteinPer100g: double.parse(_proteinCtrl.text),
-      fatPer100g: double.parse(_fatCtrl.text),
-      carbsPer100g: double.parse(_carbsCtrl.text),
+      caloriesPer100g: cal,
+      proteinPer100g: protein,
+      fatPer100g: fat,
+      carbsPer100g: carbs,
     );
 
-    final serving = double.parse(_servingCtrl.text);
     final ratio = serving / 100;
     final now = DateTime.now();
     final today =
@@ -180,15 +199,21 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
       mealType: _mealType,
       foodItemId: foodId,
       actualServingG: serving,
-      actualCalories: double.parse(_calCtrl.text) * ratio,
-      actualProteinG: double.parse(_proteinCtrl.text) * ratio,
-      actualFatG: double.parse(_fatCtrl.text) * ratio,
-      actualCarbsG: double.parse(_carbsCtrl.text) * ratio,
+      actualCalories: cal * ratio,
+      actualProteinG: protein * ratio,
+      actualFatG: fat * ratio,
+      actualCarbsG: carbs * ratio,
     );
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('已存库并记录 ${_nameCtrl.text}')));
       Navigator.of(context).pop();
     }
+  }
+
+  void _showError(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(msg)));
   }
 }
