@@ -1,0 +1,34 @@
+[
+  {
+    "foodName": "番茄[西红柿]",
+    "energyKCal": "18",
+    "protein": "0.9",
+    "fat": "0.2",
+    "CHO": "3.9",
+    "edible": "97"
+  },
+  {
+    "foodName": "马铃薯(土豆,洋芋)",
+    "energyKCal": "76",
+    "protein": "2.0",
+    "fat": "0.1",
+    "CHO": "16.5",
+    "edible": "94"
+  },
+  {
+    "foodName": "花生油",
+    "energyKCal": "889",
+    "protein": "—",
+    "fat": "99.9",
+    "CHO": "Tr",
+    "edible": "100"
+  },
+  {
+    "foodName": "苹果",
+    "energyKCal": "52",
+    "protein": "0.3",
+    "fat": "0.2",
+    "CHO": "13.8",
+    "edible": ""
+  }
+]
