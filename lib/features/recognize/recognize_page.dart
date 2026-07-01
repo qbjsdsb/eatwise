@@ -15,6 +15,7 @@ class RecognizePage extends ConsumerStatefulWidget {
 
 class _RecognizePageState extends ConsumerState<RecognizePage> {
   RecognizeController? _controller;
+  String _mealType = 'snack'; // Sprint 2 T0：餐次选择，默认加餐
 
   Future<RecognizeController> _ensureController() async {
     if (_controller != null) return _controller!;
@@ -33,6 +34,22 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // Sprint 2 T0：餐次选择器
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: DropdownButton<String>(
+                value: _mealType,
+                isExpanded: true,
+                items: const [
+                  DropdownMenuItem(value: 'breakfast', child: Text('早餐')),
+                  DropdownMenuItem(value: 'lunch', child: Text('午餐')),
+                  DropdownMenuItem(value: 'dinner', child: Text('晚餐')),
+                  DropdownMenuItem(value: 'snack', child: Text('加餐')),
+                ],
+                onChanged: (v) => setState(() => _mealType = v!),
+              ),
+            ),
+            const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: () => _pickAndRecognize(ImageSource.camera),
               icon: const Icon(Icons.camera_alt),
@@ -52,7 +69,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
 
   Future<void> _pickAndRecognize(ImageSource source) async {
     final controller = await _ensureController();
-    await controller.pickAndRecognize(source);
+    await controller.pickAndRecognize(source, mealType: _mealType);
 
     // 监听状态变化跳转校准页
     final state = controller.current;
@@ -95,7 +112,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
 
             await mealRepo.insertMealLog(
               date: _todayLocalDate(),
-              mealType: 'snack', // Sprint 2 加餐次选择 UI
+              mealType: state.mealType, // Sprint 2 T0：从 controller state 读餐次
               foodItemId: foodItemId,
               actualServingG: servingG,
               actualCalories: calories,

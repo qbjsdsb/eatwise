@@ -7,6 +7,12 @@ import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
 
+// export database.dart：让用 `import 'providers.dart' as recognize;` 的页面
+// 能访问 recognize.databaseProvider（databaseProvider 在 database.dart 中定义）
+// 不加此 export，T8-T14 各页面用 `recognize.databaseProvider` 会编译失败
+// （Dart 的 import as 不会传递被 import 文件的 import 符号）
+export '../../data/database/database.dart';
+
 /// API key（Sprint 3 改从 secure_storage 读，Sprint 1 用 --dart-define 注入）
 final qwenApiKeyProvider = Provider<String>(
   (ref) => const String.fromEnvironment('QWEN_API_KEY', defaultValue: ''),

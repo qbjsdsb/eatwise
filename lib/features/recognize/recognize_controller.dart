@@ -17,6 +17,7 @@ class RecognizeUiState {
   final NutritionResult? singleNutrition;
   final CompositeNutritionResult? compositeNutrition;
   final String? imagePath;
+  final String mealType; // Sprint 2 T0：餐次（breakfast/lunch/dinner/snack），默认加餐
 
   RecognizeUiState({
     this.state = RecognizeState.idle,
@@ -25,6 +26,7 @@ class RecognizeUiState {
     this.singleNutrition,
     this.compositeNutrition,
     this.imagePath,
+    this.mealType = 'snack',
   });
 
   RecognizeUiState copyWith({
@@ -34,6 +36,7 @@ class RecognizeUiState {
     NutritionResult? singleNutrition,
     CompositeNutritionResult? compositeNutrition,
     String? imagePath,
+    String? mealType,
   }) {
     return RecognizeUiState(
       state: state ?? this.state,
@@ -42,6 +45,7 @@ class RecognizeUiState {
       singleNutrition: singleNutrition ?? this.singleNutrition,
       compositeNutrition: compositeNutrition ?? this.compositeNutrition,
       imagePath: imagePath ?? this.imagePath,
+      mealType: mealType ?? this.mealType,
     );
   }
 }
@@ -61,8 +65,11 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   RecognizeUiState get current => state;
 
   /// 拍照入口
-  Future<void> pickAndRecognize(ImageSource source) async {
-    state = state.copyWith(state: RecognizeState.pickingImage);
+  /// Sprint 2 T0：新增 mealType 参数（breakfast/lunch/dinner/snack）
+  Future<void> pickAndRecognize(ImageSource source,
+      {required String mealType}) async {
+    state = state.copyWith(
+        state: RecognizeState.pickingImage, mealType: mealType);
     try {
       final picker = ImagePicker();
       final xFile = await picker.pickImage(source: source, maxWidth: 1024, maxHeight: 1024);

@@ -1,0 +1,5 @@
+[
+  {"foodCode":"061101x","foodName":"苹果 (代表值)","edible":"85","energyKCal":"53","protein":"0.4","fat":"0.2 13.7","CHO":"","water":"86.1"},
+  {"foodCode":"043101","foodName":"马铃薯(土豆,洋芋)","edible":"94","energyKCal":"76","protein":"2.0","fat":"0.1","CHO":"16.5","water":"79.8"},
+  {"foodCode":"—","foodName":"某未检测项","edible":"","energyKCal":"—","protein":"—","fat":"—","CHO":"—","water":""}
+]

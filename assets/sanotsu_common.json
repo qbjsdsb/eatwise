@@ -1,0 +1,14 @@
+[
+  {"foodCode":"043101","foodName":"马铃薯(土豆,洋芋)","edible":"94","energyKCal":"76","protein":"2.0","fat":"0.1","CHO":"16.5","water":"79.8"},
+  {"foodCode":"061101","foodName":"番茄 [西红柿]","edible":"97","energyKCal":"18","protein":"0.9","fat":"0.2","CHO":"3.9","water":"94.4"},
+  {"foodCode":"062101","foodName":"苹果","edible":"76","energyKCal":"50","protein":"0.2","fat":"0.2","CHO":"13.5","water":"85.9"},
+  {"foodCode":"062201","foodName":"香蕉","edible":"59","energyKCal":"91","protein":"1.4","fat":"0.2","CHO":"22.0","water":"75.8"},
+  {"foodCode":"011101","foodName":"稻米","edible":"100","energyKCal":"346","protein":"7.4","fat":"0.8","CHO":"77.2","water":"13.3"},
+  {"foodCode":"012101","foodName":"小麦粉","edible":"100","energyKCal":"354","protein":"11.2","fat":"1.5","CHO":"73.6","water":"12.7"},
+  {"foodCode":"081101","foodName":"鸡肉","edible":"66","energyKCal":"167","protein":"19.3","fat":"9.4","CHO":"1.3","water":"69.0"},
+  {"foodCode":"081201","foodName":"猪里脊肉","edible":"100","energyKCal":"155","protein":"20.2","fat":"7.9","CHO":"0.7","water":"70.3"},
+  {"foodCode":"111101","foodName":"鸡蛋","edible":"88","energyKCal":"144","protein":"13.3","fat":"8.8","CHO":"2.8","water":"74.1"},
+  {"foodCode":"101101","foodName":"草鱼","edible":"58","energyKCal":"113","protein":"16.6","fat":"5.2","CHO":"0.0","water":"77.3"},
+  {"foodCode":"091101","foodName":"牛乳","edible":"100","energyKCal":"54","protein":"3.0","fat":"3.2","CHO":"3.4","water":"89.8"},
+  {"foodCode":"121101","foodName":"豆腐","edible":"100","energyKCal":"81","protein":"8.1","fat":"3.7","CHO":"4.2","water":"82.8"}
+]

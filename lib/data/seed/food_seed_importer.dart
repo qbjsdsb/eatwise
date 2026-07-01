@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:eatwise/data/database/database.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 /// Sanotsu/china-food-composition-data 食材库导入器
 /// 依据设计文档 6.4 节字段映射规则
@@ -47,18 +48,25 @@ class FoodSeedImporter {
     );
   }
 
-  /// 去除别名括号后缀：[干酪]、(代表值)、(土豆,洋芋)
+  /// 去除别名括号后缀：[干酪]、(代表值)、(土豆,洋芋)、（代表值）
+  /// Sprint 2 T0：扩展支持中文括号 （），原 Sprint 1 只支持 [] ()
   static String _cleanName(String name) {
-    return name.replaceAll(RegExp(r'[\[\(][^\]\)]*[\]\)]'), '').trim();
+    return name
+        .replaceAll(RegExp(r'\s*[\[\(（][^\]\)）]*[\]\)）]\s*'), '')
+        .trim();
   }
 
   /// 字符串转 double；"—"/空串 → null
+  /// Sprint 2 T0：扩展支持多值字段（如 fat:"0.2 13.7" → 0.2，取第一个空格前的值）
+  /// Sanotsu 完整版 fat 字段偶尔挤入"脂肪+饱和脂肪"两值
   static double? _parseNullableDouble(dynamic value) {
     if (value == null) return null;
     final str = value.toString().trim();
     if (str.isEmpty || str == '—' || str == '-') return null;
-    if (str == 'Tr') return 0.05;
-    return double.tryParse(str);
+    if (str == 'Tr') return 0.05; // 微量
+    // 多值字段取第一个空格前的值（兼容单值场景）
+    final firstValue = str.split(RegExp(r'\s+')).first;
+    return double.tryParse(firstValue);
   }
 
   /// 必填 double；"—" → null（数据缺失，导入时允许 null 供后续人工补）
@@ -110,5 +118,22 @@ class FoodSeedImporter {
         );
       }
     }
+  }
+
+  /// 按名称查食物（Sprint 2 T0：测试用）
+  Future<FoodItem?> findByName(String name) {
+    return (_db.foodItems.select()..where((f) => f.name.equals(name)))
+        .getSingleOrNull();
+  }
+
+  /// 从 assets/sanotsu_common.json 导入常吃食物种子数据
+  /// Sprint 2 T0：App 首次启动时若 food_items 表为空则调用此方法
+  ///
+  /// assets 文件来源：Sanotsu/china-food-composition-data 仓库常吃分类
+  /// （Sprint 2 因 GitHub API 限流，先用 12 条常吃食物种子，完整版留作增强）
+  Future<int> importFromAssets() async {
+    final jsonStr = await rootBundle.loadString('assets/sanotsu_common.json');
+    final jsonList = (jsonDecode(jsonStr) as List).cast<Map<String, dynamic>>();
+    return importFromJsonList(jsonList);
   }
 }
