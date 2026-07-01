@@ -35,12 +35,13 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       qwen,
       glm,
       lookup,
-      onOfflineEnqueue: (imagePath, mealType, date) async {
+      onOfflineEnqueue: (imagePath, mealType, date, promptVersion) async {
         final repo = PendingRecognitionRepository(db);
         await repo.enqueue(
           imagePath: imagePath,
           mealType: mealType,
           date: date,
+          promptVersion: promptVersion,
         );
       },
     );

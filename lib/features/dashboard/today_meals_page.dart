@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../ai/prompts.dart';
 import '../../data/database/database.dart';
+import '../../data/repositories/pending_recognition_repository.dart';
 import '../../data/repositories/recognition_feedback_repository.dart';
 import '../recognize/providers.dart' as recognize;
 
@@ -179,10 +181,23 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     );
     if (isCorrect == null) return;
     if (!mounted) return;
+    // T23：反查 prompt_version（优先从 pending_recognition 按 imagePath 查，
+    // fallback Prompts.version）。拍照识别的 meal_log 有 original_image_path，
+    // 对应 pending_recognition.image_path
+    String promptVersion = Prompts.version;
+    if (m.originalImagePath != null) {
+      final pendingRepo = PendingRecognitionRepository(db);
+      final pendingList = await pendingRepo.listAll();
+      final match =
+          pendingList.where((p) => p.imagePath == m.originalImagePath).toList();
+      if (match.isNotEmpty && match.first.promptVersion != null) {
+        promptVersion = match.first.promptVersion!;
+      }
+    }
     await feedbackRepo.insert(
       mealLogId: m.id,
       isCorrect: isCorrect,
-      promptVersion: 'v1.0', // Sprint 1 prompts.dart 版本
+      promptVersion: promptVersion,
     );
     if (mounted) {
       ScaffoldMessenger.of(context)

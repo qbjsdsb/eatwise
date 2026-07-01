@@ -1,10 +1,12 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/legacy.dart'; // Riverpod 3.x：StateNotifier 移至 legacy.dart（主入口不再导出，仅用 legacy 导入）
 import 'package:image_picker/image_picker.dart';
 
 import '../../ai/nutrition_lookup.dart';
+import '../../ai/prompts.dart';
 import '../../ai/vision_provider.dart';
 
 /// 拍照识别状态
@@ -58,14 +60,21 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   final NutritionLookup _nutritionLookup;
   // Sprint 2 T14：离线入队回调（page 注入，避免 controller 直接依赖 db）
   // 为 null 时走 Sprint 1 原逻辑（直接报错），向后兼容
-  final Future<void> Function(String imagePath, String mealType, String date)?
+  // T23：回调签名加第 4 个参数 promptVersion，透传真实版本
+  final Future<void> Function(
+          String imagePath, String mealType, String date, String promptVersion)?
       _onOfflineEnqueue;
+
+  // T23：本地限流（每分钟最多 2 次，间隔 30s，防误触连点烧 token）
+  DateTime? _lastRecognizeTime;
+  static const _minInterval = Duration(seconds: 30);
 
   RecognizeController(
     this._primaryProvider,
     this._fallbackProvider,
     this._nutritionLookup, {
-    Future<void> Function(String imagePath, String mealType, String date)?
+    Future<void> Function(
+            String imagePath, String mealType, String date, String promptVersion)?
         onOfflineEnqueue,
   })  : _onOfflineEnqueue = onOfflineEnqueue,
         super(RecognizeUiState());
@@ -73,11 +82,30 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   /// 当前状态（供外部一次性读取，避免直接访问 StateNotifier 的 protected state）
   RecognizeUiState get current => state;
 
+  @visibleForTesting
+  DateTime? get lastRecognizeTimeForTest => _lastRecognizeTime;
+
+  @visibleForTesting
+  Future<void> Function(String, String, String, String)? get onOfflineEnqueueForTest =>
+      _onOfflineEnqueue;
+
   /// 拍照入口
   /// Sprint 2 T0：新增 mealType 参数（breakfast/lunch/dinner/snack）
   /// Sprint 2 T14：网络异常时若有 onOfflineEnqueue 则入队，否则报错
   Future<void> pickAndRecognize(ImageSource source,
       {required String mealType}) async {
+    // T23 限流：距上次识别不足 30s 则拒绝（防误触连点烧 token）
+    final now = DateTime.now();
+    if (_lastRecognizeTime != null &&
+        now.difference(_lastRecognizeTime!) < _minInterval) {
+      final remain = _minInterval - now.difference(_lastRecognizeTime!);
+      state = state.copyWith(
+        state: RecognizeState.error,
+        errorMessage: '操作太快，请等待 ${remain.inSeconds} 秒后再试',
+      );
+      return;
+    }
+
     state = state.copyWith(
         state: RecognizeState.pickingImage, mealType: mealType, clearError: true);
     XFile? xFile;
@@ -108,6 +136,7 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
 
       // 调 Vision API（主→备降级）
       state = state.copyWith(state: RecognizeState.recognizing);
+      _lastRecognizeTime = DateTime.now(); // T23 限流：记录本次识别时间
       VisionRecognitionResult result;
       try {
         result = await _primaryProvider.recognize(imageBase64);
@@ -147,7 +176,7 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         final today =
             '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
         try {
-          await _onOfflineEnqueue(xFile.path, mealType, today);
+          await _onOfflineEnqueue(xFile.path, mealType, today, Prompts.version);
           state = state.copyWith(
             state: RecognizeState.queued,
             errorMessage: '当前离线，已加入队列，联网后自动识别',

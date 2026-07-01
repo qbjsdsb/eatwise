@@ -34,6 +34,14 @@ class PendingRecognitionRepository {
         .get();
   }
 
+  /// 查询全部记录（含 done/failed/pending，按创建时间降序）
+  /// 反馈反查用：通过 imagePath 匹配 meal_log.original_image_path 找到对应 prompt_version
+  Future<List<PendingRecognition>> listAll() {
+    return (_db.pendingRecognitions.select()
+          ..orderBy([(p) => OrderingTerm.desc(p.createdAt)]))
+        .get();
+  }
+
   /// 标记成功
   Future<void> markDone(int id, int resultFoodItemId) async {
     await (_db.pendingRecognitions.update()..where((p) => p.id.equals(id)))
