@@ -75,9 +75,25 @@ api_keys.json
 **/exports/
 **/backups/
 
+# Sentry 配置文件（可能含 token/org，DSN 存 secure_storage 不入库）
+sentry.properties
+**/sentry.properties
+
+# 符号文件（flutter build --split-debug-info 产物，含函数名映射，泄露可逆向）
+**/symbols/
+*.symbols
+
+# Prompt 回归测试静态照片集（个人隐私图片，不入库；动态回归集在 recognition_feedback 表随数据库）
+test/fixtures/images/
+test/fixtures/photos/
+
 # 测试覆盖与生成的迁移文件（按需取消注释）
 # coverage/
 # test/coverage/
+
+# 说明：drift *.g.dart 生成文件入库（与 drift 官方惯例一致，CI 校验一致性，见 12.5 节）
+# 说明：drift_schemas/ 目录入库（迁移测试需要历史 schema 快照，见 12.2 节）
+# 说明：drift step-by-step 迁移文件 data/database/migrations/*.dart 入库
 
 # 临时文件
 *.log
