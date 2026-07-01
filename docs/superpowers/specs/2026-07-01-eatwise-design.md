@@ -55,6 +55,7 @@ Flutter App (iOS + Android, 一套代码)
   ├─ GLM-4-Flash API (免费文本模型)          ← AI 周/月汇总建议
   ├─ image_picker → flutter_image_compress   ← 拍照 → 显式剥离 EXIF + 压缩
   ├─ fl_chart                                ← 趋势图表
+  ├─ sentry_flutter                          ← 错误监控（Crash 自动上报，脱敏业务数据）
   └─ JSON 导出/导入                           ← 换机/备份
 ```
 
@@ -75,6 +76,7 @@ Flutter App (iOS + Android, 一套代码)
 | 备选视觉模型 | GLM-4V-Plus | 新用户送 2000 万 token（20 million tokens 体验包），免费额度最大，作容灾。注：需核实该体验包是否对 GLM-4V-Plus 视觉模型通用（智谱不同模型免费额度策略可能差异） |
 | 文本大模型 | GLM-4-Flash（模型名固定 glm-4-flash 或 glm-4-flash-250414） | 完全免费；注意勿误用 GLM-4-FlashX（0.1 元/百万 token，非免费变体，名称相近易混淆） |
 | HTTP 客户端 | openai_dart ^7.0 | 纯 Dart、类型安全，显式支持 OpenAI-compatible APIs；百炼与智谱均兼容但 base_url 格式不同（百炼含 WorkspaceId，智谱结尾带斜杠），需分别封装 OpenAIClient 实例 |
+| 错误监控 | sentry_flutter ^9.22 | pub.dev likes 1.07K，verified publisher sentry.io；免费层 5K errors/月够个人用；自动捕获 Flutter/Dart/Native 崩溃；支持服务端+客户端脱敏 |
 | 离线队列 | drift pending_recognition 表 | 简单 FIFO，个人单端无需复杂冲突解决 |
 
 ### 2.3 大模型调用架构
@@ -187,6 +189,12 @@ Flutter App (iOS + Android, 一套代码)
 密钥：首次启动生成随机 32 字节密钥，存 flutter_secure_storage
 Schema 版本管理：drift schemaVersion + MigrationStrategy
 
+**时区与日期处理约定**：
+- 所有 `date` 字段（meal_log.date / weight_log.date / pending_recognition.date / insight_summary.period_*）存 'YYYY-MM-DD'，取**用户设备本地时区的自然日**（不引入固定时区，因个人自用不跨时区协作）
+- 所有 `logged_at` / `created_at` / `processed_at` / `generated_at` 时间戳存 **UTC 毫秒**（INTEGER），便于跨时区换算
+- UI 展示按本地时区渲染；深夜吃东西（如 23:50 拍照）按本地自然日记入当天，不算次日
+- 出国旅游场景：用户切换设备时区后，新记录按新时区的自然日，历史记录不变；不做时区回溯重算
+
 ### 4.2 表结构
 
 #### 4.2.1 profile（个人档案，单行表）
@@ -221,6 +229,7 @@ Schema 版本管理：drift schemaVersion + MigrationStrategy
 | protein_per_100g | REAL | 每 100g 蛋白质 |
 | fat_per_100g | REAL | 每 100g 脂肪 |
 | carbs_per_100g | REAL | 每 100g 碳水 |
+| aliases_json | TEXT NULL | 别名列表 JSON（如 `["西红柿","tomato"]`），查库时按 name OR aliases 匹配；导入食材库时人工补充常见别名（番茄/西红柿、土豆/马铃薯等 20-30 组） |
 | edible_percent | REAL NULL | 可食部比例（0-100），默认 100；导入食材库时填充，供"带皮/带骨称重"场景可选换算 |
 | source | TEXT | 'china_fct'(中国食物成分表) / 'usda' / 'off' / 'manual' / 'ai_recognized' |
 | source_version | TEXT | 数据源版本（如 "china_fct_v6"） |
@@ -234,8 +243,8 @@ Schema 版本管理：drift schemaVersion + MigrationStrategy
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | INTEGER PK | 自增 |
-| date | TEXT | 日期 'YYYY-MM-DD' |
-| meal_type | TEXT | 'breakfast' / 'lunch' / 'dinner' / 'snack' |
+| date | TEXT | 日期 'YYYY-MM-DD'，取设备本地时区自然日（见 4.1 时区约定） |
+| meal_type | TEXT | 'breakfast' / 'lunch' / 'dinner' / 'snack'；加餐多次时同日可多条 snack 记录，按 logged_at 时间戳排序展示 |
 | food_item_id | INTEGER FK | 关联 food_item |
 | actual_serving_g | REAL | 实际份量（克） |
 | actual_calories | REAL | 实际热量（计算值） |
@@ -252,7 +261,7 @@ Schema 版本管理：drift schemaVersion + MigrationStrategy
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | INTEGER PK | 自增 |
-| date | TEXT | 日期 'YYYY-MM-DD' |
+| date | TEXT | 日期 'YYYY-MM-DD'，取设备本地时区自然日（见 4.1 时区约定） |
 | weight_kg | REAL | 体重 |
 
 #### 4.2.5 pending_recognition（离线识别队列）
@@ -267,6 +276,7 @@ Schema 版本管理：drift schemaVersion + MigrationStrategy
 | retry_count | INTEGER | 默认 0，上限 3 |
 | result_food_item_id | INTEGER NULL FK | 识别成功后关联的 food_item |
 | error_message | TEXT NULL | 失败原因（malformed/timeout/rate_limit/auth_fail），便于断路器分类处理 |
+| prompt_version | TEXT NULL | 识别时使用的 prompt 版本号（如 "v1.2"），见 11.2 节 prompt 版本管理；便于准确率退化时追溯 |
 | created_at | INTEGER | 创建时间 |
 | processed_at | INTEGER NULL | 识别完成时间 |
 
@@ -283,6 +293,20 @@ Schema 版本管理：drift schemaVersion + MigrationStrategy
 | generated_at | INTEGER | 生成/更新时间戳 |
 
 注：唯一约束 period_type + period_start，避免重复调用 API 烧 token；离线时不生成，联网后按需生成。
+
+#### 4.2.7 recognition_feedback（识别反馈，prompt 改进数据源）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | INTEGER PK | 自增 |
+| meal_log_id | INTEGER FK | 关联 meal_log（仅拍照识别记录可反馈） |
+| is_correct | INTEGER | 1=识别正确，0=识别有误 |
+| corrected_dish_name | TEXT NULL | 用户标注的正确菜名（is_correct=0 时填） |
+| corrected_serving_g | REAL NULL | 用户标注的正确份量（克，is_correct=0 时填） |
+| prompt_version | TEXT | 该次识别使用的 prompt 版本号（关联 pending_recognition.prompt_version），便于按版本统计准确率 |
+| created_at | INTEGER | 反馈时间戳（UTC 毫秒） |
+
+注：用于积累动态回归集，比静态 50 张照片更有价值。按 prompt_version 聚合准确率，退化时触发回归排查。导出时包含此表（用户标注数据）。
 
 ### 4.3 派生数据（不存储，实时聚合）
 
@@ -399,11 +423,11 @@ TDEE = BMR × activity_level
 ```
 识别结果分两类处理：
 ├─ 单品（is_single_item=true，如苹果/鸡蛋/牛奶）
-│   → 用 dish_name 查食材库
+│   → 用 dish_name 查食材库（按 name OR aliases_json 匹配，解决"西红柿/番茄"等同物异名问题）
 │   → 命中：热量密度(kcal/100g) × 用户校准份量
 │   └─ 未命中：手动改菜名→重查→仍无则手动录入
 └─ 复合菜（is_single_item=false，如宫保鸡丁/番茄炒蛋）
-    → 按模型返回的 food_components[] 逐项查食材库
+    → 按模型返回的 food_components[] 逐项查食材库（同样按 name OR aliases 匹配）
     → 命中项：累加 (组分热量密度 × 组分估量 / 100)
     → 加上用油系数 × 烹饪方式（见 3.1 烹饪用油系数表）
     └─ 未命中组分：标注"待确认"，用户手动改组分名或输入该组分热量
@@ -421,6 +445,7 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 | fat_per_100g | fat | g/100g | 字符串转 double |
 | carbs_per_100g | CHO | g/100g | 字符串转 double |
 | edible_percent | edible | % | 可食部比例；MVP 校准页默认按用户输入的实际摄入克数计算，此字段供"带皮/带骨称重"场景可选换算（actual_intake_g = input_g × edible_percent / 100） |
+| aliases_json | （人工补充） | - | 食材库不含别名，导入后人工补 20-30 组常见别名（番茄/西红柿、土豆/马铃薯、地瓜/红薯、猕猴桃/奇异果等）；写入 food_item.aliases_json |
 | source | 固定 'china_fct' | - | - |
 | source_version | 固定 'china_fct_v6_251206' | - | 取数据集目录名日期 |
 
@@ -456,9 +481,10 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 
 ### 7.3 今日记录模块
 
-- 按餐次分组（早/午/晚/加餐）展示
+- 按餐次分组（早/午/晚/加餐）展示，加餐多条按时间戳排序
 - 每条记录可编辑份量、删除
 - 拍照识别记录显示原图缩略图 + 置信度标识
+- 拍照识别记录提供"识别准/不准"反馈入口（左滑或长按），不准时让用户标注正确菜名+份量，写入 recognition_feedback 表（见 4.2.7），用于 prompt 改进
 
 ### 7.4 今日额度看板
 
@@ -543,7 +569,7 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 
 ### 9.1 JSON 导出/导入
 
-- 导出：含 schemaVersion 字段的 JSON 包（profile + food_items + meal_logs + weight_logs + insight_summaries）；pending_recognition 为临时队列不导出
+- 导出：含 schemaVersion 字段的 JSON 包（profile + food_items + meal_logs + weight_logs + insight_summaries + recognition_feedbacks）；pending_recognition 为临时队列不导出
 - 导出文件可选 AES 加密（密钥从 secure_storage 取）
 - 导入：走 drift 迁移链，老版本数据自动升级到当前 schema
 - 用户可放任意云盘/iCloud Drive 自行托管
@@ -558,6 +584,26 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 1. 旧机：导出 JSON → 放云盘
 2. 新机：装 App → 导入 JSON → 数据恢复
 3. 图片处理：图片不迁移，导入时检测 `meal_log.original_image_path` 与 `food_item.thumbnail_path` 对应文件是否存在；不存在则置空并标记失效，UI 显示"原图未迁移"占位符，避免死链 404
+
+### 9.4 图片存储清理
+
+**问题**：每张原图 1024px JPEG 85% 约 200-500KB，每天 3-5 张，半年累积 ~300MB，一年 ~600MB，会吃满手机存储。
+
+**清理策略**：
+- 默认保留近 30 天原图，更早的 `meal_log.original_image_path` 自动删除（仅保留 `food_item.thumbnail_path` 128px 缩略图用于历史记录展示）
+- 用户可在设置里选保留期：7 天 / 30 天（默认）/ 永久保留
+- 触发时机：复用 workmanager 后台任务，每周执行一次清理；App 启动时若发现待清理项 > 50 个则前台异步清理
+- 清理前校验：仅删除 `original_image_path`，不删 `food_item.thumbnail_path`；不删 `pending_recognition.image_path`（未识别完的不能删）
+
+### 9.5 自动备份
+
+**问题**：手动导出易忘，换机/丢机时数据全没。
+
+**策略**：
+- 每周日凌晨由 workmanager 后台任务自动导出 JSON 到 `getApplicationDocumentsDirectory()/backups/`，文件名 `eatwise_backup_YYYYMMDD.json`（可选 AES 加密）
+- 保留最近 4 份，更早的自动删除
+- 可选：用户在设置里指定一个额外复制目录（如 iCloud Drive / Google Drive 在本地的映射路径），导出后复制一份过去
+- 设置页显示"上次自动备份时间"，超过 14 天未成功备份则看板提示
 
 ---
 
@@ -603,6 +649,7 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 - system prompt 写明完整 schema 描述 + 1-2 个 few-shot 示例
 - schema 扁平（嵌套 ≤ 3 层）
 - 下游做 JSON schema 校验，字段缺失时触发重试或转手动录入，拒绝不合法响应
+- **Prompt 版本管理**：prompts.dart 文件头注释标注版本号（如 `// prompt v1.2 - 2026-07-15`），每次调用识别 API 时把 prompt_version 写入 pending_recognition 表；准确率退化时可按版本号追溯是哪次改动引入
 
 ### 11.3 成本控制
 
@@ -610,6 +657,17 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 - 月度费用上限：厂商控制台 + App 内显示"本月识别次数/累计花费"
 - 超阈值提示用户
 - 本地限流：每分钟最多 5 次识别
+
+### 11.4 错误监控（Sentry）
+
+- 接入 sentry_flutter ^9.22，自动捕获 Flutter 错误（FlutterError.onError）、Dart 未处理异常（runZonedGuarded）、Native 崩溃（Android Java/C、iOS Obj-C）
+- 免费层 5K errors/月够个人自用
+- **脱敏规则**（关键，避免业务数据上报）：
+  - 启用 Sentry 服务端默认 Data Scrubbing
+  - 客户端 `beforeSend` 钩子剥离业务字段：食物名、份量、体重、热量、API key、图片路径
+  - 仅保留异常类型、堆栈、设备型号、App 版本
+- DSN 存 flutter_secure_storage（不入库不入代码），用户可在设置里开关上报
+- Release 版本用 `flutter build --split-debug-info` 产物配合 Sentry symbols 解符号
 
 ---
 
@@ -636,9 +694,20 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 
 ### 12.4 Prompt 回归测试
 
-- 收集 50-100 张真实食物照片作为回归集
-- 每次 prompt 调整后跑一遍看准确率是否退化
+- 静态回归集：收集 50-100 张真实食物照片作为基线
+- 动态回归集：从 recognition_feedback 表导出用户实际遇到的错判样本（见 4.2.7），比静态集更有价值，持续积累
+- 每次 prompt 调整后跑一遍看准确率是否退化，按 prompt_version 对比（见 11.2）
 - 覆盖：单品（苹果）、家常菜（番茄炒蛋）、复合菜（宫保鸡丁）、餐厅菜、包装食品
+
+### 12.5 CI（GitHub Actions）
+
+- 触发：push 到 main / 任意 PR
+- 作业：
+  1. `flutter analyze`（0 error 才通过，warning 允许）
+  2. `flutter test`（单元测试 + drift schema 迁移测试必跑）
+  3. `dart run build_runner build`（drift 代码生成一致性校验，确保提交的生成产物与 schema 同步）
+- 失败阻止 PR 合并
+- 不跑集成测试（需模拟器，CI 成本高），集成测试本地跑
 
 ---
 
@@ -647,20 +716,23 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 本设计文档涵盖 MVP 全部功能，单个实现计划可覆盖：
 
 1. 项目脚手架（Flutter 初始化 + 依赖配置 + 目录结构）
-2. 数据层（drift 2.32+ + sqlite3mc 加密 + 6 张表 + 迁移 + food_item 唯一约束）
+2. 数据层（drift 2.32+ + sqlite3mc 加密 + 7 张表 + 迁移 + food_item 唯一约束）
 3. 营养计算模块（BMR/TDEE/宏量公式 + 单元测试，覆盖 cut/bulk/maintain × 男女 × 有无体脂率）
-4. 本地食材库导入（Sanotsu JSON → 字段映射 + 类型转换 + 缺失值清洗，按 6.4 规则）
-5. 拍照识别模块（flutter_image_compress 预处理 + Qwen-VL 调用 response_format=json_object + few-shot + GLM-4V-Plus 容灾）
-6. 营养查库层（单品查库 / 复合菜组分累加 + 烹饪用油系数表）
-7. 校准页 UI（单品滑块 / 复合菜组分滑块 + 用油量滑块）
-8. 今日记录 + 看板
-9. 食物库模块（含 name+source 去重）
+4. 本地食材库导入（Sanotsu JSON → 字段映射 + 类型转换 + 缺失值清洗 + 别名补充，按 6.4 规则）
+5. 拍照识别模块（flutter_image_compress 预处理 + Qwen-VL 调用 response_format=json_object + few-shot + GLM-4V-Plus 容灾 + prompt_version 记录）
+6. 营养查库层（单品查库 / 复合菜组分累加 + name OR aliases 匹配 + 烹饪用油系数表）
+7. 校准页 UI（单品滑块 / 复合菜组分滑块 + 用油量滑块 + 置信度分级跳过）
+8. 今日记录 + 看板 + 识别反馈入口（recognition_feedback 表）
+9. 食物库模块（含 name+source 去重 + 别名查询）
 10. 手动录入（兜底）
 11. 体重记录 + 趋势图
-12. AI 汇总建议（GLM-4-Flash）
+12. AI 汇总建议（GLM-4-Flash + insight_summary 表存储）
 13. JSON 导出/导入（含 schemaVersion 走 drift 迁移链）
 14. 离线队列（pending_recognition 表 + connectivity_plus 前台触发 + workmanager 后台触发）
 15. 安全配置（加密 + 权限声明 + 隐私政策 + API key 厂商费用上限）
+16. 存储与备份（图片清理 9.4 + 自动备份 9.5）
+17. 错误监控（Sentry 接入 + 脱敏 11.4）
+18. CI（GitHub Actions 12.5）
 
 ---
 
