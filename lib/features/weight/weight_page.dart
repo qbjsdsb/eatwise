@@ -2,8 +2,10 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/config/app_config.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/weight_log_repository.dart';
+import '../../nutrition/tdee_calibrator.dart';
 import '../recognize/providers.dart' as recognize;
 
 /// 体重记录页：录入体重 + fl_chart 折线趋势图
@@ -148,6 +150,23 @@ class _WeightPageState extends ConsumerState<WeightPage> {
     final today =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     await repo.insert(date: today, weightKg: weight);
+
+    // 触发 TDEE 自适应校准（Sprint 3 T22）
+    try {
+      final config = await ref.read(appConfigProvider.future);
+      if (config.tdeeAutoCalib) {
+        final calibrator = TdeeCalibrator(db);
+        final result = await calibrator.runAndApply(enabled: true);
+        if (result.adjustmentKcal != 0 && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('TDEE 已调整：${result.reason}')),
+          );
+        }
+      }
+    } catch (_) {
+      // 校准失败不影响体重记录主流程
+    }
+
     _weightCtrl.clear();
     await _load();
     if (mounted) {

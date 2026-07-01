@@ -31,4 +31,27 @@ class WeightLogRepository {
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     return getRange(startDate, endDate);
   }
+
+  /// 查询最近 N 天的体重记录（TDEE 校准用）
+  /// 同一天多次记录取最后一次（最新体重）
+  Future<List<WeightLog>> getRangeForTdee({int days = 28}) async {
+    final now = DateTime.now();
+    final start = now.subtract(Duration(days: days));
+    final startDate =
+        '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
+    final endDate =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+    final all = await (_db.weightLogs.select()
+          ..where((w) => w.date.isBetweenValues(startDate, endDate))
+          ..orderBy([(w) => OrderingTerm.asc(w.date)]))
+        .get();
+
+    // 同一天多条取最后一条（按 id 降序即插入顺序，同日最后插入的最新）
+    final byDate = <String, WeightLog>{};
+    for (final w in all) {
+      byDate[w.date] = w; // 后覆盖前，保留同日最新
+    }
+    return byDate.values.toList()..sort((a, b) => a.date.compareTo(b.date));
+  }
 }
