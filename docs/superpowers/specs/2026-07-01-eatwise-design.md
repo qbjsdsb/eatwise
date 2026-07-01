@@ -21,7 +21,7 @@ EatWise 通过「拍照识别 → 份量校准 → 营养计算 → 长期趋势
 
 ### 1.2 核心价值主张
 
-- 拍一张食物照片即可记录，模型识别菜名+估份量，营养数据来自权威食物库而非模型直出（准确度从 ±20% 提升到 ±5%）
+- 拍一张食物照片即可记录，模型识别菜名+估份量，营养数据来自权威食物库而非模型直出（单品 ±3-5%，复合菜 ±10-15%，纯图像估算 ±20%）
 - 基于身高/体重/目标自动计算每日热量与宏量营养素目标（公式依据 ACSM/ISSN/NIH/WHO 权威标准）
 - 周/月趋势图 + AI 阶段性建议（依据近 7 天数据生成中文建议）
 - 数据本地 AES 加密存储，可导出/导入 JSON 备份，换机不丢
@@ -32,7 +32,7 @@ EatWise 通过「拍照识别 → 份量校准 → 营养计算 → 长期趋势
 - 不做社交/分享/排行榜
 - 不做运动同步（Apple Health / Google Fit，依赖重）
 - 不做推送提醒（MVP 不做）
-- 不做详细维生素/矿物质雷达图（MVP 只追踪热量+三大宏量）
+- 不做详细维生素/矿物质/膳食纤维追踪与雷达图（MVP 只追踪热量+三大宏量；food_item 可选存储 edible_percent 供可食部换算，但不作为展示功能）
 - 不做付费/会员体系
 
 ---
@@ -65,22 +65,22 @@ Flutter App (iOS + Android, 一套代码)
 | 框架 | Flutter | UI 一致性高、双端一套代码、拍照/图表/本地数据库生态成熟 |
 | 数据库 | drift ≥ 2.32 | pub.dev likes 2.23K，类型安全，响应式 Stream，全平台支持 |
 | 数据库加密 | sqlite3 build hooks (source: sqlite3mc, SQLite3MultipleCiphers) | drift 2.32+ 官方现行推荐；sqlcipher_flutter_libs 已 EOL（0.7.0 起不再生效），故弃用 |
-| 密钥存储 | flutter_secure_storage | iOS Keychain / Android Keystore 底层；32 字节密钥无大小限制；minSdk 23+ 保证 AndroidKeyStore 可用，无 StrongBox 时仍由 TrustZone/TEE 硬件保护 |
+| 密钥存储 | flutter_secure_storage | iOS Keychain / Android Keystore 底层；AES-256 (32 字节) 密钥在 Android Keystore 支持范围内（Keystore 支持 AES-128/256，HMAC ≤32 字节，非"无限制"）；minSdk 23+ 保证 AndroidKeyStore 可用，无 StrongBox 时仍由 TrustZone/TEE 硬件保护 |
 | 拍照 | image_picker | flutter.dev 官方一方包 |
-| 图片预处理 | flutter_image_compress 2.4+ | 显式 keepExif:false 剥离 EXIF（image_picker 压缩丢 EXIF 是副作用非契约，不可依赖）；支持 autoCorrectionAngle 方向校正 |
+| 图片预处理 | flutter_image_compress | keepExif 参数自 0.6.1 起支持，默认 false 即剥离 EXIF（无需显式传 false；image_picker 未契约化保证 EXIF 保留，iOS 实现层会尝试复制但跨版本有回归风险，故业务层不依赖）；支持 autoCorrectionAngle 方向校正（默认 true，与 rotate 同时使用时注意历史冲突） |
 | 图表 | fl_chart | Flutter 生态事实标准 |
 | 网络状态(前台) | connectivity_plus | 前台实时 UI 反馈（离线 Banner、网络恢复立即同步当前会话） |
-| 后台任务 | workmanager | 后台兜底回补；配置 Constraints(networkType: CONNECTED)；connectivity_plus 在 App 后台时无法可靠触发（Android 7+ 系统限制） |
+| 后台任务 | workmanager | 后台兜底回补；配置 Constraints(networkType: CONNECTED)；connectivity_plus 在 App 后台时无法可靠触发（Android 8.0 (API 26)+ 后台执行限制） |
 | 视觉大模型 | Qwen-VL (qwen3-vl-flash 起步) | 中文食物识别实测案例多；兼容 OpenAI SDK；0.15/1.5 元每百万 token；90天100万 token 免费。注：function calling 无 tool_choice=required，不能强制 schema，改用 response_format=json_object + few-shot |
-| 备选视觉模型 | GLM-4V-Plus | 新用户送 2500 万 token，免费额度最大，作容灾 |
-| 文本大模型 | GLM-4-Flash | 完全免费，文本生成建议够用 |
-| HTTP 客户端 | openai_dart | 纯 Dart、类型安全，显式支持 OpenAI-compatible APIs，baseUrl 指向百炼即可 |
+| 备选视觉模型 | GLM-4V-Plus | 新用户送 2000 万 token（20 million tokens 体验包），免费额度最大，作容灾。注：需核实该体验包是否对 GLM-4V-Plus 视觉模型通用（智谱不同模型免费额度策略可能差异） |
+| 文本大模型 | GLM-4-Flash（模型名固定 glm-4-flash 或 glm-4-flash-250414） | 完全免费；注意勿误用 GLM-4-FlashX（0.1 元/百万 token，非免费变体，名称相近易混淆） |
+| HTTP 客户端 | openai_dart ^7.0 | 纯 Dart、类型安全，显式支持 OpenAI-compatible APIs；百炼与智谱均兼容但 base_url 格式不同（百炼含 WorkspaceId，智谱结尾带斜杠），需分别封装 OpenAIClient 实例 |
 | 离线队列 | drift pending_recognition 表 | 简单 FIFO，个人单端无需复杂冲突解决 |
 
 ### 2.3 大模型调用架构
 
 ```
-拍照 → flutter_image_compress(keepExif:false + 压缩) → Vision API 调用
+拍照 → flutter_image_compress(默认剥离 EXIF + 压缩) → Vision API 调用
                                         ├─ 首选: Qwen-VL (response_format=json_object + few-shot)
                                         └─ 容灾: GLM-4V-Plus (主选失败时降级)
 返回 {菜名, 估量g区间, 食材组分[], 烹饪方式, 置信度}
@@ -96,6 +96,21 @@ Flutter App (iOS + Android, 一套代码)
 
 **关于结构化输出说明**：Qwen-VL 的 function calling 不支持 `tool_choice="required"`，schema 仅为"建议"非强制。故采用 `response_format={"type":"json_object"}` 强制合法 JSON 语法 + system prompt 写明完整 schema 描述 + 1-2 个 few-shot 示例的方案。下游对返回 JSON 做 schema 校验，字段缺失时触发重试或转手动录入。
 
+### 2.4 工程架构
+
+| 层 | 选型 | 依据 |
+|---|---|---|
+| 状态管理 | flutter_riverpod ^3.3 | pub.dev likes 2.87K；编译期安全，StreamProvider 直接订阅 drift `.watch()` 返回的 Stream；Notifier 体系适合中大型 App |
+| 路由 | go_router ^17.2 | flutter.dev 一方包（likes 5.73K），声明式路由，支持深链接与 Web URL |
+| 依赖注入 | Riverpod Provider | 复用 Riverpod Provider 体系做 DI，不额外引入 get_it，减少依赖 |
+| 主题 | ThemeData + ColorScheme | Material 3 默认，不引入额外主题包 |
+
+**分层规则**：
+- `data/` 层只暴露 Repository 抽象接口，实现类注入 drift database 实例
+- `features/` 层通过 Riverpod Provider 获取 Repository，UI 用 ConsumerWidget + AsyncValue 消费 drift Stream
+- `ai/` 层定义 VisionProvider 抽象接口，QwenVlProvider / Glm4vProvider 为实现类，通过 Provider 注入
+- `core/` 层放主题、错误处理、通用工具，无业务逻辑
+
 ---
 
 ## 3. 核心数据流
@@ -105,7 +120,7 @@ Flutter App (iOS + Android, 一套代码)
 ```
 1. 用户点"+"按钮 → 选择拍照或从相册选图
 2. 本地预处理（flutter_image_compress）：
-   - keepExif:false 显式剥离全部 EXIF/XMP/IPTC 元数据（隐私保护）
+   - EXIF/XMP/IPTC 元数据默认剥离（keepExif 默认 false，隐私保护）
    - autoCorrectionAngle 校正方向
    - 压缩到最大边 1024px、JPEG 质量 85%（控成本+降泄露信息量）
 3. 检查网络：
@@ -123,11 +138,13 @@ Flutter App (iOS + Android, 一套代码)
    └─ 复合菜(is_single_item=false): 用 food_components 逐项查食材库累加
        ├─ 各组分查到：热量=Σ(组分热量密度×组分估量/100) + 用油系数×烹饪方式
        └─ 某组分查不到：标注该组分"待确认"，用户可手动改组分名或手动输入该组分热量
-6. 校准页（强制，不可跳过）：
+6. 校准页（按置信度分级，平衡准确度与使用留存）：
+   - 置信度 ≥ 0.85 且单品：允许"一键记录"跳过校准（默认用 estimated_weight_g_mid），降低高频使用摩擦
+   - 置信度 < 0.6：强制校准，标注"待确认"
+   - 中间区 (0.6-0.85)：默认进校准页，提供"信任 AI"快捷按钮
    - 默认填入 estimated_weight_g_mid（单品）或各组分 estimated_g（复合菜）
    - 单品：用户拖动滑块调整总份量（0-1000g），营养素实时重算
    - 复合菜：用户可调整各组分份量 + "用油量"滑块（默认取烹饪方式系数，可手动调）
-   - 置信度 < 0.6 时标注"待确认"
 7. 选餐次（早/午/晚/加餐）→ 写入 meal_log 表
 8. 更新今日额度看板
 9. 存入"我的食物库"（去重逻辑：按 name+source 查重，已存在则更新 default_serving_g）
@@ -138,7 +155,7 @@ Flutter App (iOS + Android, 一套代码)
 | 烹饪方式 | 默认用油量(g/份) | 说明 |
 |---|---|---|
 | 蒸 | 0 | 无加油 |
-| 煮 | 3 | 少量油 |
+| 煮 | 0 | 通常不加油（煮面/煮菜） |
 | 凉拌 | 8 | 调味汁含油 |
 | 烤 | 8 | 表面刷油 |
 | 炒 | 12 | 标准炒菜用油 |
@@ -190,6 +207,7 @@ Schema 版本管理：drift schemaVersion + MigrationStrategy
 | protein_g_per_kg | REAL | 蛋白质目标（g/kg 体重） |
 | fat_g_per_kg | REAL | 脂肪目标（g/kg 体重） |
 | carb_g_per_kg | REAL NULL | 碳水目标（g/kg 体重）；减脂/维持场景=剩余热量热量÷4÷体重（派生值，存缓存）；增肌场景用户设 4-7 |
+| tdee_adjustment_kcal | INTEGER | TDEE 自适应微调值（默认 0）；见 5.5 节，连续体重偏差触发后累加此值；daily_calorie_target = TDEE ± 赤字/盈余 + tdee_adjustment_kcal |
 | updated_at | INTEGER | 时间戳 |
 
 #### 4.2.2 food_item（食物库 - 含识别入库和手动入库）
@@ -203,6 +221,7 @@ Schema 版本管理：drift schemaVersion + MigrationStrategy
 | protein_per_100g | REAL | 每 100g 蛋白质 |
 | fat_per_100g | REAL | 每 100g 脂肪 |
 | carbs_per_100g | REAL | 每 100g 碳水 |
+| edible_percent | REAL NULL | 可食部比例（0-100），默认 100；导入食材库时填充，供"带皮/带骨称重"场景可选换算 |
 | source | TEXT | 'china_fct'(中国食物成分表) / 'usda' / 'off' / 'manual' / 'ai_recognized' |
 | source_version | TEXT | 数据源版本（如 "china_fct_v6"） |
 | confidence | REAL NULL | AI 识别置信度（仅 ai_recognized 来源） |
@@ -225,6 +244,7 @@ Schema 版本管理：drift schemaVersion + MigrationStrategy
 | actual_carbs_g | REAL | 实际碳水 |
 | original_image_path | TEXT NULL | 原图本地路径（仅拍照识别记录） |
 | recognition_confidence | REAL NULL | 识别置信度（仅拍照记录） |
+| components_snapshot_json | TEXT NULL | 复合菜本次记录的实际组分份量快照（含各组分 name/actual_g 及用油量 g），用户校准后冻结写入；与 food_item.components_json（默认值）分离，确保下次复用时用默认值而非上次校准值 |
 | logged_at | INTEGER | 记录时间戳 |
 
 #### 4.2.4 weight_log（体重记录）
@@ -249,6 +269,20 @@ Schema 版本管理：drift schemaVersion + MigrationStrategy
 | error_message | TEXT NULL | 失败原因（malformed/timeout/rate_limit/auth_fail），便于断路器分类处理 |
 | created_at | INTEGER | 创建时间 |
 | processed_at | INTEGER NULL | 识别完成时间 |
+
+#### 4.2.6 insight_summary（AI 汇总建议）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | INTEGER PK | 自增 |
+| period_type | TEXT | 'weekly' / 'monthly' |
+| period_start | TEXT | 周期起始日期 'YYYY-MM-DD' |
+| period_end | TEXT | 周期结束日期 'YYYY-MM-DD' |
+| summary_text | TEXT | GLM-4-Flash 生成的中文建议（限 300 字）；用户可手动编辑沉淀为个人笔记 |
+| is_edited | INTEGER | 用户是否手动编辑过（0/1）；编辑后点"重新生成"需二次确认，避免覆盖用户笔记 |
+| generated_at | INTEGER | 生成/更新时间戳 |
+
+注：唯一约束 period_type + period_start，避免重复调用 API 烧 token；离线时不生成，联网后按需生成。
 
 ### 4.3 派生数据（不存储，实时聚合）
 
@@ -324,7 +358,7 @@ TDEE = BMR × activity_level
 
 ### 5.5 实际速率校准（自适应）
 
-连续 2 周实际体重变化与公式预测偏差 > 0.5 kg/周时，自动微调 TDEE 基线（实测优于公式）。
+连续 2 周实际体重变化与公式预测偏差 > 0.5 kg/周时，自动微调 TDEE 基线（实测优于公式）；微调值存入 `profile.tdee_adjustment_kcal`（默认 0，见 4.2.1），累加生效于 daily_calorie_target 计算。
 
 ### 5.6 显示规范
 
@@ -386,8 +420,7 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 | protein_per_100g | protein | g/100g | 字符串转 double |
 | fat_per_100g | fat | g/100g | 字符串转 double |
 | carbs_per_100g | CHO | g/100g | 字符串转 double |
-| dietary_fiber_g | dietaryFiber | g/100g | `"—"`→null，`"Tr"`→0.05（微量） |
-| edible_percent | edible | % | 用于可食部计算 |
+| edible_percent | edible | % | 可食部比例；MVP 校准页默认按用户输入的实际摄入克数计算，此字段供"带皮/带骨称重"场景可选换算（actual_intake_g = input_g × edible_percent / 100） |
 | source | 固定 'china_fct' | - | - |
 | source_version | 固定 'china_fct_v6_251206' | - | 取数据集目录名日期 |
 
@@ -404,6 +437,7 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 - **去重键**：name + source（同名同源视为已存在，更新 default_serving_g；同名不同源视为不同条目）
 - AI 识别入库的条目 source='ai_recognized'，与食材库条目（source='china_fct'）分开存储，避免污染权威数据
 - 用户手动录入条目 source='manual'
+- **复合菜名称归一化**：AI 识别菜名可能略有差异（如"宫保鸡丁" vs "宫爆鸡丁"），入库前做名称归一化（去空格、统一用字映射表）；归一化后仍不确定时提供"合并到已有条目"UI，避免食物库膨胀
 
 ---
 
@@ -460,7 +494,9 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
   - 调 GLM-4-Flash（免费文本模型）
   - 传入近 7 天每日总热量 + 三大宏量 + 体重变化 + 目标
   - 返回中文阶段性建议（限 300 字）
-  - 离线时不生成，联网后再算
+  - 生成结果存入 insight_summary 表（见 4.2.6），避免重复调用烧 token
+  - 用户可手动编辑建议文本（is_edited=1），编辑后"重新生成"需二次确认
+  - 离线时不生成，联网后按需生成
 
 ---
 
@@ -477,7 +513,7 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 
 - **绝不硬编码**到 Dart 代码或 pubspec.yaml
 - 存 flutter_secure_storage
-- iOS 设置 `KeychainAccessibility.first_unlock_this_device`（禁止 iCloud 同步）
+- iOS 设置 `KeychainAccessibility.first_unlock_this_device`（`ThisDeviceOnly` 后缀本身即禁止 iCloud Keychain 同步与备份恢复），并显式设置 `IOSOptions(synchronizable: false)` 双重保险
 - Android 关闭 `android:allowBackup`（防 ADB 备份泄露）
 - 厂商控制台设置月度费用上限（防 key 泄露被刷爆）
 - 检测 401/403 集中报错时提示"key 可能已失效"
@@ -485,8 +521,8 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 
 ### 8.3 图片隐私预处理（强制）
 
-上传大模型 API 前必须经 flutter_image_compress 本地处理（不可依赖 image_picker 压缩副作用）：
-- keepExif:false 显式剥离全部 EXIF/XMP/IPTC 元数据（含 GPS、设备序列号、时间戳）
+上传大模型 API 前必须经 flutter_image_compress 本地处理（keepExif 默认 false 即剥离 EXIF；image_picker 未契约化保证 EXIF 保留，故不依赖其副作用）：
+- EXIF/XMP/IPTC 元数据默认被剥离（keepExif 默认 false，含 GPS、设备序列号、时间戳）
 - autoCorrectionAngle 校正方向（剥离 EXIF 后横拍照片方向可能错乱）
 - 压缩到最大边 1024px、JPEG 质量 85%（省 token + 降泄露信息量）
 - 用户可在 App 内裁剪框选食物主体后再上传（减少背景泄露）
@@ -507,7 +543,7 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 
 ### 9.1 JSON 导出/导入
 
-- 导出：含 schemaVersion 字段的 JSON 包（profile + food_items + meal_logs + weight_logs）
+- 导出：含 schemaVersion 字段的 JSON 包（profile + food_items + meal_logs + weight_logs + insight_summaries）；pending_recognition 为临时队列不导出
 - 导出文件可选 AES 加密（密钥从 secure_storage 取）
 - 导入：走 drift 迁移链，老版本数据自动升级到当前 schema
 - 用户可放任意云盘/iCloud Drive 自行托管
@@ -520,7 +556,8 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 ### 9.3 换机流程
 
 1. 旧机：导出 JSON → 放云盘
-2. 新机：装 App → 导入 JSON → 数据恢复（图片不迁移，记录保留路径引用）
+2. 新机：装 App → 导入 JSON → 数据恢复
+3. 图片处理：图片不迁移，导入时检测 `meal_log.original_image_path` 与 `food_item.thumbnail_path` 对应文件是否存在；不存在则置空并标记失效，UI 显示"原图未迁移"占位符，避免死链 404
 
 ---
 
@@ -529,8 +566,8 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 ### 10.1 离线识别队列
 
 - 拍照时用户已选 meal_type + date，连同 image_path 写入 pending_recognition 表（status=pending）
-- **前台触发**：connectivity_plus 监听网络恢复（仅 App 在前台时可靠，Android 7+ 后台被系统限制）
-- **后台兜底**：workmanager 配置 Constraints(networkType: NetworkType.CONNECTED)，系统在网络恢复时调度任务执行回补（非实时，由系统决定时机，iOS 用 BGProcessingTask）
+- **前台触发**：connectivity_plus 监听网络恢复（仅 App 在前台时可靠，Android 8.0 (API 26)+ 后台执行限制；Android 7 仅限制 manifest 注册的 CONNECTIVITY_ACTION 广播，动态注册仍可收到）
+- **后台兜底**：workmanager 配置 Constraints(networkType: NetworkType.CONNECTED)，系统在网络恢复时调度任务执行回补（非实时，由系统决定时机）；iOS 默认用 Background Fetch (BGAppRefreshTask)，长任务可显式注册 BGProcessingTask（需在 AppDelegate 注册并声明 BGTaskSchedulerPermittedIdentifiers）
 - 联网后按 FIFO 批量调用识别 API
 - UI 上对 pending 项显示"待识别"角标
 - 识别完成自动转"已完成"，用 pending 表里的 meal_type + date 写入 meal_log
@@ -562,9 +599,10 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 
 ### 11.2 结构化输出保障
 
-- 用 function calling / tool use 定义 analyze_food 工具
+- 采用 `response_format={"type":"json_object"}` 强制合法 JSON 语法（**不使用 function calling**——Qwen-VL 的 function calling 不支持 `tool_choice="required"`，schema 仅为建议非强制，见 2.3 节说明）
+- system prompt 写明完整 schema 描述 + 1-2 个 few-shot 示例
 - schema 扁平（嵌套 ≤ 3 层）
-- 下游做 JSON schema 校验，拒绝不合法响应
+- 下游做 JSON schema 校验，字段缺失时触发重试或转手动录入，拒绝不合法响应
 
 ### 11.3 成本控制
 
@@ -609,7 +647,7 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 本设计文档涵盖 MVP 全部功能，单个实现计划可覆盖：
 
 1. 项目脚手架（Flutter 初始化 + 依赖配置 + 目录结构）
-2. 数据层（drift 2.32+ + sqlite3mc 加密 + 5 张表 + 迁移 + food_item 唯一约束）
+2. 数据层（drift 2.32+ + sqlite3mc 加密 + 6 张表 + 迁移 + food_item 唯一约束）
 3. 营养计算模块（BMR/TDEE/宏量公式 + 单元测试，覆盖 cut/bulk/maintain × 男女 × 有无体脂率）
 4. 本地食材库导入（Sanotsu JSON → 字段映射 + 类型转换 + 缺失值清洗，按 6.4 规则）
 5. 拍照识别模块（flutter_image_compress 预处理 + Qwen-VL 调用 response_format=json_object + few-shot + GLM-4V-Plus 容灾）
@@ -631,7 +669,7 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 ### 14.1 营养标准
 
 - Mifflin-St Jeor 公式：Frankenfield 2005 J Am Diet Assoc 系统综述（AND 官方推荐）
-- 减脂赤字 500-1000 kcal/周减 0.5-1kg：NIH/NHLBI 临床指南、WHO、CDC、NHS、AHA、NICE、中国国家卫健委《成人肥胖食养指南(2024年版)》
+- 减脂赤字 500-1000 kcal/天减 0.5-1kg/周：NIH/NHLBI 临床指南、WHO、CDC、NHS、AHA、NICE、中国国家卫健委《成人肥胖食养指南(2024年版)》
 - 蛋白质减脂 2.3-3.1 g/kg：ISSN 2017 立场声明（Jäger et al., J Int Soc Sports Nutr 2017）
 - 蛋白质增肌 1.6-2.2 g/kg：Morton et al. 2018 BJSM 荡萃分析
 - 增肌盈余 200-300 kcal：Iraki et al. 2019 共识
@@ -639,7 +677,7 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 ### 14.2 大模型选型
 
 - Qwen-VL：阿里云百炼，中文食物识别实测案例多，JSON 原生支持，0.15/1.5 元每百万 token
-- GLM-4V-Plus：智谱 AI，新用户送 2500 万 token，作容灾
+- GLM-4V-Plus：智谱 AI，新用户送 2000 万 token（20 million tokens 体验包），作容灾
 
 ### 14.3 开源参考
 
