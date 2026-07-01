@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ai/glm_4v_provider.dart';
 import '../../ai/nutrition_lookup.dart';
 import '../../ai/qwen_vl_provider.dart';
+import '../../core/config/app_config.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
@@ -14,18 +15,22 @@ import '../../data/repositories/meal_log_repository.dart';
 export '../../data/database/database.dart';
 
 /// API key（Sprint 3 改从 secure_storage 读，Sprint 1 用 --dart-define 注入）
-final qwenApiKeyProvider = Provider<String>(
-  (ref) => const String.fromEnvironment('QWEN_API_KEY', defaultValue: ''),
-);
-final qwenBaseUrlProvider = Provider<String>(
-  (ref) => const String.fromEnvironment('QWEN_BASE_URL', defaultValue: ''),
-);
-final glmApiKeyProvider = Provider<String>(
-  (ref) => const String.fromEnvironment('GLM_API_KEY', defaultValue: ''),
-);
-final glmBaseUrlProvider = Provider<String>(
-  (ref) => const String.fromEnvironment('GLM_BASE_URL', defaultValue: ''),
-);
+final qwenApiKeyProvider = Provider<String>((ref) {
+  final config = ref.watch(appConfigProvider);
+  return config.maybeWhen(data: (c) => c.qwenApiKey, orElse: () => '');
+});
+final qwenBaseUrlProvider = Provider<String>((ref) {
+  final config = ref.watch(appConfigProvider);
+  return config.maybeWhen(data: (c) => c.qwenBaseUrl, orElse: () => '');
+});
+final glmApiKeyProvider = Provider<String>((ref) {
+  final config = ref.watch(appConfigProvider);
+  return config.maybeWhen(data: (c) => c.glmApiKey, orElse: () => '');
+});
+final glmBaseUrlProvider = Provider<String>((ref) {
+  final config = ref.watch(appConfigProvider);
+  return config.maybeWhen(data: (c) => c.glmBaseUrl, orElse: () => '');
+});
 
 final qwenVlProviderProvider = Provider<QwenVlProvider>((ref) {
   return QwenVlProvider(
