@@ -6,6 +6,7 @@ import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/profile_repository.dart';
 import '../recognize/providers.dart' as recognize;
 import '../recognize/recognize_page.dart';
+import '../settings/settings_page.dart';
 import 'today_meals_page.dart';
 
 /// 看板：环形进度（热量）+ 三宏量进度条 + 余额预警
@@ -61,6 +62,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
       appBar: AppBar(
         title: const Text('今日'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () => Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => const SettingsPage())),
+          ),
           IconButton(
             icon: const Icon(Icons.list_alt),
             onPressed: () => Navigator.of(context)

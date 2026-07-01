@@ -8,6 +8,7 @@ import 'features/food_library/food_library_page.dart';
 import 'features/insight/insight_page.dart';
 import 'features/manual_entry/manual_entry_page.dart';
 import 'features/profile/profile_page.dart';
+import 'features/settings/settings_page.dart';
 import 'features/weight/weight_page.dart';
 
 class EatWiseApp extends StatelessWidget {
@@ -60,6 +61,10 @@ final _router = GoRouter(
     GoRoute(
       path: '/backup',
       builder: (context, state) => const BackupPage(),
+    ),
+    GoRoute(
+      path: '/settings',
+      builder: (context, state) => const SettingsPage(),
     ),
   ],
 );
