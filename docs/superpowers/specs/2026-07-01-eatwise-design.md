@@ -214,7 +214,7 @@ Schema 版本管理：drift schemaVersion + MigrationStrategy
 | daily_calorie_target | INTEGER | 每日热量目标（kcal）=TDEE±赤字/盈余，受硬下限约束 |
 | protein_g_per_kg | REAL | 蛋白质目标（g/kg 体重） |
 | fat_g_per_kg | REAL | 脂肪目标（g/kg 体重） |
-| carb_g_per_kg | REAL NULL | 碳水目标（g/kg 体重）；减脂/维持场景=剩余热量热量÷4÷体重（派生值，存缓存）；增肌场景用户设 4-7 |
+| carb_g_per_kg | REAL NULL | 碳水目标（g/kg 体重）；减脂/维持场景=剩余热量÷4÷体重（派生值，存缓存）；增肌场景用户设 4-7 |
 | tdee_adjustment_kcal | INTEGER | TDEE 自适应微调值（默认 0）；见 5.5 节，连续体重偏差触发后累加此值；daily_calorie_target = TDEE ± 赤字/盈余 + tdee_adjustment_kcal |
 | updated_at | INTEGER | 时间戳 |
 
@@ -271,7 +271,7 @@ Schema 版本管理：drift schemaVersion + MigrationStrategy
 | id | INTEGER PK | 自增 |
 | image_path | TEXT | 图片本地路径 |
 | meal_type | TEXT | 用户拍照时选定的餐次 'breakfast'/'lunch'/'dinner'/'snack'，联网识别成功后写入 meal_log 时使用 |
-| date | TEXT | 拍照日期 'YYYY-MM-DD'，识别回补后写入 meal_log 用此日期（避免跨日回补导致记录错位） |
+| date | TEXT | 拍照日期 'YYYY-MM-DD'，取设备本地时区自然日（见 4.1 时区约定）；识别回补后写入 meal_log 用此日期，避免离线拍照跨日回补导致记录错位（如昨晚 23:50 拍的算昨天） |
 | status | TEXT | 'pending' / 'done' / 'failed' |
 | retry_count | INTEGER | 默认 0，上限 3 |
 | result_food_item_id | INTEGER NULL FK | 识别成功后关联的 food_item |
@@ -299,7 +299,7 @@ Schema 版本管理：drift schemaVersion + MigrationStrategy
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | INTEGER PK | 自增 |
-| meal_log_id | INTEGER FK | 关联 meal_log（仅拍照识别记录可反馈） |
+| meal_log_id | INTEGER FK ON DELETE CASCADE | 关联 meal_log（仅拍照识别记录可反馈）；用户删除餐次记录时关联反馈级联删除，避免孤儿记录 |
 | is_correct | INTEGER | 1=识别正确，0=识别有误 |
 | corrected_dish_name | TEXT NULL | 用户标注的正确菜名（is_correct=0 时填） |
 | corrected_serving_g | REAL NULL | 用户标注的正确份量（克，is_correct=0 时填） |
@@ -382,7 +382,17 @@ TDEE = BMR × activity_level
 
 ### 5.5 实际速率校准（自适应）
 
-连续 2 周实际体重变化与公式预测偏差 > 0.5 kg/周时，自动微调 TDEE 基线（实测优于公式）；微调值存入 `profile.tdee_adjustment_kcal`（默认 0，见 4.2.1），累加生效于 daily_calorie_target 计算。
+**判定条件**（需同时满足，避免单次称重波动误触发）：
+- 观察窗口 ≥ 4 周（≥5 个体重点，统计意义充分）
+- 实际体重变化速率与公式预测速率偏差 > 0.3 kg/周（4 周累计偏差 > 1.2 kg）
+- 排除异常点：单次体重与前次差 > 2 kg 视为称重异常，标记不参与计算
+
+**微调动作**：
+- 自动微调 TDEE 基线（实测优于公式），微调值存入 `profile.tdee_adjustment_kcal`（默认 0，见 4.2.1），累加生效于 daily_calorie_target 计算
+- 单次微调幅度上限 ±100 kcal，避免激进调整
+- 微调后通知用户"已根据近 4 周实测调整每日目标 X kcal"
+
+**手动覆盖**：用户可在档案页关闭自适应校准，或手动重置 tdee_adjustment_kcal 为 0
 
 ### 5.6 显示规范
 
@@ -562,6 +572,7 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 
 - iOS：Info.plist 添加 NSPhotoLibraryUsageDescription、NSCameraUsageDescription
 - Android 13+：用 READ_MEDIA_IMAGES 而非 READ_EXTERNAL_STORAGE
+- 注：MVP 不申请通知权限；若未来加入饮食提醒（非目标，后期迭代），Android 13+ 需补 POST_NOTIFICATIONS，iOS 需补 UserNotifications 权限申请逻辑
 
 ---
 
@@ -600,7 +611,7 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 **问题**：手动导出易忘，换机/丢机时数据全没。
 
 **策略**：
-- 每周日凌晨由 workmanager 后台任务自动导出 JSON 到 `getApplicationDocumentsDirectory()/backups/`，文件名 `eatwise_backup_YYYYMMDD.json`（可选 AES 加密）
+- 每周日凌晨（用户设备本地时区）由 workmanager 后台任务自动导出 JSON 到 `getApplicationDocumentsDirectory()/backups/`，文件名 `eatwise_backup_YYYYMMDD.json`（可选 AES 加密）
 - 保留最近 4 份，更早的自动删除
 - 可选：用户在设置里指定一个额外复制目录（如 iCloud Drive / Google Drive 在本地的映射路径），导出后复制一份过去
 - 设置页显示"上次自动备份时间"，超过 14 天未成功备份则看板提示
@@ -656,7 +667,7 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 - 图片压缩到 1024px（控 token）
 - 月度费用上限：厂商控制台 + App 内显示"本月识别次数/累计花费"
 - 超阈值提示用户
-- 本地限流：每分钟最多 5 次识别
+- 本地限流：每分钟最多 2 次识别（防误触连点烧 token；Qwen-VL 免费额度 90 天 100 万 token，正常日均 3-5 次足够）
 
 ### 11.4 错误监控（Sentry）
 
@@ -682,7 +693,7 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 
 ### 12.2 数据库测试
 
-- drift schema 迁移测试（`drift_dev make-migrations` + `verifySelf` schema diff）
+- drift schema 迁移测试：用 `dart run drift_dev make-migrations` 生成 step-by-step 迁移文件 + 快照 + 测试代码；运行时用 `validateDatabaseSchema()`（drift_dev 2.34+ VerifySelf 扩展，包在 `if (kDebugMode)` 的 `beforeOpen` 回调里）校验 schema 一致性；单元测试用 `SchemaVerifier.migrateAndValidate()` 验证 onUpgrade 迁移结果（导入 `package:drift_dev/api/migrations_native.dart`）
 - 加密数据库读写
 - 每次发布前跑迁移测试
 
@@ -713,8 +724,9 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 
 ## 13. 开发计划范围
 
-本设计文档涵盖 MVP 全部功能，单个实现计划可覆盖：
+本设计文档涵盖 MVP 全部功能，按风险优先分 3 个 Sprint 实施（每 Sprint 产出可独立验证的成果）：
 
+**Sprint 1（验证最大风险：Qwen-VL 中文菜品识别 + JSON 稳定性）**
 1. 项目脚手架（Flutter 初始化 + 依赖配置 + 目录结构）
 2. 数据层（drift 2.32+ + sqlite3mc 加密 + 7 张表 + 迁移 + food_item 唯一约束）
 3. 营养计算模块（BMR/TDEE/宏量公式 + 单元测试，覆盖 cut/bulk/maintain × 男女 × 有无体脂率）
@@ -722,6 +734,9 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 5. 拍照识别模块（flutter_image_compress 预处理 + Qwen-VL 调用 response_format=json_object + few-shot + GLM-4V-Plus 容灾 + prompt_version 记录）
 6. 营养查库层（单品查库 / 复合菜组分累加 + name OR aliases 匹配 + 烹饪用油系数表）
 7. 校准页 UI（单品滑块 / 复合菜组分滑块 + 用油量滑块 + 置信度分级跳过）
+→ 跑通"拍一个苹果能记录热量"即 Sprint 1 成功
+
+**Sprint 2（完整记录闭环 + 数据沉淀）**
 8. 今日记录 + 看板 + 识别反馈入口（recognition_feedback 表）
 9. 食物库模块（含 name+source 去重 + 别名查询）
 10. 手动录入（兜底）
@@ -729,6 +744,8 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 12. AI 汇总建议（GLM-4-Flash + insight_summary 表存储）
 13. JSON 导出/导入（含 schemaVersion 走 drift 迁移链）
 14. 离线队列（pending_recognition 表 + connectivity_plus 前台触发 + workmanager 后台触发）
+
+**Sprint 3（健壮性 + 工程化）**
 15. 安全配置（加密 + 权限声明 + 隐私政策 + API key 厂商费用上限）
 16. 存储与备份（图片清理 9.4 + 自动备份 9.5）
 17. 错误监控（Sentry 接入 + 脱敏 11.4）
@@ -755,7 +772,7 @@ Sanotsu 数据集字段映射（验证自实际 JSON）：
 
 - OpenNutriTracker（Flutter，GPL-3.0）：数据模型 + AES 加密架构参考
 - Sanotsu/china-food-composition-data：《中国食物成分表》第6版 JSON
-- openfoodfacts-dart（Apache-2.0）：包装食品条码扫码 SDK
+- openfoodfacts-dart（Apache-2.0）：包装食品条码扫码 SDK（MVP 不接入，L3 后续迭代时使用，此处仅作选型参考）
 - DietVision（MIT）：双拍照+参照物的体积估算方案参考
 
 ### 14.4 准确性依据
