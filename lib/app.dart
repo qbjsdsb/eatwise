@@ -6,6 +6,7 @@ import 'features/dashboard/today_meals_page.dart';
 import 'features/food_library/food_library_page.dart';
 import 'features/manual_entry/manual_entry_page.dart';
 import 'features/profile/profile_page.dart';
+import 'features/weight/weight_page.dart';
 
 class EatWiseApp extends StatelessWidget {
   const EatWiseApp({super.key});
@@ -45,6 +46,10 @@ final _router = GoRouter(
     GoRoute(
       path: '/manual_entry',
       builder: (context, state) => const ManualEntryPage(),
+    ),
+    GoRoute(
+      path: '/weight',
+      builder: (context, state) => const WeightPage(),
     ),
   ],
 );
