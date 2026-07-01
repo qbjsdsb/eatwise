@@ -56,6 +56,9 @@ dev_dependencies:
   # 测试
   mocktail: ^1.0.0
 
+  # 测试 mock path_provider（transitive，显式声明避免 depend_on_referenced_packages 警告）
+  path_provider_platform_interface: ^2.1.0
+
 # sqlite3mc build hooks 配置（drift 2.32+ 加密方案）
 # 必须放在 pubspec.yaml 顶层，不是 build.yaml
 hooks:

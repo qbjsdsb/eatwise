@@ -40,6 +40,32 @@ class MealLogRepository {
     return (_db.mealLogs.select()..where((m) => m.date.equals(date))).get();
   }
 
+  /// 查询 N 天前有原图路径的 meal_log（图片清理用）
+  /// 返回 (id, originalImagePath) 列表
+  Future<List<({int id, String originalImagePath})>> getOldImagePaths(
+      int beforeDays) async {
+    final cutoff =
+        DateTime.now().subtract(Duration(days: beforeDays));
+    final cutoffDate =
+        '${cutoff.year}-${cutoff.month.toString().padLeft(2, '0')}-${cutoff.day.toString().padLeft(2, '0')}';
+    final rows = await (_db.mealLogs.select()
+          ..where((m) =>
+              m.date.isSmallerThanValue(cutoffDate) &
+              m.originalImagePath.isNotNull()))
+        .get();
+    return rows
+        .where(
+            (m) => m.originalImagePath != null && m.originalImagePath!.isNotEmpty)
+        .map((m) => (id: m.id, originalImagePath: m.originalImagePath!))
+        .toList();
+  }
+
+  /// 清除某条 meal_log 的原图路径引用（文件删除后调用，置空避免死链）
+  Future<void> clearImagePath(int id) async {
+    await (_db.mealLogs.update()..where((m) => m.id.equals(id)))
+        .write(const MealLogsCompanion(originalImagePath: Value(null)));
+  }
+
   /// 查询某日总热量
   Future<double> getTotalCaloriesByDate(String date) async {
     final meals = await getMealsByDate(date);
