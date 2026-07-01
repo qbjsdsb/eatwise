@@ -1,0 +1,86 @@
+# Flutter / Dart
+**/build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+pubspec.lock
+
+# Android / iOS
+**/android/.gradle/
+**/android/captures/
+**/android/gradlew
+**/android/gradlew.bat
+**/android/local.properties
+**/android/**/GeneratedPluginRegistrant.java
+**/android/key.properties
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/App.framework
+**/ios/Flutter/Runner.framework
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/DerivedData/
+**/ios/**/*.mode1v3
+**/ios/**/*.mode2v3
+**/ios/**/*.moved-aside
+**/ios/**/*.pbxuser
+**/ios/**/*.perspectivev3
+**/ios/**/*sync/
+**/ios/**/.sconsign.dblite
+**/ios/**/.tags*
+**/ios/**/.vagrant/
+**/ios/**/DerivedData/
+**/ios/**/Icon?
+**/ios/**/Pods/
+**/ios/**/.symlinks/
+**/ios/**/profile
+**/ios/**/xcuserdata
+**/ios/.generated/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.project
+.classpath
+.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sensitive - 本地密钥与隐私数据（绝不入库）
+.env
+.env.local
+*.keystore
+*.jks
+key.properties
+secrets.json
+api_keys.json
+
+# 本地 SQLite 数据库与导出（个人隐私数据）
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+**/exports/
+**/backups/
+
+# 测试覆盖与生成的迁移文件（按需取消注释）
+# coverage/
+# test/coverage/
+
+# 临时文件
+*.log
+*.tmp
+*.swp
+*~
