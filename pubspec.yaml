@@ -44,6 +44,9 @@ dependencies:
   # 错误监控（Sprint 3 T17）
   sentry_flutter: ^9.22.0
 
+  # 后台兜底（Sprint 3 T19）
+  workmanager: ^0.9.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
