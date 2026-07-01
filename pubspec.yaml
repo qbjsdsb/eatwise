@@ -1,0 +1,64 @@
+name: eatwise
+description: 拍照识别食物热量 + 营养记录 + AI 汇总建议（个人自用）
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.10.0  # drift 2.34.0 要求 Min Dart SDK 3.10（pub.dev 已核实）
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 数据库（drift 2.32+ + sqlite3mc 加密）
+  drift: ^2.34.0
+  sqlite3: ^3.3.2
+  # 注意：不要加 sqlite3_flutter_libs（已 EOL）
+  # 注意：不要加 sqlcipher_flutter_libs（已 EOL，drift 2.32+ 用 sqlite3mc 替代）
+
+  # 密钥存储
+  flutter_secure_storage: ^10.3.1
+
+  # 状态管理 + 路由
+  flutter_riverpod: ^3.3.1  # 3.3.2 仅为 3.3.2-dev.2 prerelease，最新稳定版是 3.3.1（pub.dev 已核实）
+  go_router: ^17.2.0  # pub 的 ^ 约束需完整 major.minor.patch，原计划 "^17.2" 缺 patch 号会报错
+
+  # 拍照 + 图片预处理
+  image_picker: ^1.2.2
+  flutter_image_compress: ^2.4.0
+
+  # 网络 + 离线检测
+  connectivity_plus: ^6.1.0
+
+  # 大模型 API（OpenAI-compatible，百炼/智谱通用）
+  openai_dart: ^7.0.0
+
+  # 图表
+  fl_chart: ^0.70.0
+
+  # 工具
+  path_provider: ^2.1.0
+  path: ^1.9.0
+  uuid: ^4.5.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+  # drift 代码生成 + 迁移工具
+  drift_dev: ^2.34.0  # 2.34.1 不存在，最新稳定版是 2.34.0（pub.dev 已核实）
+  build_runner: ^2.15.0
+
+  # 测试
+  mocktail: ^1.0.0
+
+# sqlite3mc build hooks 配置（drift 2.32+ 加密方案）
+# 必须放在 pubspec.yaml 顶层，不是 build.yaml
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlite3mc
+
+flutter:
+  uses-material-design: true
