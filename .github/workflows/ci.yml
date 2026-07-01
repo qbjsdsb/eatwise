@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  analyze-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show Flutter version
+        run: flutter --version
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Verify generated code is up to date (build_runner)
+        run: |
+          dart run build_runner build --delete-conflicting-outputs
+          # 检查 git 是否有变更（生成产物与提交的不一致则失败）
+          if ! git diff --exit-code -- lib/data/database/database.g.dart; then
+            echo "::error::database.g.dart 与 schema 不同步，请本地跑 'dart run build_runner build --delete-conflicting-outputs' 后重新提交"
+            git diff -- lib/data/database/database.g.dart
+            exit 1
+          fi
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        run: flutter test --exclude-tags smoke
+        # smoke 标签需真实 API key，CI 跳过；本地手动跑

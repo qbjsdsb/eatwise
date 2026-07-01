@@ -1,3 +1,6 @@
+@Tags(['smoke'])
+library;
+
 // Sprint 1 终极端到端验证（真实 API + 内存 DB 完整闭环）
 //
 // 用 flutter test 运行（sqlite3mc FFI 在 flutter test 模式下正常工作），

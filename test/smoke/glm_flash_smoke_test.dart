@@ -1,3 +1,6 @@
+@Tags(['smoke'])
+library;
+
 import 'dart:io';
 
 import 'package:eatwise/ai/glm_flash_provider.dart';
