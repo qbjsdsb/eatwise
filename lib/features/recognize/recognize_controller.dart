@@ -8,7 +8,7 @@ import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
 
 /// 拍照识别状态
-enum RecognizeState { idle, pickingImage, preprocessing, recognizing, lookupNutrition, done, error }
+enum RecognizeState { idle, pickingImage, preprocessing, recognizing, lookupNutrition, done, error, queued }
 
 class RecognizeUiState {
   final RecognizeState state;
@@ -54,25 +54,34 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   final VisionProvider _primaryProvider;
   final VisionProvider? _fallbackProvider;
   final NutritionLookup _nutritionLookup;
+  // Sprint 2 T14：离线入队回调（page 注入，避免 controller 直接依赖 db）
+  // 为 null 时走 Sprint 1 原逻辑（直接报错），向后兼容
+  final Future<void> Function(String imagePath, String mealType, String date)?
+      _onOfflineEnqueue;
 
   RecognizeController(
     this._primaryProvider,
     this._fallbackProvider,
-    this._nutritionLookup,
-  ) : super(RecognizeUiState());
+    this._nutritionLookup, {
+    Future<void> Function(String imagePath, String mealType, String date)?
+        onOfflineEnqueue,
+  })  : _onOfflineEnqueue = onOfflineEnqueue,
+        super(RecognizeUiState());
 
   /// 当前状态（供外部一次性读取，避免直接访问 StateNotifier 的 protected state）
   RecognizeUiState get current => state;
 
   /// 拍照入口
   /// Sprint 2 T0：新增 mealType 参数（breakfast/lunch/dinner/snack）
+  /// Sprint 2 T14：网络异常时若有 onOfflineEnqueue 则入队，否则报错
   Future<void> pickAndRecognize(ImageSource source,
       {required String mealType}) async {
     state = state.copyWith(
         state: RecognizeState.pickingImage, mealType: mealType);
+    XFile? xFile;
     try {
       final picker = ImagePicker();
-      final xFile = await picker.pickImage(source: source, maxWidth: 1024, maxHeight: 1024);
+      xFile = await picker.pickImage(source: source, maxWidth: 1024, maxHeight: 1024);
       if (xFile == null) {
         state = state.copyWith(state: RecognizeState.idle);
         return;
@@ -127,7 +136,24 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         state = state.copyWith(state: RecognizeState.done, compositeNutrition: nutrition);
       }
     } catch (e) {
+      // Sprint 2 T14：网络类异常 + 配置了离线回调 → 入队
+      if (_onOfflineEnqueue != null &&
+          xFile != null &&
+          e is VisionRecognitionException &&
+          e.retryable) {
+        final now = DateTime.now();
+        final today =
+            '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+        await _onOfflineEnqueue(xFile.path, mealType, today);
+        state = state.copyWith(
+          state: RecognizeState.queued,
+          errorMessage: '当前离线，已加入队列，联网后自动识别',
+          imagePath: xFile.path,
+        );
+        return;
+      }
       state = state.copyWith(state: RecognizeState.error, errorMessage: e.toString());
     }
   }
 }
+

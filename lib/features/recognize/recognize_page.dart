@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../data/repositories/pending_recognition_repository.dart';
 import 'calibration_page.dart';
 import 'providers.dart';
 import 'recognize_controller.dart';
@@ -22,7 +23,21 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     final qwen = ref.read(qwenVlProviderProvider);
     final glm = ref.read(glm4vProviderProvider);
     final lookup = await ref.read(nutritionLookupProvider.future);
-    _controller = RecognizeController(qwen, glm, lookup);
+    final db = await ref.read(databaseProvider.future);
+    // Sprint 2 T14：注入离线入队回调（网络异常时入 pending_recognition 队列）
+    _controller = RecognizeController(
+      qwen,
+      glm,
+      lookup,
+      onOfflineEnqueue: (imagePath, mealType, date) async {
+        final repo = PendingRecognitionRepository(db);
+        await repo.enqueue(
+          imagePath: imagePath,
+          mealType: mealType,
+          date: date,
+        );
+      },
+    );
     return _controller!;
   }
 
@@ -135,6 +150,12 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('识别失败：${state.errorMessage}')),
+      );
+    } else if (state.state == RecognizeState.queued) {
+      // Sprint 2 T14：离线已入队提示
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(state.errorMessage ?? '已加入离线队列')),
       );
     }
   }
