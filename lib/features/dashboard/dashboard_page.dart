@@ -1,45 +1,175 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/repositories/meal_log_repository.dart';
+import '../../data/repositories/profile_repository.dart';
 import '../recognize/providers.dart' as recognize;
 import '../recognize/recognize_page.dart';
+import 'today_meals_page.dart';
 
+/// 看板：环形进度（热量）+ 三宏量进度条 + 余额预警
 class DashboardPage extends ConsumerWidget {
   const DashboardPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
-      appBar: AppBar(title: const Text('今日')),
+      appBar: AppBar(
+        title: const Text('今日'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.list_alt),
+            onPressed: () => Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => const TodayMealsPage())),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const RecognizePage()),
-        ),
+        onPressed: () => Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const RecognizePage())),
         child: const Icon(Icons.add),
       ),
-      body: FutureBuilder<double>(
-        future: _getTodayCalories(ref),
+      body: FutureBuilder<
+          ({
+            double cal,
+            double protein,
+            double fat,
+            double carbs,
+            int target,
+            double proteinGoal,
+            double fatGoal,
+            double carbGoal
+          })>(
+        future: _loadData(ref),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text('今日已摄入', style: Theme.of(context).textTheme.titleMedium),
-                Text('${snapshot.data!.toStringAsFixed(0)} kcal',
-                    style: Theme.of(context).textTheme.displaySmall),
-              ],
-            ),
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final d = snapshot.data!;
+          final remain = d.target - d.cal;
+          final overflow = remain < 0;
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              // 环形进度（热量）
+              SizedBox(
+                height: 200,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    PieChart(PieChartData(
+                      sectionsSpace: 0,
+                      centerSpaceRadius: 60,
+                      sections: [
+                        PieChartSectionData(
+                          value: d.cal > d.target
+                              ? d.target.toDouble()
+                              : d.cal,
+                          color: overflow ? Colors.red : Colors.green,
+                          radius: 16,
+                          showTitle: false,
+                        ),
+                        if (d.cal < d.target)
+                          PieChartSectionData(
+                            value: (d.target - d.cal).toDouble(),
+                            color: Colors.grey.shade200,
+                            radius: 16,
+                            showTitle: false,
+                          ),
+                      ],
+                    )),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(d.cal.toStringAsFixed(0),
+                            style: Theme.of(context).textTheme.headlineMedium),
+                        Text('/ ${d.target} kcal',
+                            style: Theme.of(context).textTheme.bodySmall),
+                        if (overflow)
+                          Text('超 ${(-remain).toStringAsFixed(0)} kcal',
+                              style: const TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.bold)),
+                        if (!overflow)
+                          Text('余 ${remain.toStringAsFixed(0)} kcal',
+                              style: TextStyle(color: Colors.grey.shade600)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              // 三宏量进度条
+              _macroBar('蛋白质', d.protein, d.proteinGoal, Colors.blue),
+              _macroBar('脂肪', d.fat, d.fatGoal, Colors.orange),
+              _macroBar('碳水', d.carbs, d.carbGoal, Colors.purple),
+            ],
           );
         },
       ),
     );
   }
 
-  Future<double> _getTodayCalories(WidgetRef ref) async {
-    final repo = await ref.read(recognize.mealLogRepoProvider.future);
+  Widget _macroBar(String label, double value, double goal, Color color) {
+    final pct = goal > 0 ? (value / goal).clamp(0.0, 1.0) : 0.0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label),
+              Text('${value.toStringAsFixed(1)} / ${goal.toStringAsFixed(0)} g'),
+            ],
+          ),
+          const SizedBox(height: 4),
+          LinearProgressIndicator(
+              value: pct,
+              backgroundColor: color.withValues(alpha: 0.1),
+              color: color,
+              minHeight: 8),
+        ],
+      ),
+    );
+  }
+
+  Future<
+      ({
+        double cal,
+        double protein,
+        double fat,
+        double carbs,
+        int target,
+        double proteinGoal,
+        double fatGoal,
+        double carbGoal
+      })> _loadData(WidgetRef ref) async {
+    final db = await ref.read(recognize.databaseProvider.future);
+    final mealRepo = MealLogRepository(db);
+    final profileRepo = ProfileRepository(db);
     final now = DateTime.now();
-    final date = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    return repo.getTotalCaloriesByDate(date);
+    final today =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final macros = await mealRepo.getMacrosByDate(today);
+    final profile = await profileRepo.get();
+    final proteinGoal = profile.proteinGPerKg * profile.weightKg;
+    final fatGoal = profile.fatGPerKg * profile.weightKg;
+    // carbGPerKg 可空（减脂/维持时碳水填剩余热量）
+    final carbGoal = profile.carbGPerKg != null
+        ? profile.carbGPerKg! * profile.weightKg
+        : (profile.dailyCalorieTarget - proteinGoal * 4 - fatGoal * 9) / 4;
+    return (
+      cal: macros.calories,
+      protein: macros.protein,
+      fat: macros.fat,
+      carbs: macros.carbs,
+      target: profile.dailyCalorieTarget,
+      proteinGoal: proteinGoal,
+      fatGoal: fatGoal,
+      carbGoal: carbGoal,
+    );
   }
 }

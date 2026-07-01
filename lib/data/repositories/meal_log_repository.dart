@@ -45,4 +45,53 @@ class MealLogRepository {
     final meals = await getMealsByDate(date);
     return meals.fold<double>(0.0, (sum, m) => sum + m.actualCalories);
   }
+
+  /// 更新某条 meal_log 的份量（校准后修正，按比例重算营养素）
+  Future<void> updateMealLog({
+    required int id,
+    required double actualServingG,
+    required double actualCalories,
+    required double actualProteinG,
+    required double actualFatG,
+    required double actualCarbsG,
+  }) async {
+    await (_db.mealLogs.update()..where((m) => m.id.equals(id))).write(
+      MealLogsCompanion(
+        actualServingG: Value(actualServingG),
+        actualCalories: Value(actualCalories),
+        actualProteinG: Value(actualProteinG),
+        actualFatG: Value(actualFatG),
+        actualCarbsG: Value(actualCarbsG),
+      ),
+    );
+  }
+
+  /// 删除某条 meal_log（recognition_feedback 因 ON DELETE CASCADE 自动级联删除）
+  Future<void> deleteMealLog(int id) async {
+    await (_db.mealLogs.delete()..where((m) => m.id.equals(id))).go();
+  }
+
+  /// 查询某日三大宏量总和（看板用）
+  Future<({double calories, double protein, double fat, double carbs})>
+      getMacrosByDate(String date) async {
+    final meals = await getMealsByDate(date);
+    return (
+      calories: meals.fold<double>(0.0, (s, m) => s + m.actualCalories),
+      protein: meals.fold<double>(0.0, (s, m) => s + m.actualProteinG),
+      fat: meals.fold<double>(0.0, (s, m) => s + m.actualFatG),
+      carbs: meals.fold<double>(0.0, (s, m) => s + m.actualCarbsG),
+    );
+  }
+
+  /// 查询某日期区间全部记录（周/月视图 + AI 汇总用）
+  /// 'YYYY-MM-DD' 字典序与时间序一致，isBetweenValues 直接用
+  Future<List<MealLog>> getRange(String startDate, String endDate) {
+    return (_db.mealLogs.select()
+          ..where((m) => m.date.isBetweenValues(startDate, endDate))
+          ..orderBy([
+            (m) => OrderingTerm.asc(m.date),
+            (m) => OrderingTerm.asc(m.loggedAt)
+          ]))
+        .get();
+  }
 }

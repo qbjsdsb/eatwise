@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
 import 'features/dashboard/dashboard_page.dart';
+import 'features/dashboard/today_meals_page.dart';
+import 'features/profile/profile_page.dart';
 
 class EatWiseApp extends StatelessWidget {
   const EatWiseApp({super.key});
@@ -25,6 +27,14 @@ final _router = GoRouter(
     GoRoute(
       path: '/',
       builder: (context, state) => const DashboardPage(),
+    ),
+    GoRoute(
+      path: '/today',
+      builder: (context, state) => const TodayMealsPage(),
+    ),
+    GoRoute(
+      path: '/profile',
+      builder: (context, state) => const ProfilePage(),
     ),
   ],
 );
