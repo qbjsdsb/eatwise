@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:eatwise/data/database/database.dart';
@@ -8,14 +9,14 @@ class JsonImporter {
   final EatWiseDatabase _db;
   JsonImporter(this._db);
 
-  /// 从 JSON 字符串导入，返回各表条数统计
-  Future<({int profiles, int foodItems, int mealLogs, int weightLogs, int insights, int feedbacks})>
+  /// 从 JSON 字符串导入，返回各表条数统计 + 图片失效检测结果
+  Future<({int profiles, int foodItems, int mealLogs, int weightLogs, int insights, int feedbacks, ImageCheckResult imageCheckResult})>
       importFromString(String jsonStr) async {
     final data = jsonDecode(jsonStr) as Map<String, dynamic>;
     return importFromMap(data);
   }
 
-  Future<({int profiles, int foodItems, int mealLogs, int weightLogs, int insights, int feedbacks})>
+  Future<({int profiles, int foodItems, int mealLogs, int weightLogs, int insights, int feedbacks, ImageCheckResult imageCheckResult})>
       importFromMap(Map<String, dynamic> data) async {
     final schemaVersion = data['schemaVersion'] as int;
     if (schemaVersion != _db.schemaVersion) {
@@ -26,7 +27,7 @@ class JsonImporter {
     final tables = data['tables'] as Map<String, dynamic>;
     // 用 transaction 包裹：DELETE + 批量 INSERT 原子化，中途失败回滚避免半库
     // PRAGMA foreign_keys 在事务外设置无效，故用批量 DELETE 顺序（先子后父）规避级联
-    return _db.transaction(() async {
+    final result = await _db.transaction(() async {
       // 清空 6 表（顺序：先子表后父表，避免外键约束冲突）
       await _db.customStatement('DELETE FROM recognition_feedbacks;');
       await _db.customStatement('DELETE FROM insight_summaries;');
@@ -83,6 +84,53 @@ class JsonImporter {
         feedbacks: feedbacks,
       );
     });
+    // 事务外执行图片失效检测（独立操作，避免嵌套事务）
+    final imageCheck = await _checkAndCleanImagePaths();
+    return (
+      profiles: result.profiles,
+      foodItems: result.foodItems,
+      mealLogs: result.mealLogs,
+      weightLogs: result.weightLogs,
+      insights: result.insights,
+      feedbacks: result.feedbacks,
+      imageCheckResult: imageCheck,
+    );
+  }
+
+  /// 检测 meal_log.original_image_path 与 food_item.thumbnail_path 对应文件是否存在，
+  /// 不存在则置空并计数。换机场景：图片未随 JSON 迁移，路径失效。
+  Future<ImageCheckResult> _checkAndCleanImagePaths() async {
+    int mealLogMissing = 0;
+    int foodItemMissing = 0;
+
+    // 检查 meal_log.original_image_path
+    final meals = await _db.mealLogs.select().get();
+    for (final m in meals) {
+      if (m.originalImagePath != null && m.originalImagePath!.isNotEmpty) {
+        final file = File(m.originalImagePath!);
+        if (!await file.exists()) {
+          await (_db.mealLogs.update()..where((row) => row.id.equals(m.id)))
+              .write(const MealLogsCompanion(originalImagePath: Value(null)));
+          mealLogMissing++;
+        }
+      }
+    }
+
+    // 检查 food_item.thumbnail_path
+    final foods = await _db.foodItems.select().get();
+    for (final f in foods) {
+      if (f.thumbnailPath != null && f.thumbnailPath!.isNotEmpty) {
+        final file = File(f.thumbnailPath!);
+        if (!await file.exists()) {
+          await (_db.foodItems.update()..where((row) => row.id.equals(f.id)))
+              .write(const FoodItemsCompanion(thumbnailPath: Value(null)));
+          foodItemMissing++;
+        }
+      }
+    }
+
+    return ImageCheckResult(
+        mealLogMissing: mealLogMissing, foodItemMissing: foodItemMissing);
   }
 
   ProfilesCompanion _profileFromJson(Map<String, dynamic> j) =>
@@ -169,4 +217,12 @@ class JsonImporter {
         promptVersion: j['promptVersion'] as String,
         createdAt: j['createdAt'] as int,
       );
+}
+
+/// 图片失效检测结果（换机场景：图片未随 JSON 迁移）
+class ImageCheckResult {
+  final int mealLogMissing;
+  final int foodItemMissing;
+  ImageCheckResult({required this.mealLogMissing, required this.foodItemMissing});
+  int get totalMissing => mealLogMissing + foodItemMissing;
 }

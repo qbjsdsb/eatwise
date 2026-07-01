@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -97,6 +99,15 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         }
       },
       child: ListTile(
+        leading: m.originalImagePath != null
+            ? Image.file(File(m.originalImagePath!),
+                width: 48,
+                height: 48,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(
+                    Icons.broken_image_outlined,
+                    color: Colors.grey))
+            : const Icon(Icons.restaurant_outlined, color: Colors.grey),
         title: Text('食物ID ${m.foodItemId}'), // MVP：显示 ID（T9 食物库可反查名称）
         subtitle: Text(
             '${m.actualServingG.toStringAsFixed(0)}g · ${m.actualCalories.toStringAsFixed(0)} kcal'),
