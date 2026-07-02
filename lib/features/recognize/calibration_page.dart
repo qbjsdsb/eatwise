@@ -95,7 +95,8 @@ class _CalibrationPageState extends State<CalibrationPage> {
                             style: TextStyle(color: Colors.red)),
                       ),
                     const SizedBox(height: 24),
-                    Text('份量：${_servingG.toStringAsFixed(0)} g'),
+                    Text('份量：${_servingG.toStringAsFixed(0)} g'
+                        '${widget.singleNutrition != null ? " (估算 ${widget.recognitionResult.estimatedWeightGLow.toStringAsFixed(0)}-${widget.recognitionResult.estimatedWeightGHigh.toStringAsFixed(0)} g)" : ""}'),
                     Slider(
                       value: _servingG,
                       min: 0,
@@ -137,7 +138,10 @@ class _CalibrationPageState extends State<CalibrationPage> {
       final protein = widget.singleNutrition!.proteinG * ratio;
       final fat = widget.singleNutrition!.fatG * ratio;
       final carbs = widget.singleNutrition!.carbsG * ratio;
-      return _nutritionCard(cal, protein, fat, carbs);
+      final lowRatio = widget.recognitionResult.estimatedWeightGLow / widget.recognitionResult.estimatedWeightGMid;
+      final highRatio = widget.recognitionResult.estimatedWeightGHigh / widget.recognitionResult.estimatedWeightGMid;
+      final calRange = ' (${(cal * lowRatio).toStringAsFixed(0)}-${(cal * highRatio).toStringAsFixed(0)})';
+      return _nutritionCard(cal, protein, fat, carbs, calRange: calRange);
     }
     if (widget.compositeNutrition != null) {
       // 复合菜路径：按各组分滑块 + 用油量实时重算
@@ -158,13 +162,13 @@ class _CalibrationPageState extends State<CalibrationPage> {
     return const SizedBox.shrink();
   }
 
-  Widget _nutritionCard(double cal, double protein, double fat, double carbs) {
+  Widget _nutritionCard(double cal, double protein, double fat, double carbs, {String? calRange}) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            Text('热量：${cal.toStringAsFixed(0)} kcal'),
+            Text('热量：${cal.toStringAsFixed(0)} kcal${calRange ?? ""}'),
             Text('蛋白质：${protein.toStringAsFixed(1)} g'),
             Text('脂肪：${fat.toStringAsFixed(1)} g'),
             Text('碳水：${carbs.toStringAsFixed(1)} g'),
