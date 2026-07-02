@@ -206,6 +206,54 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     );
     if (isCorrect == null) return;
     if (!mounted) return;
+
+    // T45：不准时追加输入正确菜名 + 份量
+    String? correctedDishName;
+    double? correctedServingG;
+    if (!isCorrect) {
+      final correction = await showDialog<_CorrectionResult>(
+        context: context,
+        builder: (ctx) {
+          // 【第2轮修正】：MealLog 无 foodItemName 字段（today_meals_page.dart:125 用 _foodNames map 反查）
+          final nameCtrl = TextEditingController(text: _foodNames[m.foodItemId] ?? '');
+          final servingCtrl = TextEditingController();
+          return AlertDialog(
+            title: const Text('请输入正确信息'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: '正确菜名', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: servingCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: '正确份量(g)', border: OutlineInputBorder()),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('跳过')),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, _CorrectionResult(
+                  nameCtrl.text.trim().isEmpty ? null : nameCtrl.text.trim(),
+                  double.tryParse(servingCtrl.text.trim()),
+                )),
+                child: const Text('提交'),
+              ),
+            ],
+          );
+        },
+      );
+      if (correction != null) {
+        correctedDishName = correction.name;
+        correctedServingG = correction.servingG;
+      }
+    }
+    if (!mounted) return;
+
     // T23：反查 prompt_version（优先从 pending_recognition 按 imagePath 查，
     // fallback Prompts.version）。拍照识别的 meal_log 有 original_image_path，
     // 对应 pending_recognition.image_path
@@ -219,9 +267,12 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         promptVersion = match.first.promptVersion!;
       }
     }
+    // T45：传 correctedDishName/ServingG
     await feedbackRepo.insert(
       mealLogId: m.id,
       isCorrect: isCorrect,
+      correctedDishName: correctedDishName,
+      correctedServingG: correctedServingG,
       promptVersion: promptVersion,
     );
     if (mounted) {
@@ -229,4 +280,11 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
           .showSnackBar(const SnackBar(content: Text('已记录反馈')));
     }
   }
+}
+
+// 新增 _CorrectionResult 辅助类：
+class _CorrectionResult {
+  final String? name;
+  final double? servingG;
+  const _CorrectionResult(this.name, this.servingG);
 }
