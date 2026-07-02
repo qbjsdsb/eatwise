@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../ai/vision_provider.dart';
 import '../../data/repositories/pending_recognition_repository.dart';
+import '../manual_entry/manual_entry_page.dart';
 import 'calibration_page.dart';
 import 'providers.dart';
 import 'recognize_controller.dart';
@@ -97,6 +99,15 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     final state = controller.current;
     if (state.state == RecognizeState.done && state.recognitionResult != null) {
       if (!mounted) return;
+      // Sprint 4 T29：单品 + 复合菜均未命中 → 弹窗（改菜名重试 / 转手动录入）
+      if (state.singleNutrition == null && state.compositeNutrition == null) {
+        await _showNotFoundDialog(
+          state.recognitionResult!,
+          mealType: state.mealType,
+          imagePath: state.imagePath,
+        );
+        return;
+      }
       final foodItemRepo = await ref.read(foodItemRepoProvider.future);
       if (!mounted) return;
       Navigator.of(context).push(MaterialPageRoute(
@@ -167,8 +178,130 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     }
   }
 
+  Future<void> _showNotFoundDialog(
+    VisionRecognitionResult result, {
+    required String mealType,
+    String? imagePath,
+  }) async {
+    if (!mounted) return;
+    final action = await showDialog<_NotFoundAction>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('未找到营养数据'),
+        content: Text('识别菜名「${result.dishName}」在食物库中未命中。'
+            '可修改菜名重试，或转手动录入。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, _NotFoundAction.cancel),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, _NotFoundAction.manual),
+            child: const Text('转手动录入'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, _NotFoundAction.retry),
+            child: const Text('改菜名重试'),
+          ),
+        ],
+      ),
+    );
+    if (action == null || action == _NotFoundAction.cancel) return;
+    if (!mounted) return;
+
+    if (action == _NotFoundAction.manual) {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ManualEntryPage(initialName: result.dishName),
+      ));
+      return;
+    }
+
+    // 改菜名重试
+    final newDishName = await _promptNewDishName(result.dishName);
+    if (newDishName == null || newDishName.isEmpty || !mounted) return;
+
+    // 重新查库
+    final lookup = await ref.read(nutritionLookupProvider.future);
+    final nutrition = await lookup.lookupSingleItem(
+      dishName: newDishName,
+      servingG: result.estimatedWeightGMid,
+    );
+    if (nutrition == null) {
+      // 仍未命中 → 再次弹窗引导（递归，透传 mealType/imagePath）
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('修改后的菜名仍未命中，请转手动录入')),
+      );
+      await _showNotFoundDialog(
+        result,
+        mealType: mealType,
+        imagePath: imagePath,
+      );
+      return;
+    }
+    // 命中 → 跳校准页（用新菜名的查库结果）
+    if (!mounted) return;
+    final foodItemRepo = await ref.read(foodItemRepoProvider.future);
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => CalibrationPage(
+        recognitionResult: result,
+        singleNutrition: nutrition,
+        foodItemRepo: foodItemRepo,
+        onConfirm: (servingG, calories, protein, fat, carbs, {componentsSnapshot}) async {
+          final mealRepo = await ref.read(mealLogRepoProvider.future);
+          await mealRepo.insertMealLog(
+            date: _todayLocalDate(),
+            mealType: mealType,
+            foodItemId: nutrition.foodItemId,
+            actualServingG: servingG,
+            actualCalories: calories,
+            actualProteinG: protein,
+            actualFatG: fat,
+            actualCarbsG: carbs,
+            originalImagePath: imagePath,
+          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('已记录：${calories.toStringAsFixed(0)} kcal')),
+            );
+          }
+        },
+      ),
+    ));
+  }
+
+  Future<String?> _promptNewDishName(String original) async {
+    final ctrl = TextEditingController(text: original);
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('修改菜名'),
+          content: TextField(
+            controller: ctrl,
+            decoration: const InputDecoration(labelText: '菜名'),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('重试'),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      ctrl.dispose();
+    }
+  }
+
   String _todayLocalDate() {
     final now = DateTime.now();
     return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
   }
 }
+
+enum _NotFoundAction { cancel, retry, manual }

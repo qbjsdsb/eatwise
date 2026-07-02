@@ -9,7 +9,8 @@ import '../food_library/food_library_page.dart';
 
 /// 手动录入页（兜底：搜库→选份量→记录；查不到→自定义→存库→记录）
 class ManualEntryPage extends ConsumerStatefulWidget {
-  const ManualEntryPage({super.key});
+  const ManualEntryPage({super.key, this.initialName});
+  final String? initialName; // 从识别页转来时预填菜名
   @override
   ConsumerState<ManualEntryPage> createState() => _ManualEntryPageState();
 }
@@ -25,7 +26,14 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
   final _proteinCtrl = TextEditingController();
   final _fatCtrl = TextEditingController();
   final _carbsCtrl = TextEditingController();
-  bool _customMode = false;
+  late bool _customMode;
+
+  @override
+  void initState() {
+    super.initState();
+    _customMode = widget.initialName != null;
+    if (widget.initialName != null) _nameCtrl.text = widget.initialName!;
+  }
 
   @override
   void dispose() {
