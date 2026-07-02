@@ -8,7 +8,7 @@ class BackgroundTasks {
   static const offlineBackfill = 'offline_backfill';
   /// 自动备份（每周日凌晨）
   static const autoBackup = 'auto_backup';
-  /// 图片清理（每周一次，清理 30 天前原图）
+  /// 图片清理（每周一次，清理配置保留期前原图，T48）
   static const imageCleanup = 'image_cleanup';
 
   /// 注册所有周期任务（App 启动时调用）

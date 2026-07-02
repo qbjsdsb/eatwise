@@ -10,8 +10,10 @@ class ImageCleanup {
 
   /// 执行清理（后台任务 + App 启动时前台异步触发）
   /// 返回删除的文件数
+  /// retentionDays <= 0 表示永久保留，直接返回 0 不清理
   static Future<int> run(EatWiseDatabase db, {int? retentionDays}) async {
     final days = retentionDays ?? defaultRetentionDays;
+    if (days <= 0) return 0; // 永久保留，不清理
     final mealRepo = MealLogRepository(db);
 
     final candidates = await mealRepo.getOldImagePaths(days);
@@ -36,11 +38,14 @@ class ImageCleanup {
 
   /// App 启动时若待清理项 > 50 则前台异步清理
   /// 设计文档 9.4：触发时机
-  static Future<void> runIfBacklogLarge(EatWiseDatabase db) async {
+  /// retentionDays <= 0 表示永久保留，不触发
+  static Future<void> runIfBacklogLarge(EatWiseDatabase db, {int? retentionDays}) async {
+    final days = retentionDays ?? defaultRetentionDays;
+    if (days <= 0) return; // 永久保留，不触发
     final mealRepo = MealLogRepository(db);
-    final candidates = await mealRepo.getOldImagePaths(defaultRetentionDays);
+    final candidates = await mealRepo.getOldImagePaths(days);
     if (candidates.length > 50) {
-      await run(db);
+      await run(db, retentionDays: days);
     }
   }
 }

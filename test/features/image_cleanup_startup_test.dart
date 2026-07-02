@@ -61,4 +61,56 @@ void main() {
     final meals = await db.select(db.mealLogs).get();
     expect(meals.where((m) => m.originalImagePath != null).length, 0);
   });
+
+  // T48：自定义保留期 7 天
+  // 今天 2026-07-02，retentionDays=7 → cutoff=2026-06-25
+  // 8 天前(2026-06-24) < cutoff → 清；6 天前(2026-06-26) >= cutoff → 留
+  test('T48：自定义保留期 7 天（8 天前清，6 天前留）', () async {
+    final mealRepo = MealLogRepository(db);
+    await mealRepo.insertMealLog(
+      date: '2026-06-24', // 8 天前
+      mealType: 'lunch', foodItemId: 1,
+      actualServingG: 100, actualCalories: 100, actualProteinG: 10,
+      actualFatG: 5, actualCarbsG: 20,
+      originalImagePath: '/tmp/nonexistent_old.jpg',
+    );
+    await mealRepo.insertMealLog(
+      date: '2026-06-26', // 6 天前
+      mealType: 'lunch', foodItemId: 1,
+      actualServingG: 100, actualCalories: 100, actualProteinG: 10,
+      actualFatG: 5, actualCarbsG: 20,
+      originalImagePath: '/tmp/nonexistent_recent.jpg',
+    );
+
+    await ImageCleanup.run(db, retentionDays: 7);
+
+    final meals = await db.select(db.mealLogs).get();
+    final oldMeal = meals.firstWhere((m) => m.date == '2026-06-24');
+    final recentMeal = meals.firstWhere((m) => m.date == '2026-06-26');
+    // 8 天前的被清理（路径置空）
+    expect(oldMeal.originalImagePath, isNull);
+    // 6 天前的保留
+    expect(recentMeal.originalImagePath, '/tmp/nonexistent_recent.jpg');
+  });
+
+  // T48：保留期 0（永久保留）不清理
+  test('T48：保留期 0（永久保留）不清理', () async {
+    final mealRepo = MealLogRepository(db);
+    // 种子 60 天前的数据（默认 30 天会清理，但 retentionDays=0 应跳过）
+    for (var i = 0; i < 5; i++) {
+      await mealRepo.insertMealLog(
+        date: '2026-05-${(i + 1).toString().padLeft(2, '0')}',
+        mealType: 'lunch', foodItemId: 1,
+        actualServingG: 100, actualCalories: 100, actualProteinG: 10,
+        actualFatG: 5, actualCarbsG: 20,
+        originalImagePath: '/tmp/nonexistent_keep_$i.jpg',
+      );
+    }
+
+    final deleted = await ImageCleanup.run(db, retentionDays: 0);
+    // 永久保留：返回 0，不清理
+    expect(deleted, 0);
+    final meals = await db.select(db.mealLogs).get();
+    expect(meals.where((m) => m.originalImagePath != null).length, 5);
+  });
 }

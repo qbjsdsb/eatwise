@@ -36,7 +36,11 @@ void callbackDispatcher() {
           await AutoBackup.run(db);
           break;
         case BackgroundTasks.imageCleanup:
-          await ImageCleanup.run(db);
+          // T48：用配置的保留期（0=永久保留，跳过清理）
+          final retentionDays = await SecureConfigStore().getImageRetentionDays();
+          if (retentionDays > 0) {
+            await ImageCleanup.run(db, retentionDays: retentionDays);
+          }
           break;
         default:
           debugPrint('未知后台任务: $task');

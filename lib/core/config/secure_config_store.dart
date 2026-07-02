@@ -70,6 +70,19 @@ class SecureConfigStore {
   Future<String?> readRaw(String key) => _storage.read(key: key);
   Future<void> deleteRaw(String key) => _storage.delete(key: key);
 
+  // --- T48 图片保留期（0=永久保留，默认 30）---
+  static const _imageRetentionDays = 'image_retention_days';
+
+  /// 读取图片保留期（0=永久保留，默认 30）
+  Future<int> getImageRetentionDays() async {
+    final v = await readRaw(_imageRetentionDays);
+    return int.tryParse(v ?? '30') ?? 30;
+  }
+
+  Future<void> setImageRetentionDays(int days) async {
+    await writeRaw(_imageRetentionDays, days.toString());
+  }
+
   // --- T43 月度识别计数（按月归档，key: monthly_count_YYYYMM）---
   static const _monthlyCountPrefix = 'monthly_count_';
 
