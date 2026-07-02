@@ -9,7 +9,7 @@ import '../../data/repositories/profile_repository.dart';
 import '../../data/repositories/weight_log_repository.dart';
 import '../recognize/providers.dart' as recognize;
 
-/// AI 周报页：周视图 + GLM-4-Flash 生成 ≤300 字中文建议（去重 + 可编辑）
+/// AI 周报页：周/月视图切换 + GLM-4-Flash 生成中文建议（去重 + 可编辑）
 class InsightPage extends ConsumerStatefulWidget {
   const InsightPage({super.key});
   @override
@@ -19,44 +19,63 @@ class InsightPage extends ConsumerStatefulWidget {
 class _InsightPageState extends ConsumerState<InsightPage> {
   String? _summary;
   bool _loading = false;
-  late String _weekStart;
-  late String _weekEnd;
-  // 本周聚合数据（供 fl_chart 折线图渲染）
-  List<double> _dailyCal = []; // 本周每日热量（周一~周日，7 元素）
-  List<double> _dailyWeight = []; // 本周每日体重（按 weight_log 记录顺序）
+  String _periodType = 'weekly'; // 'weekly' | 'monthly'
+  late String _periodStart;
+  late String _periodEnd;
+  // 当前周期聚合数据（供 fl_chart 折线图渲染）
+  List<double> _dailyCal = []; // 每日热量（_periodStart ~ _periodEnd）
+  List<double> _dailyWeight = []; // 每日体重（按 weight_log 记录顺序）
   int _targetCal = 2000; // 目标热量（读自 profile.dailyCalorieTarget）
 
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    final monday = now.subtract(Duration(days: now.weekday - 1));
-    final sunday = monday.add(const Duration(days: 6));
-    _weekStart = _fmt(monday);
-    _weekEnd = _fmt(sunday);
+    _calcPeriod();
     _loadExisting();
+  }
+
+  /// 根据 _periodType 计算 _periodStart/_periodEnd
+  void _calcPeriod() {
+    final now = DateTime.now();
+    if (_periodType == 'weekly') {
+      // 本周周一到周日
+      final weekday = now.weekday;
+      final monday = now.subtract(Duration(days: weekday - 1));
+      final sunday = monday.add(const Duration(days: 6));
+      _periodStart = _fmt(monday);
+      _periodEnd = _fmt(sunday);
+    } else {
+      // 本月 1 到月末
+      final first = DateTime(now.year, now.month, 1);
+      final last = DateTime(now.year, now.month + 1, 0);
+      _periodStart = _fmt(first);
+      _periodEnd = _fmt(last);
+    }
   }
 
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
-  /// 聚合本周数据（热量按日 + 体重序列 + 目标热量），供图表与 AI 生成共用。
+  /// 聚合当前周期数据（热量按日 + 体重序列 + 目标热量），供图表与 AI 生成共用。
   /// 结果同时写入 state 字段 _dailyCal/_dailyWeight/_targetCal，避免重复查询。
   Future<({List<double> dailyCal, List<double> dailyWeight, int targetCal, String goal})>
-      _aggregateWeek() async {
+      _aggregatePeriod() async {
     final db = await ref.read(recognize.databaseProvider.future);
     final mealRepo = MealLogRepository(db);
     final weightRepo = WeightLogRepository(db);
     final profileRepo = ProfileRepository(db);
 
-    final meals = await mealRepo.getRange(_weekStart, _weekEnd);
-    final weights = await weightRepo.getRange(_weekStart, _weekEnd);
+    final meals = await mealRepo.getRange(_periodStart, _periodEnd);
+    final weights = await weightRepo.getRange(_periodStart, _periodEnd);
     final profile = await profileRepo.get();
 
-    // 按日聚合热量（周一~周日 7 天）
+    // 按日聚合热量（_periodStart ~ _periodEnd，周 7 天 / 月 28~31 天）
+    final start = DateTime.parse(_periodStart);
+    final end = DateTime.parse(_periodEnd);
+    final days = end.difference(start).inDays + 1;
     final dailyCal = <double>[];
-    for (var i = 0; i < 7; i++) {
-      final date = _fmt(DateTime.parse(_weekStart).add(Duration(days: i)));
+    for (var i = 0; i < days; i++) {
+      final date = _fmt(start.add(Duration(days: i)));
       final cal = meals
           .where((m) => m.date == date)
           .fold<double>(0, (s, m) => s + m.actualCalories);
@@ -81,11 +100,11 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   }
 
   Future<void> _loadExisting() async {
-    // 先聚合本周数据填充图表 state 字段（_dailyCal/_dailyWeight/_targetCal）
-    await _aggregateWeek();
+    // 先聚当前周期数据填充图表 state 字段
+    await _aggregatePeriod();
     final db = await ref.read(recognize.databaseProvider.future);
     final repo = InsightRepository(db);
-    final existing = await repo.find('weekly', _weekStart, _weekEnd);
+    final existing = await repo.find(_periodType, _periodStart, _periodEnd);
     if (existing != null && mounted) {
       setState(() => _summary = existing.summaryText);
     }
@@ -95,8 +114,8 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     if (!mounted) return;
     setState(() => _loading = true);
     try {
-      // 复用 _aggregateWeek 的聚合结果（避免重复查询，同时刷新图表 state）
-      final agg = await _aggregateWeek();
+      // 复用 _aggregatePeriod 的聚合结果（避免重复查询，同时刷新图表 state）
+      final agg = await _aggregatePeriod();
 
       final apiKey = ref.read(recognize.glmApiKeyProvider);
       final baseUrl = ref.read(recognize.glmBaseUrlProvider);
@@ -111,19 +130,22 @@ class _InsightPageState extends ConsumerState<InsightPage> {
             ? 'https://open.bigmodel.cn/api/paas/v4'
             : baseUrl,
       );
-      final text = await provider.generateWeeklySummary({
+      final data = {
         'daily_calories': agg.dailyCal,
         'daily_weights': agg.dailyWeight,
         'target_calories': agg.targetCal,
         'goal': agg.goal,
-      });
+      };
+      final text = _periodType == 'weekly'
+          ? await provider.generateWeeklySummary(data)
+          : await provider.generateMonthlySummary(data);
 
       final db = await ref.read(recognize.databaseProvider.future);
       final insightRepo = InsightRepository(db);
       await insightRepo.regenerate(
-        periodType: 'weekly',
-        periodStart: _weekStart,
-        periodEnd: _weekEnd,
+        periodType: _periodType,
+        periodStart: _periodStart,
+        periodEnd: _periodEnd,
         summaryText: text,
       );
       if (!mounted) return;
@@ -162,7 +184,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       if (edited == null) return;
       final db = await ref.read(recognize.databaseProvider.future);
       final repo = InsightRepository(db);
-      final existing = await repo.find('weekly', _weekStart, _weekEnd);
+      final existing = await repo.find(_periodType, _periodStart, _periodEnd);
       if (existing != null) {
         await repo.updateText(existing.id, edited);
         if (!mounted) return;
@@ -175,9 +197,10 @@ class _InsightPageState extends ConsumerState<InsightPage> {
 
   @override
   Widget build(BuildContext context) {
+    final periodLabel = _periodType == 'weekly' ? '本周' : '本月';
     return Scaffold(
       appBar: AppBar(
-        title: Text('$_weekStart ~ $_weekEnd'),
+        title: Text('$_periodStart ~ $_periodEnd'),
         actions: [
           if (_summary != null)
             IconButton(icon: const Icon(Icons.edit), onPressed: _edit),
@@ -186,7 +209,35 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // 周热量折线图（含目标/均值参考线）
+          // 周/月切换
+          Center(
+            child: ToggleButtons(
+              isSelected: [
+                _periodType == 'weekly',
+                _periodType == 'monthly'
+              ],
+              onPressed: (index) {
+                setState(() {
+                  _periodType = index == 0 ? 'weekly' : 'monthly';
+                  _calcPeriod();
+                  _summary = null;
+                  _dailyCal = [];
+                  _dailyWeight = [];
+                  _loadExisting();
+                });
+              },
+              children: const [
+                Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text('周')),
+                Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text('月')),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          // 热量折线图（含目标/均值参考线）
           if (_dailyCal.isNotEmpty) ...[
             SizedBox(height: 200, child: _buildCaloriesChart()),
             const SizedBox(height: 16),
@@ -205,10 +256,10 @@ class _InsightPageState extends ConsumerState<InsightPage> {
               ),
             )
           else
-            const Card(
+            Card(
               child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text('本周尚未生成汇总，点击下方按钮生成')),
+                  padding: const EdgeInsets.all(16),
+                  child: Text('$periodLabel尚未生成汇总，点击下方按钮生成')),
             ),
           const SizedBox(height: 16),
           if (_loading)
@@ -217,14 +268,15 @@ class _InsightPageState extends ConsumerState<InsightPage> {
             FilledButton.icon(
               onPressed: _generate,
               icon: const Icon(Icons.auto_awesome),
-              label: Text(_summary == null ? '生成本周汇总' : '重新生成'),
+              label: Text(_summary == null ? '生成$periodLabel汇总' : '重新生成'),
             ),
         ],
       ),
     );
   }
 
-  /// 周热量折线图：每日摄入 + 目标热量参考线 + 均值参考线
+  /// 热量折线图：每日摄入 + 目标热量参考线 + 均值参考线
+  /// 周视图 X 轴 '一二三四五六日'，月视图按日期每 5 天一个标签。
   Widget _buildCaloriesChart() {
     final spots = <FlSpot>[];
     for (var i = 0; i < _dailyCal.length; i++) {
@@ -232,6 +284,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     }
     final maxCal = _dailyCal.reduce((a, b) => a > b ? a : b);
     final avgCal = _dailyCal.reduce((a, b) => a + b) / _dailyCal.length;
+    final start = DateTime.parse(_periodStart);
 
     return LineChart(LineChartData(
       gridData: const FlGridData(show: true),
@@ -248,12 +301,21 @@ class _InsightPageState extends ConsumerState<InsightPage> {
           sideTitles: SideTitles(
             showTitles: true,
             getTitlesWidget: (value, meta) {
-              const days = ['一', '二', '三', '四', '五', '六', '日'];
               final idx = value.toInt();
-              if (idx < 0 || idx >= days.length) {
+              if (idx < 0 || idx >= _dailyCal.length) {
                 return const SizedBox.shrink();
               }
-              return Text(days[idx], style: const TextStyle(fontSize: 10));
+              if (_periodType == 'weekly') {
+                const days = ['一', '二', '三', '四', '五', '六', '日'];
+                return Text(days[idx], style: const TextStyle(fontSize: 10));
+              }
+              // 月视图：每 5 天一个标签（1/5/10/15/20/25/30）
+              final date = start.add(Duration(days: idx));
+              if (date.day == 1 || date.day % 5 == 0) {
+                return Text('${date.day}',
+                    style: const TextStyle(fontSize: 10));
+              }
+              return const SizedBox.shrink();
             },
           ),
         ),
