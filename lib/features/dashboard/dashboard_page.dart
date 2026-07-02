@@ -101,8 +101,17 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
       ),
       drawer: _buildDrawer(context),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const RecognizePage())),
+        onPressed: () async {
+          await Navigator.of(context)
+              .push(MaterialPageRoute(builder: (_) => const RecognizePage()));
+          // 返回后刷新主数据 + 推荐（拍照识别记录后热量/宏量/推荐都应更新）
+          if (mounted) {
+            setState(() {
+              _future = _loadData();
+              _recFuture = _loadRecommendations();
+            });
+          }
+        },
         child: const Icon(Icons.add),
       ),
       body: FutureBuilder<
