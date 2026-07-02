@@ -195,6 +195,30 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     }
   }
 
+  /// 重新生成二次确认（避免覆盖用户编辑过的汇总）
+  Future<void> _confirmRegenerate() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('重新生成'),
+        content: const Text('重新生成会覆盖当前汇总，是否继续？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('继续'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _generate();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final periodLabel = _periodType == 'weekly' ? '本周' : '本月';
@@ -266,7 +290,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
             const Center(child: CircularProgressIndicator())
           else
             FilledButton.icon(
-              onPressed: _generate,
+              onPressed: _summary == null ? _generate : _confirmRegenerate,
               icon: const Icon(Icons.auto_awesome),
               label: Text(_summary == null ? '生成$periodLabel汇总' : '重新生成'),
             ),
