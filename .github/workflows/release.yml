@@ -50,8 +50,11 @@ jobs:
 
       - name: Build release APK
         # release 用 debug 签名（build.gradle.kts 已配 signingConfig debug）
-        # Flutter/Android SDK 自带 debug keystore，CI 环境自动生成可用签名
         run: flutter build apk --release --no-tree-shake-icons
+
+      - name: Build debug APK (诊断用，崩溃显示红屏堆栈)
+        # debug 版不优化，崩溃时显示完整红色错误页+堆栈，便于定位闪退根因
+        run: flutter build apk --debug --no-tree-shake-icons
 
       - name: Get version from pubspec
         id: version
@@ -77,8 +80,12 @@ jobs:
 
       - name: Verify APK exists
         run: |
+          echo "=== release apk ==="
           ls -lh build/app/outputs/flutter-apk/app-release.apk
           file build/app/outputs/flutter-apk/app-release.apk
+          echo "=== debug apk ==="
+          ls -lh build/app/outputs/flutter-apk/app-debug.apk
+          file build/app/outputs/flutter-apk/app-debug.apk
 
       - name: Diagnose APK contents (native libs + CPU arch)
         # 打印 apk 内的 native 库和支持的 CPU 架构，用于排查闪退根因
@@ -92,11 +99,13 @@ jobs:
           echo "=== APK 总大小 ==="
           ls -lh build/app/outputs/flutter-apk/app-release.apk | awk '{print $5}'
 
-      - name: Upload APK artifact (90 天保留)
+      - name: Upload APK artifacts (90 天保留)
         uses: actions/upload-artifact@v4
         with:
           name: eatwise-apk-${{ steps.tag.outputs.release_tag }}
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 90
 
       - name: Create GitHub Release
@@ -105,12 +114,18 @@ jobs:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           name: EatWise ${{ steps.tag.outputs.release_tag }}
           body: |
+            ## ⚠️ 闪退排查：请先装 app-debug.apk
+
+            如果 app-release.apk 闪退，请改装 **app-debug.apk**：
+            - debug 版崩溃时会显示**红色错误页+完整堆栈**
+            - 截图发给开发者即可定位根因
+
             ## 安装说明
 
-            1. 下载下方 `app-release.apk`
+            1. 下载下方 apk（优先下 app-debug.apk 诊断闪退）
             2. 手机用数据线传过去（或扫码下载）
             3. 手机设置开启"允许安装未知来源应用"
-            4. 点击 apk 安装
+            4. **先卸载旧版本**再装新版（签名/包名相同，不卸载装不上）
             5. 首次启动在「设置」页填入你的 Qwen API Key（视觉识别用）
 
             ## 签名说明
@@ -123,5 +138,7 @@ jobs:
             - 应用版本: ${{ steps.version.outputs.pubspec_version }}
             - 构建时间: ${{ github.run_id }}
             - 提交: ${{ github.sha }}
-          files: build/app/outputs/flutter-apk/app-release.apk
+          files: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/flutter-apk/app-debug.apk
           make_latest: true

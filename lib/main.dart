@@ -1,6 +1,5 @@
 // lib/main.dart
-// 诊断版 v2：绝对最简启动 + 全局错误可视 + 本地日志
-// 修复目标：即使崩溃也显示错误信息而非闪退，便于定位
+// 诊断版 v3：try-catch 包住整个 main + 错误页兜底
 import 'dart:async';
 import 'dart:io';
 
@@ -28,7 +27,114 @@ Future<void> _writeBootLog(String msg) async {
   } catch (_) {}
 }
 
-/// 全局错误显示 Widget：把错误画到屏幕上而非闪退
+/// 崩溃显示页：把错误画到屏幕上
+Widget _crashScreen(Object error, StackTrace stack) {
+  return MaterialApp(
+    home: Scaffold(
+      backgroundColor: Colors.red[50],
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('启动崩溃',
+                    style:
+                        TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 12),
+                Text('错误:',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: Colors.red[800])),
+                SelectableText('$error', style: const TextStyle(fontSize: 13)),
+                const SizedBox(height: 12),
+                const Text('堆栈:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                SelectableText(
+                    stack.toString().split('\n').take(40).join('\n'),
+                    style:
+                        const TextStyle(fontSize: 11, fontFamily: 'monospace')),
+                const SizedBox(height: 20),
+                const Text('请截图发给开发者。',
+                    style: TextStyle(color: Colors.grey)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+void main() {
+  // 用 zone 包住整个 main，捕获所有同步+异步错误
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+
+    // Flutter 框架错误兜底
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      _writeBootLog('FlutterError: ${details.exception}\n${details.stack}');
+    };
+
+    // 先把 UI 跑起来（用 ErrorCapture 包裹，捕获 build 错误）
+    runApp(ErrorCapture(
+      child: UncontrolledProviderScope(
+        container: ProviderContainer(),
+        child: const EatWiseApp(),
+      ),
+    ));
+
+    // UI 起来后再异步初始化
+    final initContainer = ProviderContainer();
+    try {
+      await initContainer.read(appConfigProvider.future);
+    } catch (e, st) {
+      debugPrint('appConfig 加载失败：$e');
+      _writeBootLog('appConfig fail: $e\n$st');
+    }
+
+    try {
+      await Workmanager().initialize(
+        callbackDispatcher,
+        // ignore: deprecated_member_use
+        isInDebugMode: kDebugMode,
+      );
+      await BackgroundTasks.registerAll();
+    } catch (e, st) {
+      debugPrint('Workmanager 失败：$e');
+      _writeBootLog('workmanager fail: $e\n$st');
+    }
+
+    try {
+      final offlineQueue =
+          await initContainer.read(offlineQueueControllerProvider.future);
+      await offlineQueue.start();
+    } catch (e, st) {
+      debugPrint('OfflineQueue 失败：$e');
+      _writeBootLog('offlineQueue fail: $e\n$st');
+    }
+
+    try {
+      final db = await initContainer.read(databaseProvider.future);
+      ImageCleanup.runIfBacklogLarge(db).catchError((e) {
+        debugPrint('ImageCleanup 失败：$e');
+      });
+    } catch (e, st) {
+      debugPrint('ImageCleanup 初始化失败：$e');
+      _writeBootLog('imageCleanup fail: $e\n$st');
+    }
+
+    initContainer.dispose();
+  }, (error, stack) {
+    // zone 兜底：任何未捕获的错误都显示崩溃页
+    debugPrint('Zone 未捕获错误: $error');
+    _writeBootLog('ZoneError: $error\n$stack');
+    runApp(_crashScreen(error, stack));
+  });
+}
+
+/// 全局错误显示 Widget：把 build 错误显示到屏幕
 class ErrorCapture extends StatefulWidget {
   final Widget child;
   const ErrorCapture({super.key, required this.child});
@@ -42,7 +148,6 @@ class _ErrorCaptureState extends State<ErrorCapture> {
   @override
   void initState() {
     super.initState();
-    // 兜底 1：Flutter 框架错误（build/layout/async）
     FlutterError.onError = (details) {
       FlutterError.presentError(details);
       _writeBootLog('FlutterError: ${details.exception}\n${details.stack}');
@@ -53,106 +158,8 @@ class _ErrorCaptureState extends State<ErrorCapture> {
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
-      return MaterialApp(
-        home: Scaffold(
-          backgroundColor: Colors.red[50],
-          body: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('启动错误',
-                        style: TextStyle(
-                            fontSize: 22, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 12),
-                    Text('Exception:',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, color: Colors.red[800])),
-                    SelectableText('${_error!.exception}',
-                        style: const TextStyle(fontSize: 13)),
-                    const SizedBox(height: 12),
-                    const Text('Stack:',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    SelectableText(
-                        _error!.stack.toString().split('\n').take(30).join('\n'),
-                        style: const TextStyle(
-                            fontSize: 11, fontFamily: 'monospace')),
-                    const SizedBox(height: 20),
-                    const Text('请截图发给开发者。',
-                        style: TextStyle(color: Colors.grey)),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
+      return _crashScreen(_error!.exception, _error!.stack ?? StackTrace.empty);
     }
     return widget.child;
   }
-}
-
-void main() async {
-  // 兜底 2：Flutter 框架之外的未捕获异步错误（不闪退，只记日志）
-  WidgetsFlutterBinding.ensureInitialized();
-  PlatformDispatcher.instance.onError = (error, stack) {
-    debugPrint('PlatformError: $error');
-    _writeBootLog('PlatformError: $error\n$stack');
-    return true;
-  };
-
-  // 关键修改：先把 UI 跑起来（用 ErrorCapture 包裹），
-  // 再异步做所有可能崩溃的初始化。这样即使初始化崩，UI 已在。
-  runApp(ErrorCapture(
-    child: UncontrolledProviderScope(
-      container: ProviderContainer(),
-      child: const EatWiseApp(),
-    ),
-  ));
-
-  // UI 起来后再异步初始化（失败不阻塞已起来的 UI）
-  // 用一个独立的 ProviderContainer 给初始化用
-  final initContainer = ProviderContainer();
-  try {
-    await initContainer.read(appConfigProvider.future);
-  } catch (e, st) {
-    debugPrint('appConfig 加载失败：$e');
-    _writeBootLog('appConfig fail: $e\n$st');
-  }
-
-  try {
-    await Workmanager().initialize(
-      callbackDispatcher,
-      // ignore: deprecated_member_use
-      isInDebugMode: kDebugMode,
-    );
-    await BackgroundTasks.registerAll();
-  } catch (e, st) {
-    debugPrint('Workmanager 失败：$e');
-    _writeBootLog('workmanager fail: $e\n$st');
-  }
-
-  try {
-    final offlineQueue =
-        await initContainer.read(offlineQueueControllerProvider.future);
-    await offlineQueue.start();
-  } catch (e, st) {
-    debugPrint('OfflineQueue 失败：$e');
-    _writeBootLog('offlineQueue fail: $e\n$st');
-  }
-
-  try {
-    final db = await initContainer.read(databaseProvider.future);
-    ImageCleanup.runIfBacklogLarge(db).catchError((e) {
-      debugPrint('ImageCleanup 失败：$e');
-    });
-  } catch (e, st) {
-    debugPrint('ImageCleanup 初始化失败：$e');
-    _writeBootLog('imageCleanup fail: $e\n$st');
-  }
-
-  // Sentry 跳过（首启无 DSN，跳过省事）
-  initContainer.dispose();
 }
