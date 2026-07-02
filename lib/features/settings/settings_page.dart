@@ -22,6 +22,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _tdeeAutoCalib = true;
   String? _lastBackupTime;
   bool _loading = true;
+  int? _monthlyCount;
+  double? _estimatedCost;
+  static const _costPerRecognition = 0.001;  // 估算：单次约 0.001 元（500 token × 0.15/百万）
+  static const _costWarningThreshold = 5.0;  // 5 元/月提示
 
   @override
   void initState() {
@@ -54,6 +58,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       _lastBackupTime = lastBackup != null
           ? '${lastBackup.year}-${lastBackup.month.toString().padLeft(2,'0')}-${lastBackup.day.toString().padLeft(2,'0')}'
           : null;
+
+      final store = ref.read(secureConfigStoreProvider);
+      _monthlyCount = await store.getCurrentMonthCount();
+      _estimatedCost = _monthlyCount! * _costPerRecognition;
     } catch (_) {
       // 防御性兜底：沙箱/真机异常均不传播（真机正常路径不进此分支）
       _lastBackupTime = null;
@@ -125,6 +133,28 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             value: _tdeeAutoCalib,
             onChanged: (v) => setState(() => _tdeeAutoCalib = v),
           ),
+          const SizedBox(height: 16),
+
+          // --- 本月使用 ---
+          _sectionHeader('本月使用'),
+          ListTile(
+            leading: const Icon(Icons.analytics_outlined),
+            title: const Text('本月识别次数'),
+            trailing: Text('$_monthlyCount 次'),
+          ),
+          ListTile(
+            leading: const Icon(Icons.payments_outlined),
+            title: const Text('估算花费'),
+            trailing: Text('${_estimatedCost!.toStringAsFixed(3)} 元'),
+          ),
+          if (_estimatedCost! >= _costWarningThreshold)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                '⚠️ 本月花费已达 ${_estimatedCost!.toStringAsFixed(2)} 元，建议在厂商控制台设置月度费用上限',
+                style: const TextStyle(color: Colors.orange, fontSize: 12),
+              ),
+            ),
           const SizedBox(height: 16),
 
           // --- 数据备份状态 ---
