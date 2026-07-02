@@ -113,6 +113,16 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
               itemBuilder: (context, i) {
                 final f = list[i];
                 return ListTile(
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.secondaryContainer,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.restaurant_rounded,
+                        size: 20, color: Theme.of(context).colorScheme.onSecondaryContainer),
+                  ),
                   title: Text(f.name),
                   subtitle: Text(
                       '${f.caloriesPer100g.toStringAsFixed(0)} kcal/100g · ${_sourceLabel(f.source)}'),

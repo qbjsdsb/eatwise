@@ -122,7 +122,7 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
                 errorBuilder: (_, __, ___) => Icon(
                     Icons.broken_image_outlined,
                     color: Theme.of(context).colorScheme.onSurfaceVariant))
-            : Icon(Icons.restaurant_outlined,
+            : Icon(Icons.restaurant_rounded,
                 color: Theme.of(context).colorScheme.onSurfaceVariant),
         title: Text(_foodNames[m.foodItemId] ?? '食物 #${m.foodItemId}'),
         subtitle: Text(

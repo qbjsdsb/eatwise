@@ -87,8 +87,9 @@ void main() {
     );
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
-    // 验证宏量条同时展示 g 与 g/kg（蛋白质 62g / 70kg ≈ 0.9 g/kg）
-    expect(find.textContaining('g/kg'), findsNWidgets(3));
-    expect(find.textContaining('0.9 g/kg'), findsOneWidget);
+    // 验证宏量迷你进度条展示（新首页格式：value/goalg）
+    // 蛋白质 62g，目标 = proteinGPerKg(1.4) * weightKg(70) = 98g
+    expect(find.text('蛋白'), findsOneWidget);
+    expect(find.textContaining('62/98g'), findsOneWidget);
   });
 }

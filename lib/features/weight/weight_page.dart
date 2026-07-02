@@ -146,14 +146,16 @@ class _WeightPageState extends ConsumerState<WeightPage> {
           sideTitles: SideTitles(showTitles: false),
         ),
         leftTitles: AxisTitles(
-          axisNameWidget: const Text('kcal', style: TextStyle(fontSize: 10)),
+          axisNameWidget: Text('kcal',
+              style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant)),
           sideTitles: const SideTitles(
             showTitles: true,
             reservedSize: 40,
           ),
         ),
         topTitles: AxisTitles(
-          axisNameWidget: const Text('kg', style: TextStyle(fontSize: 10)),
+          axisNameWidget: Text('kg',
+              style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant)),
           sideTitles: SideTitles(
             showTitles: true,
             reservedSize: 40,
@@ -163,7 +165,7 @@ class _WeightPageState extends ConsumerState<WeightPage> {
               final ratio = value / calRange;
               final w = wMin + (wMax - wMin) * ratio;
               return Text(w.toStringAsFixed(1),
-                  style: const TextStyle(fontSize: 9));
+                  style: TextStyle(fontSize: 9, color: colorScheme.onSurfaceVariant));
             },
           ),
         ),

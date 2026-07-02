@@ -340,13 +340,14 @@ class _InsightPageState extends ConsumerState<InsightPage> {
               }
               if (_periodType == 'weekly') {
                 const days = ['一', '二', '三', '四', '五', '六', '日'];
-                return Text(days[idx], style: const TextStyle(fontSize: 10));
+                return Text(days[idx],
+                    style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant));
               }
               // 月视图：每 5 天一个标签（1/5/10/15/20/25/30）
               final date = start.add(Duration(days: idx));
               if (date.day == 1 || date.day % 5 == 0) {
                 return Text('${date.day}',
-                    style: const TextStyle(fontSize: 10));
+                    style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant));
               }
               return const SizedBox.shrink();
             },

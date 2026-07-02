@@ -118,13 +118,13 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: () => _pickAndRecognize(ImageSource.camera),
-              icon: const Icon(Icons.camera_alt),
+              icon: const Icon(Icons.camera_alt_rounded),
               label: const Text('拍照'),
             ),
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: () => _pickAndRecognize(ImageSource.gallery),
-              icon: const Icon(Icons.photo_library),
+              icon: const Icon(Icons.photo_library_rounded),
               label: const Text('从相册选择'),
             ),
           ],
