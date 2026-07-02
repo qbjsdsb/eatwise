@@ -1,8 +1,11 @@
 name: Build & Release APK
 
-# 手动触发（推荐小白用）：在 GitHub Actions 页面点 "Run workflow"
-# 也可在 workflow_dispatch 输入版本号，默认从 pubspec.yaml 读取
+# tag 触发：push v* 格式的 tag 自动构建（我可通过 git push tag 触发，无需手动点按钮）
+# 保留 workflow_dispatch 作为备用手动入口
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       version_tag:
@@ -61,7 +64,10 @@ jobs:
       - name: Determine release tag
         id: tag
         run: |
-          if [ -n "${{ inputs.version_tag }}" ]; then
+          # tag 触发：直接用 tag 名
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF##*/}"
+          elif [ -n "${{ inputs.version_tag }}" ]; then
             TAG="${{ inputs.version_tag }}"
           else
             TAG="v${{ steps.version.outputs.pubspec_version }}-$(date -u +%Y%m%d-%H%M%S)"
