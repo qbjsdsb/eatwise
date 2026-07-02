@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/util/refresh_bus.dart';
+import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
@@ -110,11 +112,21 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           if (snapshot.hasError) {
             return Center(
               child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text('数据加载失败：${snapshot.error}',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        color: Theme.of(context).colorScheme.error)),
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.error_outline, size: 48,
+                        color: Theme.of(context).colorScheme.error),
+                    const SizedBox(height: 16),
+                    const Text('数据加载失败'),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: _refresh,
+                      child: const Text('重试'),
+                    ),
+                  ],
+                ),
               ),
             );
           }
@@ -184,9 +196,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                 ),
               ),
               const SizedBox(height: 16),
+              // primaryContainer 背景上统一用 onPrimaryContainer 系色，
+              // 避免 tertiary/secondary 在深底上对比度不足；用不同明度区分三种宏量。
               _miniMacro('蛋白', d.protein, d.proteinGoal, cs.onPrimaryContainer),
-              _miniMacro('脂肪', d.fat, d.fatGoal, cs.tertiary),
-              _miniMacro('碳水', d.carbs, d.carbGoal, cs.secondary),
+              _miniMacro('脂肪', d.fat, d.fatGoal,
+                  cs.onPrimaryContainer.withValues(alpha: 0.7)),
+              _miniMacro('碳水', d.carbs, d.carbGoal,
+                  cs.onPrimaryContainer.withValues(alpha: 0.5)),
             ],
           ),
         ),
@@ -240,14 +256,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 16, 16, 8),
-              child: Text('智能推荐',
-                  style: TextStyle(
-                      color: cs.primary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600)),
-            ),
+            SectionTitle('智能推荐'),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Card(
@@ -271,23 +280,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                     for (final rec in recs) ...[
                       Divider(height: 1, indent: 16, endIndent: 16, color: cs.outlineVariant),
                       ListTile(
-                        leading: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: cs.secondaryContainer,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(Icons.restaurant_rounded,
-                              size: 20, color: cs.onSecondaryContainer),
-                        ),
+                        leading: const LeadingIconContainer(
+                            Icons.restaurant_rounded),
                         title: Text(rec.food.name),
                         subtitle: Text(
                             '${rec.food.caloriesPer100g.toStringAsFixed(0)} kcal/100g · 蛋白 ${rec.food.proteinPer100g.toStringAsFixed(1)}g',
                             style: const TextStyle(fontSize: 11)),
-                        trailing: Text('${rec.food.caloriesPer100g.toStringAsFixed(0)} kcal',
-                            style: TextStyle(
-                                fontSize: 12, color: cs.onSurfaceVariant)),
+                        trailing: const Icon(Icons.chevron_right),
                         onTap: () => _pushAndRefresh(
                             ManualEntryPage(initialName: rec.food.name)),
                       ),
@@ -306,10 +305,28 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     final cs = Theme.of(context).colorScheme;
     if (d.meals.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(32),
         child: Center(
-          child: Text('今日还没有记录，点下方拍照按钮开始',
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.restaurant_menu, size: 48,
+                  color: cs.onSurfaceVariant),
+              const SizedBox(height: 16),
+              Text('今日还没有记录',
+                  style: TextStyle(color: cs.onSurface)),
+              const SizedBox(height: 8),
+              Text('点下方拍照按钮开始记录',
+                  style: TextStyle(
+                      color: cs.onSurfaceVariant, fontSize: 13)),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () => context.push('/recognize'),
+                icon: const Icon(Icons.camera_alt_rounded),
+                label: const Text('去拍照'),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -326,14 +343,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 16, 16, 8),
-          child: Text('今日餐次',
-              style: TextStyle(
-                  color: cs.primary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600)),
-        ),
+        SectionTitle('今日餐次'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Card(
@@ -343,16 +353,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                   if (groups[mt] != null)
                     for (final m in groups[mt]!) ...[
                       ListTile(
-                        leading: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: cs.tertiaryContainer,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(_mealIcon(mt),
-                              size: 20, color: cs.onTertiaryContainer),
-                        ),
+                        leading: LeadingIconContainer(_mealIcon(mt),
+                            containerColor: cs.tertiaryContainer,
+                            iconColor: cs.onTertiaryContainer),
                         title: Text(d.foodNames[m.foodItemId] ?? '食物'),
                         subtitle: Text(
                             '${_mealLabel(mt)} · ${_formatTime(m.loggedAt)}',

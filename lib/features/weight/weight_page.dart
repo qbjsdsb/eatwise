@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/weight_log_repository.dart';
@@ -94,15 +95,36 @@ class WeightPageState extends ConsumerState<WeightPage> {
           if (_logs.length >= 2)
             SizedBox(height: 250, child: _buildChart())
           else
-            const Center(child: Text('至少记录 2 次才能显示趋势图')),
+            _emptyChartHint(),
           const SizedBox(height: 16),
           for (final log in _logs.reversed)
             ListTile(
-              leading: const Icon(Icons.monitor_weight_outlined),
+              leading: const LeadingIconContainer(Icons.monitor_weight_outlined),
               title: Text('${log.weightKg.toStringAsFixed(1)} kg'),
               subtitle: Text(log.date),
             ),
         ],
+      ),
+    );
+  }
+
+  /// 趋势图空数据占位：图标 + 文案，与 insight/today_meals 空态风格一致。
+  Widget _emptyChartHint() {
+    final cs = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 120,
+      child: Card(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.show_chart_rounded, size: 32, color: cs.onSurfaceVariant),
+              const SizedBox(height: 8),
+              Text('至少记录 2 次才能显示趋势图',
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -113,7 +135,9 @@ class WeightPageState extends ConsumerState<WeightPage> {
     }
 
     final colorScheme = Theme.of(context).colorScheme;
-    // 体重数据（映射到主轴范围，topTitles 反向显示刻度）
+    // 双轴技巧：fl_chart 0.70 不原生支持双 Y 轴。热量用真实值（左轴），
+    // 体重按比例映射到热量轴范围；rightTitles 用 getTitlesWidget 反向映射
+    // 显示体重刻度（社区常用双轴方案）。
     final weightSpots = <FlSpot>[];
     for (var i = 0; i < _logs.length; i++) {
       weightSpots.add(FlSpot(i.toDouble(), _logs[i].weightKg));
@@ -132,9 +156,6 @@ class WeightPageState extends ConsumerState<WeightPage> {
     final cals = calSpots.map((s) => s.y).toList();
     final maxCal = cals.reduce((a, b) => a > b ? a : b);
     final calPadding = maxCal * 0.1 + 50;
-    // 双轴技巧：fl_chart 0.70 不原生支持双 Y 轴。热量用真实值（左轴），
-    // 体重按比例映射到热量轴范围；topTitles 用 getTitlesWidget 反向映射
-    // 显示体重刻度（社区常用双轴方案）。
     final calRange = maxCal + calPadding;
     final wMin = minW - wPadding;
     final wMax = maxW + wPadding;

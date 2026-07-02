@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
@@ -70,23 +71,28 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
           const SizedBox(height: 16),
           if (!_customMode) ...[
             // 搜库模式
-            ListTile(
-              title: Text(_selected?.name ?? '点击选择食物'),
-              subtitle: _selected != null
-                  ? Text(
-                      '${_selected!.caloriesPer100g.toStringAsFixed(0)} kcal/100g')
-                  : null,
-              trailing: const Icon(Icons.search),
-              onTap: () async {
-                final result = await Navigator.of(context).push<FoodItem>(
-                  MaterialPageRoute(
-                      builder: (_) =>
-                          const FoodLibraryPage(pickForReuse: true)),
-                );
-                if (result != null) setState(() => _selected = result);
-              },
+            SectionTitle('选择食物'),
+            Card(
+              child: ListTile(
+                leading: const LeadingIconContainer(Icons.search_rounded),
+                title: Text(_selected?.name ?? '点击选择食物'),
+                subtitle: _selected != null
+                    ? Text(
+                        '${_selected!.caloriesPer100g.toStringAsFixed(0)} kcal/100g')
+                    : null,
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  final result = await Navigator.of(context).push<FoodItem>(
+                    MaterialPageRoute(
+                        builder: (_) =>
+                            const FoodLibraryPage(pickForReuse: true)),
+                  );
+                  if (result != null) setState(() => _selected = result);
+                },
+              ),
             ),
             if (_selected != null) ...[
+              const SizedBox(height: 16),
               TextField(
                   controller: _servingCtrl,
                   keyboardType: TextInputType.number,
@@ -101,30 +107,54 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
               child: const Text('找不到？自定义输入'),
             ),
           ] else ...[
-            // 自定义模式
-            TextField(
-                controller: _nameCtrl,
-                decoration: const InputDecoration(labelText: '食物名称')),
-            TextField(
-                controller: _calCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '热量 /100g (kcal)')),
-            TextField(
-                controller: _proteinCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '蛋白质 /100g (g)')),
-            TextField(
-                controller: _fatCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '脂肪 /100g (g)')),
-            TextField(
-                controller: _carbsCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '碳水 /100g (g)')),
-            TextField(
-                controller: _servingCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: '份量 (g)')),
+            // 自定义模式：基本信息 + 营养素分组
+            SectionTitle('基本信息'),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    TextField(
+                        controller: _nameCtrl,
+                        decoration: const InputDecoration(labelText: '食物名称')),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: _servingCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: '份量 (g)')),
+                  ],
+                ),
+              ),
+            ),
+            SectionTitle('营养素（每 100g）'),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    TextField(
+                        controller: _calCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: '热量 (kcal)')),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: _proteinCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: '蛋白质 (g)')),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: _fatCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: '脂肪 (g)')),
+                    const SizedBox(height: 12),
+                    TextField(
+                        controller: _carbsCtrl,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: '碳水 (g)')),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 24),
             FilledButton(
                 onPressed: _logCustom, child: const Text('存库并记录')),

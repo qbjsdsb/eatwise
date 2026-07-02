@@ -11,8 +11,15 @@ import 'package:flutter_test/flutter_test.dart';
 /// 验证 ProfilePage _save 传真实 tdeeAdjustmentKcal：
 /// 先 update profile.tdeeAdjustmentKcal=100，再保存表单，
 /// 验证 dailyCalorieTarget = 基础值(tdeeAdjustmentKcal=0) + 100
+/// 注：表单分组到 3 张 Card 后整体变高，用超高视口让全部内容一次性构建，
+/// 避免 scrollUntilVisible 在多 EditableText 中报 "Too many elements"。
 void main() {
   testWidgets('保存时 tdeeAdjustmentKcal 生效到 dailyCalorieTarget', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final db = EatWiseDatabase(NativeDatabase.memory());
     addTearDown(db.close);
 
@@ -33,6 +40,7 @@ void main() {
 
     // 点保存（默认表单值：height=170 weight=70 age=30 male activity=1.375 maintain goalRate=0）
     // maintain + goalRate=0 不触发风险警告弹窗
+    // tall viewport 下保存按钮已可见，直接点。
     await tester.tap(find.text('保存并重算目标'));
     await tester.pumpAndSettle();
 

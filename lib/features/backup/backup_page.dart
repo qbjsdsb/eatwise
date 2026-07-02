@@ -10,46 +10,88 @@ import '../recognize/providers.dart' as recognize;
 
 /// 数据备份页：导出 JSON 到文档目录 + 从 JSON 文本导入
 /// （MVP 版：不加 file_picker / share_plus 依赖，导入用粘贴 JSON）
-class BackupPage extends ConsumerWidget {
+class BackupPage extends ConsumerStatefulWidget {
   const BackupPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<BackupPage> createState() => _BackupPageState();
+}
+
+class _BackupPageState extends ConsumerState<BackupPage> {
+  bool _busy = false; // 导出/导入进行中：禁用按钮 + 显示遮罩
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('数据备份')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: Stack(
         children: [
-          FilledButton.icon(
-            onPressed: () => _export(context, ref),
-            icon: const Icon(Icons.upload),
-            label: const Text('导出为 JSON'),
+          ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              FilledButton.icon(
+                onPressed: _busy ? null : () => _export(),
+                icon: const Icon(Icons.upload),
+                label: const Text('导出为 JSON'),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _busy ? null : () => _import(),
+                icon: const Icon(Icons.download),
+                label: const Text('从 JSON 导入'),
+              ),
+              const SizedBox(height: 24),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.info_outline_rounded,
+                          color: cs.onSurfaceVariant, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          '说明：导出生成 JSON 文件到 App 文档目录；导入粘贴 JSON 文本后还原。'
+                          '导入会清空当前数据后批量写入，请谨慎操作。',
+                          style: TextStyle(
+                              fontSize: 13, color: cs.onSurfaceVariant),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: () => _import(context, ref),
-            icon: const Icon(Icons.download),
-            label: const Text('从 JSON 导入'),
-          ),
-          const SizedBox(height: 24),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                '说明：导出生成 JSON 文件到 App 文档目录；导入粘贴 JSON 文本后还原。'
-                '导入会清空当前数据后批量写入，请谨慎操作。',
-                style: TextStyle(
-                    fontSize: 13,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant),
+          // 进行中遮罩：防重复点击 + 给用户反馈
+          if (_busy)
+            Container(
+              color: Colors.black54,
+              child: Center(
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('处理中…'),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
   }
 
-  Future<void> _export(BuildContext context, WidgetRef ref) async {
+  Future<void> _export() async {
+    setState(() => _busy = true);
     try {
       final db = await ref.read(recognize.databaseProvider.future);
       final exporter = JsonExporter(db);
@@ -59,23 +101,25 @@ class BackupPage extends ConsumerWidget {
       final fileName =
           'eatwise_backup_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}.json';
       final file = await File('${dir.path}/$fileName').writeAsString(jsonStr);
-      if (!context.mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text('已导出到 ${file.path}'),
             duration: const Duration(seconds: 5)),
       );
     } catch (e) {
-      if (!context.mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
             content: Text('导出失败：$e'),
             duration: const Duration(seconds: 5)),
       );
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _import(BuildContext context, WidgetRef ref) async {
+  Future<void> _import() async {
     final ctrl = TextEditingController();
     String? jsonStr;
     try {
@@ -105,12 +149,14 @@ class BackupPage extends ConsumerWidget {
       ctrl.dispose();
     }
     if (jsonStr == null || jsonStr.trim().isEmpty) return;
+    if (!mounted) return;
 
-    final db = await ref.read(recognize.databaseProvider.future);
-    final importer = JsonImporter(db);
+    setState(() => _busy = true);
     try {
+      final db = await ref.read(recognize.databaseProvider.future);
+      final importer = JsonImporter(db);
       final stats = await importer.importFromString(jsonStr);
-      if (!context.mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -119,10 +165,12 @@ class BackupPage extends ConsumerWidget {
         ),
       );
     } catch (e) {
-      if (!context.mounted) return;
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('导入失败：$e'), duration: const Duration(seconds: 5)),
       );
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 }

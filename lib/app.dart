@@ -31,93 +31,64 @@ class EatWiseApp extends StatelessWidget {
     );
   }
 
-  static final _lightTheme = ThemeData(
-    useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(
+  /// M3 规范基线：卡片 12dp 圆角、FilledButton 20dp 圆角 + 内容宽度、
+  /// 输入框统一 OutlineInputBorder、SnackBar floating、NavigationBar pill 指示器。
+  /// 亮/暗共用组件主题，仅 ColorScheme 随 brightness 变化。
+  static ThemeData _theme(Brightness brightness) {
+    final colorScheme = ColorScheme.fromSeed(
       seedColor: _monetWaterLilySeed,
-      brightness: Brightness.light,
+      brightness: brightness,
       dynamicSchemeVariant: DynamicSchemeVariant.expressive,
-    ),
-    cardTheme: CardThemeData(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(28),
-      ),
-      elevation: 0,
-    ),
-    filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(48),
+    );
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: colorScheme,
+      // M3 Expressive：elevation 1 让卡片在 surface 上有轻微浮起层次，
+      // 解决 elevation 0 时分组卡片与背景融合不可见的问题。
+      cardTheme: CardThemeData(
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        elevation: 1,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(0, 48),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
         ),
       ),
-    ),
-    appBarTheme: const AppBarTheme(centerTitle: false),
-    dialogTheme: DialogThemeData(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(28),
+      appBarTheme: const AppBarTheme(centerTitle: false),
+      inputDecorationTheme: const InputDecorationTheme(
+        border: OutlineInputBorder(),
+        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       ),
-    ),
-    snackBarTheme: SnackBarThemeData(
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
+      dialogTheme: DialogThemeData(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(28),
+        ),
       ),
-    ),
-    navigationBarTheme: NavigationBarThemeData(
-      indicatorShape: const StadiumBorder(),
-      labelTextStyle: WidgetStateProperty.resolveWith((states) {
-        if (states.contains(WidgetState.selected)) {
-          return const TextStyle(fontSize: 12, fontWeight: FontWeight.w600);
-        }
-        return const TextStyle(fontSize: 12);
-      }),
-    ),
-  );
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        indicatorShape: const StadiumBorder(),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const TextStyle(fontSize: 12, fontWeight: FontWeight.w600);
+          }
+          return const TextStyle(fontSize: 12);
+        }),
+      ),
+    );
+  }
 
-  static final _darkTheme = ThemeData(
-    useMaterial3: true,
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: _monetWaterLilySeed,
-      brightness: Brightness.dark,
-      dynamicSchemeVariant: DynamicSchemeVariant.expressive,
-    ),
-    cardTheme: CardThemeData(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(28),
-      ),
-      elevation: 0,
-    ),
-    filledButtonTheme: FilledButtonThemeData(
-      style: FilledButton.styleFrom(
-        minimumSize: const Size.fromHeight(48),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-      ),
-    ),
-    appBarTheme: const AppBarTheme(centerTitle: false),
-    dialogTheme: DialogThemeData(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(28),
-      ),
-    ),
-    snackBarTheme: SnackBarThemeData(
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-      ),
-    ),
-    navigationBarTheme: NavigationBarThemeData(
-      indicatorShape: const StadiumBorder(),
-      labelTextStyle: WidgetStateProperty.resolveWith((states) {
-        if (states.contains(WidgetState.selected)) {
-          return const TextStyle(fontSize: 12, fontWeight: FontWeight.w600);
-        }
-        return const TextStyle(fontSize: 12);
-      }),
-    ),
-  );
+  static final _lightTheme = _theme(Brightness.light);
+  static final _darkTheme = _theme(Brightness.dark);
 }
 
 final _router = GoRouter(

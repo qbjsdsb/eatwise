@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/widgets/m3_widgets.dart';
 import '../../data/backup/auto_backup.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -171,13 +172,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               _sectionTitle('使用情况'),
               _groupCard([
                 ListTile(
-                  leading: const Icon(Icons.analytics_outlined),
+                  leading: const LeadingIconContainer(Icons.analytics_outlined),
                   title: const Text('本月识别次数'),
                   trailing: Text('$_monthlyCount 次'),
                 ),
                 _divider(),
                 ListTile(
-                  leading: const Icon(Icons.payments_outlined),
+                  leading: const LeadingIconContainer(Icons.payments_outlined),
                   title: const Text('估算花费'),
                   trailing: Text('${_estimatedCost!.toStringAsFixed(3)} 元'),
                 ),
@@ -186,14 +187,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Text(
                       '⚠️ 本月花费已达 ${_estimatedCost!.toStringAsFixed(2)} 元，建议在厂商控制台设置月度费用上限',
-                      style: TextStyle(color: cs.tertiary, fontSize: 12),
+                      style: TextStyle(color: cs.error, fontSize: 12),
                     ),
                   ),
               ]),
               _sectionTitle('备份状态'),
               _groupCard([
                 ListTile(
-                  leading: const Icon(Icons.backup),
+                  leading: const LeadingIconContainer(Icons.backup),
                   title: const Text('上次自动备份'),
                   trailing: Text(_lastBackupTime ?? '从未',
                       style: TextStyle(color: cs.onSurfaceVariant)),
@@ -203,21 +204,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Text(
                       '⚠️ 已超过 14 天未备份，建议立即导出备份',
-                      style: TextStyle(color: cs.tertiary, fontSize: 12),
+                      style: TextStyle(color: cs.error, fontSize: 12),
                     ),
                   ),
               ]),
               _sectionTitle('关于'),
               _groupCard([
                 ListTile(
-                  leading: const Icon(Icons.info_outline_rounded),
+                  leading: const LeadingIconContainer(Icons.info_outline_rounded),
                   title: const Text('关于 EatWise'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: _showAbout,
                 ),
                 _divider(),
                 ListTile(
-                  leading: const Icon(Icons.privacy_tip_outlined),
+                  leading: const LeadingIconContainer(Icons.privacy_tip_outlined),
                   title: const Text('隐私政策'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: _showPrivacyPolicy,
@@ -236,28 +237,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
-  Widget _sectionTitle(String text) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 16, 8),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.primary,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
+  Widget _sectionTitle(String text) => SectionTitle(text);
 
   Widget _groupCard(List<Widget> children) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Card(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Column(children: children),
-        ),
+        child: Column(children: children),
       ),
     );
   }

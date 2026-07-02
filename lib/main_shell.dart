@@ -31,7 +31,7 @@ class _MainShellState extends State<MainShell> {
         child: const Icon(Icons.camera_alt_rounded),
       ),
       floatingActionButtonLocation:
-          FloatingActionButtonLocation.centerDocked,
+          FloatingActionButtonLocation.centerFloat,
       bottomNavigationBar: NavigationBar(
         selectedIndex: navigationShell.currentIndex,
         onDestinationSelected: (i) => navigationShell.goBranch(

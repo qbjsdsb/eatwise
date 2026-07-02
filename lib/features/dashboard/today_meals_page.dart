@@ -2,8 +2,10 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../ai/prompts.dart';
+import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/pending_recognition_repository.dart';
@@ -79,7 +81,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     return Scaffold(
       appBar: widget.embedded ? null : AppBar(title: const Text('今日记录')),
       body: _meals.isEmpty
-          ? const Center(child: Text('今日暂无记录，去拍一张吧'))
+          ? _buildEmptyState()
           : ListView(
               children: [
                 for (final type in order)
@@ -89,6 +91,33 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
                   ],
               ],
             ),
+    );
+  }
+
+  /// 空态：图标 + 文案 + CTA（与 dashboard 空态一致）
+  Widget _buildEmptyState() {
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.restaurant_menu, size: 48, color: cs.onSurfaceVariant),
+            const SizedBox(height: 16),
+            Text('今日暂无记录', style: TextStyle(color: cs.onSurface)),
+            const SizedBox(height: 8),
+            Text('点下方拍照按钮开始记录',
+                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: () => context.push('/recognize'),
+              icon: const Icon(Icons.camera_alt_rounded),
+              label: const Text('去拍照'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -123,15 +152,16 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       },
       child: ListTile(
         leading: m.originalImagePath != null
-            ? Image.file(File(m.originalImagePath!),
-                width: 48,
-                height: 48,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Icon(
-                    Icons.broken_image_outlined,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant))
-            : Icon(Icons.restaurant_rounded,
-                color: Theme.of(context).colorScheme.onSurfaceVariant),
+            ? ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.file(File(m.originalImagePath!),
+                    width: 40,
+                    height: 40,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        const LeadingIconContainer(Icons.broken_image_outlined)),
+              )
+            : const LeadingIconContainer(Icons.restaurant_rounded),
         title: Text(_foodNames[m.foodItemId] ?? '食物 #${m.foodItemId}'),
         subtitle: Text(
             '${m.actualServingG.toStringAsFixed(0)}g · ${m.actualCalories.toStringAsFixed(0)} kcal'),

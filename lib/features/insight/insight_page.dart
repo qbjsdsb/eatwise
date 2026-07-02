@@ -256,42 +256,39 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // 周/月切换
-          Center(
-            child: ToggleButtons(
-              isSelected: [
-                _periodType == 'weekly',
-                _periodType == 'monthly'
-              ],
-              onPressed: (index) {
-                setState(() {
-                  _periodType = index == 0 ? 'weekly' : 'monthly';
-                  _calcPeriod();
-                  _summary = null;
-                  _dailyCal = [];
-                  _dailyWeight = [];
-                  _loadExisting();
-                });
-              },
-              children: const [
-                Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text('周')),
-                Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text('月')),
-              ],
-            ),
+          // 周/月切换（M3 SegmentedButton，与 records_tab/recognize 统一）
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'weekly', label: Text('周')),
+              ButtonSegment(value: 'monthly', label: Text('月')),
+            ],
+            selected: {_periodType},
+            onSelectionChanged: (v) {
+              setState(() {
+                _periodType = v.first;
+                _calcPeriod();
+                _summary = null;
+                _dailyCal = [];
+                _dailyWeight = [];
+                _loadExisting();
+              });
+            },
           ),
           const SizedBox(height: 16),
           // 热量折线图（含目标/均值参考线，至少 2 天数据才渲染）
           if (_dailyCal.length >= 2) ...[
             SizedBox(height: 200, child: _buildCaloriesChart()),
             const SizedBox(height: 16),
+          ] else ...[
+            _emptyChartHint('暂无足够热量数据，至少记录 2 天'),
+            const SizedBox(height: 16),
           ],
           // 体重趋势折线图（至少 2 条记录才渲染）
           if (_dailyWeight.length >= 2) ...[
             SizedBox(height: 150, child: _buildWeightChart()),
+            const SizedBox(height: 16),
+          ] else ...[
+            _emptyChartHint('暂无足够体重数据，至少记录 2 次'),
             const SizedBox(height: 16),
           ],
           if (_summary != null)
@@ -309,15 +306,41 @@ class _InsightPageState extends ConsumerState<InsightPage> {
                   child: Text('$periodLabel尚未生成汇总，点击下方按钮生成')),
             ),
           const SizedBox(height: 16),
-          if (_loading)
-            const Center(child: CircularProgressIndicator())
-          else
-            FilledButton.icon(
-              onPressed: _summary == null ? _generate : _confirmRegenerate,
-              icon: const Icon(Icons.auto_awesome),
-              label: Text(_summary == null ? '生成$periodLabel汇总' : '重新生成'),
-            ),
+          // loading 内置按钮（与 calibration 一致），避免单独转圈占行
+          FilledButton.icon(
+            onPressed: _loading ? null : (_summary == null ? _generate : _confirmRegenerate),
+            icon: _loading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.auto_awesome),
+            label: Text(_summary == null ? '生成$periodLabel汇总' : '重新生成'),
+          ),
         ],
+      ),
+    );
+  }
+
+  /// 图表数据不足时的占位提示（图标 + 文案，避免用户看到空白困惑）
+  Widget _emptyChartHint(String text) {
+    final cs = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 120,
+      child: Card(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.show_chart_rounded,
+                  size: 32, color: cs.onSurfaceVariant),
+              const SizedBox(height: 8),
+              Text(text,
+                  style: TextStyle(
+                      color: cs.onSurfaceVariant, fontSize: 13)),
+            ],
+          ),
+        ),
       ),
     );
   }

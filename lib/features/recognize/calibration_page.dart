@@ -245,17 +245,64 @@ class _CalibrationPageState extends State<CalibrationPage> {
   }
 
   Widget _nutritionCard(double cal, double protein, double fat, double carbs, {String? calRange}) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            Text('热量：${cal.toStringAsFixed(0)} kcal${calRange ?? ""}'),
-            Text('蛋白质：${protein.toStringAsFixed(1)} g'),
-            Text('脂肪：${fat.toStringAsFixed(1)} g'),
-            Text('碳水：${carbs.toStringAsFixed(1)} g'),
+            // 热量突出：大数字 + primary 色
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(cal.toStringAsFixed(0),
+                    style: tt.headlineMedium?.copyWith(
+                        color: cs.primary, fontWeight: FontWeight.w600)),
+                const SizedBox(width: 4),
+                Text('kcal',
+                    style: tt.labelLarge
+                        ?.copyWith(color: cs.onSurfaceVariant)),
+              ],
+            ),
+            if (calRange != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text('估算区间 $calRange',
+                    style: tt.labelSmall
+                        ?.copyWith(color: cs.onSurfaceVariant)),
+              ),
+            const SizedBox(height: 16),
+            // 三大宏量均分三列
+            Row(
+              children: [
+                _macroColumn('蛋白', protein, cs.tertiary),
+                _macroColumn('脂肪', fat, cs.secondary),
+                _macroColumn('碳水', carbs, cs.primary),
+              ],
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 宏量列：label 小字 + 数值 titleMedium，均分一行
+  Widget _macroColumn(String label, double value, Color color) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return Expanded(
+      child: Column(
+        children: [
+          Text(label,
+              style: tt.labelMedium?.copyWith(color: cs.onSurfaceVariant)),
+          const SizedBox(height: 4),
+          Text('${value.toStringAsFixed(0)} g',
+              style: tt.titleMedium
+                  ?.copyWith(color: color, fontWeight: FontWeight.w600)),
+        ],
       ),
     );
   }
@@ -273,7 +320,7 @@ class _CalibrationPageState extends State<CalibrationPage> {
           const SizedBox(height: 8),
           Text('⚠ 待确认组分（未在食物库找到）：',
               style: TextStyle(
-                  color: Theme.of(context).colorScheme.tertiary)),
+                  color: Theme.of(context).colorScheme.error)),
           for (final miss in composite.componentMisses)
             Padding(
               padding: const EdgeInsets.only(left: 16),

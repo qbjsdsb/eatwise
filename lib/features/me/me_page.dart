@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/profile_repository.dart';
 import '../backup/backup_page.dart';
@@ -87,7 +88,7 @@ class _MePageState extends ConsumerState<MePage> {
                   child: Card(
                     color: cs.primaryContainer,
                     child: InkWell(
-                      borderRadius: BorderRadius.circular(28),
+                      borderRadius: BorderRadius.circular(12),
                       onTap: () => _pushAndRefresh(const ProfilePage()),
                       child: Padding(
                         padding: const EdgeInsets.all(20),
@@ -188,19 +189,7 @@ class _MePageState extends ConsumerState<MePage> {
     );
   }
 
-  Widget _sectionTitle(String text) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 16, 8),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.primary,
-          fontSize: 13,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
+  Widget _sectionTitle(String text) => SectionTitle(text);
 
   Widget _groupCard(List<Widget> children) {
     return Padding(
@@ -228,17 +217,8 @@ class _MePageState extends ConsumerState<MePage> {
   }
 
   Widget _listItem(IconData icon, String title, VoidCallback onTap) {
-    final cs = Theme.of(context).colorScheme;
     return ListTile(
-      leading: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: cs.secondaryContainer,
-          shape: BoxShape.circle,
-        ),
-        child: Icon(icon, size: 20, color: cs.onSecondaryContainer),
-      ),
+      leading: LeadingIconContainer(icon),
       title: Text(title),
       trailing: const Icon(Icons.chevron_right),
       onTap: onTap,

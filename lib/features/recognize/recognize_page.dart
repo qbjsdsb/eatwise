@@ -25,6 +25,7 @@ class RecognizePage extends ConsumerStatefulWidget {
 class _RecognizePageState extends ConsumerState<RecognizePage> {
   RecognizeController? _controller;
   String _mealType = 'snack'; // Sprint 2 T0：餐次选择，默认加餐
+  bool _isRecognizing = false; // 识别中遮罩：防重复点击 + 给用户反馈
 
   @override
   void dispose() {
@@ -59,9 +60,9 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       onL3Fallback: () {
         // T36：非 retryable 错误（malformed/401/403）→ 跳手动录入页
         if (!mounted) return;
-        Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => const ManualEntryPage(),
-        ));
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const ManualEntryPage()));
       },
       circuitBreaker: breaker, // T37：断路器（open 时不调 API 直接入队）
       secureConfigStore: store, // T43：识别成功月度计数
@@ -81,8 +82,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       if (!await persistDir.exists()) {
         await persistDir.create(recursive: true);
       }
-      final fileName =
-          'img_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final fileName = 'img_${DateTime.now().millisecondsSinceEpoch}.jpg';
       final destPath = '${persistDir.path}/$fileName';
       await src.copy(destPath);
       return destPath;
@@ -96,152 +96,208 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('拍照识别')),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Sprint 2 T0：餐次选择器（M3：DropdownButton → SegmentedButton）
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'breakfast', label: Text('早餐')),
-                  ButtonSegment(value: 'lunch', label: Text('午餐')),
-                  ButtonSegment(value: 'dinner', label: Text('晚餐')),
-                  ButtonSegment(value: 'snack', label: Text('加餐')),
-                ],
-                selected: {_mealType},
-                onSelectionChanged: (v) =>
-                    setState(() => _mealType = v.first),
+      body: Stack(
+        children: [
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Sprint 2 T0：餐次选择器（M3：DropdownButton → SegmentedButton）
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'breakfast', label: Text('早餐')),
+                      ButtonSegment(value: 'lunch', label: Text('午餐')),
+                      ButtonSegment(value: 'dinner', label: Text('晚餐')),
+                      ButtonSegment(value: 'snack', label: Text('加餐')),
+                    ],
+                    selected: {_mealType},
+                    onSelectionChanged: (v) =>
+                        setState(() => _mealType = v.first),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                FilledButton.icon(
+                  onPressed: _isRecognizing
+                      ? null
+                      : () => _pickAndRecognize(ImageSource.camera),
+                  icon: const Icon(Icons.camera_alt_rounded),
+                  label: const Text('拍照'),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _isRecognizing
+                      ? null
+                      : () => _pickAndRecognize(ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library_rounded),
+                  label: const Text('从相册选择'),
+                ),
+              ],
+            ),
+          ),
+          // 识别中遮罩：半透明 + 转圈 + 文案
+          if (_isRecognizing)
+            Container(
+              color: Colors.black54,
+              child: Center(
+                child: Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text('识别中…'),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: () => _pickAndRecognize(ImageSource.camera),
-              icon: const Icon(Icons.camera_alt_rounded),
-              label: const Text('拍照'),
-            ),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () => _pickAndRecognize(ImageSource.gallery),
-              icon: const Icon(Icons.photo_library_rounded),
-              label: const Text('从相册选择'),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
 
   Future<void> _pickAndRecognize(ImageSource source) async {
-    final controller = await _ensureController();
-    await controller.pickAndRecognize(source, mealType: _mealType);
+    if (_isRecognizing) return; // 防重入
+    setState(() => _isRecognizing = true);
+    try {
+      final controller = await _ensureController();
+      await controller.pickAndRecognize(source, mealType: _mealType);
 
-    // 监听状态变化跳转校准页
-    final state = controller.current;
-    if (state.state == RecognizeState.done && state.recognitionResult != null) {
-      if (!mounted) return;
-      // v1.2 一桌多菜：additionalItems 非空 → 跳多菜列表页（每菜可校准+合并记录）
-      if (state.additionalItems.isNotEmpty) {
+      // 监听状态变化跳转校准页
+      final state = controller.current;
+      if (state.state == RecognizeState.done &&
+          state.recognitionResult != null) {
         if (!mounted) return;
-        Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => MultiDishPage(
-            mainDish: state.recognitionResult!,
-            mainSingle: state.singleNutrition,
-            mainComposite: state.compositeNutrition,
-            additionalItems: state.additionalItems,
+        // v1.2 一桌多菜：additionalItems 非空 → 跳多菜列表页（每菜可校准+合并记录）
+        if (state.additionalItems.isNotEmpty) {
+          if (!mounted) return;
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => MultiDishPage(
+                mainDish: state.recognitionResult!,
+                mainSingle: state.singleNutrition,
+                mainComposite: state.compositeNutrition,
+                additionalItems: state.additionalItems,
+                mealType: state.mealType,
+                imagePath: state.imagePath,
+              ),
+            ),
+          );
+          return;
+        }
+        // Sprint 4 T29：单品 + 复合菜均未命中 → 弹窗（改菜名重试 / 转手动录入）
+        if (state.singleNutrition == null && state.compositeNutrition == null) {
+          await _showNotFoundDialog(
+            state.recognitionResult!,
             mealType: state.mealType,
             imagePath: state.imagePath,
+          );
+          return;
+        }
+        final foodItemRepo = await ref.read(foodItemRepoProvider.future);
+        if (!mounted) return;
+        // 智能份量校准：单品路径查历史中位数作滑块初值（B 功能）
+        // v1.3：多份场景跳过（CalibrationPage 会用 AI mid，查了也浪费 DB 调用）
+        double? suggestedServingG;
+        if (state.singleNutrition != null &&
+            !state.recognitionResult!.isMultiQuantity) {
+          final mealRepo = await ref.read(mealLogRepoProvider.future);
+          suggestedServingG = await mealRepo.getMedianServing(
+            state.singleNutrition!.foodItemId,
+          );
+        }
+        if (!mounted) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => CalibrationPage(
+              recognitionResult: state.recognitionResult!,
+              singleNutrition: state.singleNutrition,
+              compositeNutrition: state.compositeNutrition,
+              foodItemRepo: foodItemRepo,
+              suggestedServingG: suggestedServingG,
+              onConfirm:
+                  (
+                    servingG,
+                    calories,
+                    protein,
+                    fat,
+                    carbs, {
+                    componentsSnapshot,
+                  }) async {
+                    final mealRepo = await ref.read(mealLogRepoProvider.future);
+                    final foodRepo = await ref.read(
+                      foodItemRepoProvider.future,
+                    );
+                    final result = state.recognitionResult!;
+
+                    // 获取 foodItemId：单品用查库命中，复合菜创建 ai_recognized 记录
+                    // 必须有有效 food_item_id（meal_log.food_item_id 是非空 FK，
+                    // Task 2 已启用 PRAGMA foreign_keys = ON，id=0 会触发外键约束违规）
+                    int foodItemId;
+                    if (state.singleNutrition != null) {
+                      foodItemId = state.singleNutrition!.foodItemId;
+                    } else if (state.compositeNutrition != null) {
+                      // 复合菜：存入 food_item（source=ai_recognized，components_json 存组分快照）
+                      foodItemId = await foodRepo.upsertAiRecognized(
+                        name: result.dishName,
+                        caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储，实际值在 meal_log
+                        proteinPer100g: 0,
+                        fatPer100g: 0,
+                        carbsPer100g: 0,
+                        confidence: result.confidence,
+                        componentsJson: componentsSnapshot,
+                      );
+                    } else {
+                      // 无营养数据（查库未命中），不记录
+                      return;
+                    }
+
+                    await mealRepo.insertMealLog(
+                      date: _todayLocalDate(),
+                      mealType:
+                          state.mealType, // Sprint 2 T0：从 controller state 读餐次
+                      foodItemId: foodItemId,
+                      actualServingG: servingG,
+                      actualCalories: calories,
+                      actualProteinG: protein,
+                      actualFatG: fat,
+                      actualCarbsG: carbs,
+                      originalImagePath: state.imagePath,
+                      recognitionConfidence: result.confidence,
+                      componentsSnapshotJson: componentsSnapshot,
+                    );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '已记录：${calories.toStringAsFixed(0)} kcal',
+                          ),
+                        ),
+                      );
+                    }
+                  },
+            ),
           ),
-        ));
-        return;
-      }
-      // Sprint 4 T29：单品 + 复合菜均未命中 → 弹窗（改菜名重试 / 转手动录入）
-      if (state.singleNutrition == null && state.compositeNutrition == null) {
-        await _showNotFoundDialog(
-          state.recognitionResult!,
-          mealType: state.mealType,
-          imagePath: state.imagePath,
         );
-        return;
+      } else if (state.state == RecognizeState.error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('识别失败：${state.errorMessage}')));
+      } else if (state.state == RecognizeState.queued) {
+        // Sprint 2 T14：离线已入队提示
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(state.errorMessage ?? '已加入离线队列')),
+        );
       }
-      final foodItemRepo = await ref.read(foodItemRepoProvider.future);
-      if (!mounted) return;
-      // 智能份量校准：单品路径查历史中位数作滑块初值（B 功能）
-      // v1.3：多份场景跳过（CalibrationPage 会用 AI mid，查了也浪费 DB 调用）
-      double? suggestedServingG;
-      if (state.singleNutrition != null &&
-          !state.recognitionResult!.isMultiQuantity) {
-        final mealRepo = await ref.read(mealLogRepoProvider.future);
-        suggestedServingG = await mealRepo.getMedianServing(state.singleNutrition!.foodItemId);
-      }
-      if (!mounted) return;
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => CalibrationPage(
-          recognitionResult: state.recognitionResult!,
-          singleNutrition: state.singleNutrition,
-          compositeNutrition: state.compositeNutrition,
-          foodItemRepo: foodItemRepo,
-          suggestedServingG: suggestedServingG,
-          onConfirm: (servingG, calories, protein, fat, carbs, {componentsSnapshot}) async {
-            final mealRepo = await ref.read(mealLogRepoProvider.future);
-            final foodRepo = await ref.read(foodItemRepoProvider.future);
-            final result = state.recognitionResult!;
-
-            // 获取 foodItemId：单品用查库命中，复合菜创建 ai_recognized 记录
-            // 必须有有效 food_item_id（meal_log.food_item_id 是非空 FK，
-            // Task 2 已启用 PRAGMA foreign_keys = ON，id=0 会触发外键约束违规）
-            int foodItemId;
-            if (state.singleNutrition != null) {
-              foodItemId = state.singleNutrition!.foodItemId;
-            } else if (state.compositeNutrition != null) {
-              // 复合菜：存入 food_item（source=ai_recognized，components_json 存组分快照）
-              foodItemId = await foodRepo.upsertAiRecognized(
-                name: result.dishName,
-                caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储，实际值在 meal_log
-                proteinPer100g: 0,
-                fatPer100g: 0,
-                carbsPer100g: 0,
-                confidence: result.confidence,
-                componentsJson: componentsSnapshot,
-              );
-            } else {
-              // 无营养数据（查库未命中），不记录
-              return;
-            }
-
-            await mealRepo.insertMealLog(
-              date: _todayLocalDate(),
-              mealType: state.mealType, // Sprint 2 T0：从 controller state 读餐次
-              foodItemId: foodItemId,
-              actualServingG: servingG,
-              actualCalories: calories,
-              actualProteinG: protein,
-              actualFatG: fat,
-              actualCarbsG: carbs,
-              originalImagePath: state.imagePath,
-              recognitionConfidence: result.confidence,
-              componentsSnapshotJson: componentsSnapshot,
-            );
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('已记录：${calories.toStringAsFixed(0)} kcal')),
-              );
-            }
-          },
-        ),
-      ));
-    } else if (state.state == RecognizeState.error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('识别失败：${state.errorMessage}')),
-      );
-    } else if (state.state == RecognizeState.queued) {
-      // Sprint 2 T14：离线已入队提示
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(state.errorMessage ?? '已加入离线队列')),
-      );
+    } finally {
+      if (mounted) setState(() => _isRecognizing = false);
     }
   }
 
@@ -255,8 +311,10 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('未找到营养数据'),
-        content: Text('识别菜名「${result.dishName}」在食物库中未命中。'
-            '可修改菜名重试，或转手动录入。'),
+        content: Text(
+          '识别菜名「${result.dishName}」在食物库中未命中。'
+          '可修改菜名重试，或转手动录入。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, _NotFoundAction.cancel),
@@ -277,12 +335,14 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     if (!mounted) return;
 
     if (action == _NotFoundAction.manual) {
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ManualEntryPage(
-          initialName: result.dishName,
-          modelDishName: result.dishName, // 自动学习：存为 alias，下次同名自动命中
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ManualEntryPage(
+            initialName: result.dishName,
+            modelDishName: result.dishName, // 自动学习：存为 alias，下次同名自动命中
+          ),
         ),
-      ));
+      );
       return;
     }
 
@@ -305,7 +365,10 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       );
     } else if (candidates.length == 1) {
       // 唯一候选 → 直接用
-      nutrition = _nutritionFromFoodItem(candidates.first, result.estimatedWeightGMid);
+      nutrition = _nutritionFromFoodItem(
+        candidates.first,
+        result.estimatedWeightGMid,
+      );
     } else {
       // 多候选 → 列表选择
       final selected = await _showFoodSelectionDialog(candidates);
@@ -316,9 +379,9 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     if (nutrition == null) {
       // 仍未命中 → 再次弹窗引导（递归，透传 mealType/imagePath）
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('修改后的菜名仍未命中，请转手动录入')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('修改后的菜名仍未命中，请转手动录入')));
       await _showNotFoundDialog(
         result,
         mealType: mealType,
@@ -337,33 +400,45 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
         ? null
         : await mealRepoForSuggest.getMedianServing(nutrition.foodItemId);
     if (!mounted) return;
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => CalibrationPage(
-        recognitionResult: result,
-        singleNutrition: nutrition,
-        foodItemRepo: foodItemRepo,
-        suggestedServingG: suggestedServingG,
-        onConfirm: (servingG, calories, protein, fat, carbs, {componentsSnapshot}) async {
-          final mealRepo = await ref.read(mealLogRepoProvider.future);
-          await mealRepo.insertMealLog(
-            date: _todayLocalDate(),
-            mealType: mealType,
-            foodItemId: nutrition!.foodItemId,
-            actualServingG: servingG,
-            actualCalories: calories,
-            actualProteinG: protein,
-            actualFatG: fat,
-            actualCarbsG: carbs,
-            originalImagePath: imagePath,
-          );
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('已记录：${calories.toStringAsFixed(0)} kcal')),
-            );
-          }
-        },
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CalibrationPage(
+          recognitionResult: result,
+          singleNutrition: nutrition,
+          foodItemRepo: foodItemRepo,
+          suggestedServingG: suggestedServingG,
+          onConfirm:
+              (
+                servingG,
+                calories,
+                protein,
+                fat,
+                carbs, {
+                componentsSnapshot,
+              }) async {
+                final mealRepo = await ref.read(mealLogRepoProvider.future);
+                await mealRepo.insertMealLog(
+                  date: _todayLocalDate(),
+                  mealType: mealType,
+                  foodItemId: nutrition!.foodItemId,
+                  actualServingG: servingG,
+                  actualCalories: calories,
+                  actualProteinG: protein,
+                  actualFatG: fat,
+                  actualCarbsG: carbs,
+                  originalImagePath: imagePath,
+                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('已记录：${calories.toStringAsFixed(0)} kcal'),
+                    ),
+                  );
+                }
+              },
+        ),
       ),
-    ));
+    );
   }
 
   /// 用 FoodItem + 份量构造 NutritionResult（候选列表选中后用）
@@ -393,7 +468,9 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
               final f = candidates[i];
               return ListTile(
                 title: Text(f.name),
-                subtitle: Text('${f.caloriesPer100g.toStringAsFixed(0)} kcal/100g'),
+                subtitle: Text(
+                  '${f.caloriesPer100g.toStringAsFixed(0)} kcal/100g',
+                ),
                 onTap: () => Navigator.pop(ctx, f),
               );
             },
@@ -423,7 +500,9 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
               child: const Text('重试'),

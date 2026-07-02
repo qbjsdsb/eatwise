@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/widgets/m3_widgets.dart';
 import '../../data/repositories/profile_repository.dart';
 import 'nutrition_calculator.dart';
 import '../recognize/providers.dart' as recognize;
@@ -70,91 +71,126 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            TextFormField(
-              controller: _heightCtrl,
-              decoration: const InputDecoration(labelText: '身高 (cm)'),
-              keyboardType: TextInputType.number,
-              validator: (v) {
-                if (v == null || v.isEmpty) return '必填';
-                if (double.tryParse(v) == null) return '请输入有效数字';
-                return null;
-              },
-            ),
-            TextFormField(
-              controller: _weightCtrl,
-              decoration: const InputDecoration(labelText: '体重 (kg)'),
-              keyboardType: TextInputType.number,
-              validator: (v) {
-                if (v == null || v.isEmpty) return '必填';
-                if (double.tryParse(v) == null) return '请输入有效数字';
-                return null;
-              },
-            ),
-            TextFormField(
-              controller: _ageCtrl,
-              decoration: const InputDecoration(labelText: '年龄'),
-              keyboardType: TextInputType.number,
-              validator: (v) {
-                if (v == null || v.isEmpty) return '必填';
-                if (int.tryParse(v) == null) return '请输入有效整数';
-                return null;
-              },
-            ),
-            DropdownButtonFormField<String>(
-              initialValue: _gender,
-              decoration: const InputDecoration(labelText: '性别'),
-              items: const [
-                DropdownMenuItem(value: 'male', child: Text('男')),
-                DropdownMenuItem(value: 'female', child: Text('女')),
-              ],
-              onChanged: (v) => setState(() => _gender = v!),
-            ),
-            TextFormField(
-              controller: _bodyFatCtrl,
-              decoration:
-                  const InputDecoration(labelText: '体脂率 % (可选，填了可用 Katch 公式)'),
-              keyboardType: TextInputType.number,
-              validator: (v) {
-                if (v == null || v.isEmpty) return null; // 可选字段
-                if (double.tryParse(v) == null) return '请输入有效数字';
-                return null;
-              },
-            ),
-            DropdownButtonFormField<double>(
-              initialValue: _activity,
-              decoration: const InputDecoration(labelText: '活动量'),
-              items: const [
-                DropdownMenuItem(value: 1.2, child: Text('久坐')),
-                DropdownMenuItem(value: 1.375, child: Text('轻度活动')),
-                DropdownMenuItem(value: 1.55, child: Text('中度活动')),
-                DropdownMenuItem(value: 1.725, child: Text('高强度活动')),
-                DropdownMenuItem(value: 1.9, child: Text('极度活动')),
-              ],
-              onChanged: (v) => setState(() => _activity = v!),
-            ),
-            DropdownButtonFormField<String>(
-              initialValue: _goal,
-              decoration: const InputDecoration(labelText: '目标'),
-              items: const [
-                DropdownMenuItem(value: 'cut', child: Text('减脂')),
-                DropdownMenuItem(value: 'bulk', child: Text('增肌')),
-                DropdownMenuItem(value: 'maintain', child: Text('维持')),
-              ],
-              onChanged: (v) => setState(() => _goal = v!),
-            ),
-            if (_goal == 'cut' || _goal == 'bulk') ...[
-              const SizedBox(height: 16),
-              TextField(
-                controller: _goalRateCtrl,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: '目标速率（kg/周）',
-                  hintText: '减脂建议 0.3-0.7，增肌建议 0.18-0.45',
-                  border: OutlineInputBorder(),
+            SectionTitle('基本信息'),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    TextFormField(
+                      controller: _heightCtrl,
+                      decoration: const InputDecoration(labelText: '身高 (cm)'),
+                      keyboardType: TextInputType.number,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return '必填';
+                        if (double.tryParse(v) == null) return '请输入有效数字';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _weightCtrl,
+                      decoration: const InputDecoration(labelText: '体重 (kg)'),
+                      keyboardType: TextInputType.number,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return '必填';
+                        if (double.tryParse(v) == null) return '请输入有效数字';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _ageCtrl,
+                      decoration: const InputDecoration(labelText: '年龄'),
+                      keyboardType: TextInputType.number,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return '必填';
+                        if (int.tryParse(v) == null) return '请输入有效整数';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownMenu<String>(
+                      initialSelection: _gender,
+                      expandedInsets: EdgeInsets.zero,
+                      label: const Text('性别'),
+                      onSelected: (v) =>
+                          setState(() => _gender = v ?? 'male'),
+                      dropdownMenuEntries: const [
+                        DropdownMenuEntry(value: 'male', label: '男'),
+                        DropdownMenuEntry(value: 'female', label: '女'),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _bodyFatCtrl,
+                      decoration: const InputDecoration(
+                          labelText: '体脂率 % (可选，填了可用 Katch 公式)'),
+                      keyboardType: TextInputType.number,
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return null; // 可选字段
+                        if (double.tryParse(v) == null) return '请输入有效数字';
+                        return null;
+                      },
+                    ),
+                  ],
                 ),
               ),
-            ],
+            ),
+            SectionTitle('活动量'),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: DropdownMenu<double>(
+                  initialSelection: _activity,
+                  expandedInsets: EdgeInsets.zero,
+                  label: const Text('活动量'),
+                  onSelected: (v) =>
+                      setState(() => _activity = v ?? 1.375),
+                  dropdownMenuEntries: const [
+                    DropdownMenuEntry(value: 1.2, label: '久坐'),
+                    DropdownMenuEntry(value: 1.375, label: '轻度活动'),
+                    DropdownMenuEntry(value: 1.55, label: '中度活动'),
+                    DropdownMenuEntry(value: 1.725, label: '高强度活动'),
+                    DropdownMenuEntry(value: 1.9, label: '极度活动'),
+                  ],
+                ),
+              ),
+            ),
+            SectionTitle('目标'),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    DropdownMenu<String>(
+                      initialSelection: _goal,
+                      expandedInsets: EdgeInsets.zero,
+                      label: const Text('目标'),
+                      onSelected: (v) =>
+                          setState(() => _goal = v ?? 'maintain'),
+                      dropdownMenuEntries: const [
+                        DropdownMenuEntry(value: 'cut', label: '减脂'),
+                        DropdownMenuEntry(value: 'bulk', label: '增肌'),
+                        DropdownMenuEntry(value: 'maintain', label: '维持'),
+                      ],
+                    ),
+                    if (_goal == 'cut' || _goal == 'bulk') ...[
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _goalRateCtrl,
+                        keyboardType:
+                            const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: '目标速率（kg/周）',
+                          hintText: '减脂建议 0.3-0.7，增肌建议 0.18-0.45',
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 24),
             FilledButton(
               onPressed: _save,

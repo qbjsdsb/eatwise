@@ -10,8 +10,16 @@ import 'package:flutter_test/flutter_test.dart';
 /// - 减脂/增肌时显示「目标速率」输入
 /// - 维持时不显示
 /// databaseProvider override 为内存 DB（绕过 path_provider 平台插件）
+/// 注：profile 表单分组到 3 张 Card 后整体变高，用超高视口让全部内容一次性构建，
+/// 避免 ListView 懒加载截断 + scrollUntilVisible 在多 EditableText 中报
+/// "Too many elements"。改用 DropdownMenu 后需点开菜单选目标。
 void main() {
   testWidgets('减脂时显示 goal_rate 输入', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final db = EatWiseDatabase(NativeDatabase.memory());
     addTearDown(db.close);
     final container = ProviderContainer(overrides: [
@@ -25,17 +33,18 @@ void main() {
     ));
     await tester.pumpAndSettle(const Duration(seconds: 1));
 
-    // goal 是第 2 个 DropdownButtonFormField<String>（gender=第1, activity 是 double）
-    await tester.tap(find.byType(DropdownButtonFormField<String>).last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('减脂').last);
-    await tester.pumpAndSettle();
+    await _selectGoal(tester, '减脂');
 
     // 验证 goal_rate 输入显示
     expect(find.textContaining('目标速率'), findsOneWidget);
   });
 
   testWidgets('维持时不显示 goal_rate 输入', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     final db = EatWiseDatabase(NativeDatabase.memory());
     addTearDown(db.close);
     final container = ProviderContainer(overrides: [
@@ -49,13 +58,24 @@ void main() {
     ));
     await tester.pumpAndSettle(const Duration(seconds: 1));
 
-    // 选 maintain（goal 是第 2 个 DropdownButtonFormField<String>）
-    await tester.tap(find.byType(DropdownButtonFormField<String>).last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('维持').last);
-    await tester.pumpAndSettle();
+    // 选维持（默认即维持，重新选中确保状态一致）
+    await _selectGoal(tester, '维持');
 
     // 验证 goal_rate 输入不显示
     expect(find.textContaining('目标速率'), findsNothing);
   });
+}
+
+/// 选目标：goal 是第 2 个 `DropdownMenu<String>`（gender 第1；activity 是 double）。
+/// tall viewport 下目标菜单已可见，直接点开菜单选目标。
+Future<void> _selectGoal(WidgetTester tester, String label) async {
+  final goalMenu = find.byType(DropdownMenu<String>).last;
+  // 点开菜单：点 trailing 图标（arrow_drop_down）
+  await tester.tap(find
+      .descendant(of: goalMenu, matching: find.byIcon(Icons.arrow_drop_down))
+      .first);
+  await tester.pumpAndSettle();
+  // 点弹窗中的目标项（弹窗 list 中该项文本）
+  await tester.tap(find.text(label).last);
+  await tester.pumpAndSettle();
 }
