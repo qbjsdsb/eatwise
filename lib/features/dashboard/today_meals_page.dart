@@ -12,7 +12,8 @@ import '../recognize/providers.dart' as recognize;
 
 /// 今日记录页（按餐次分组 + 编辑份量 + 删除 + 识别反馈）
 class TodayMealsPage extends ConsumerStatefulWidget {
-  const TodayMealsPage({super.key});
+  const TodayMealsPage({super.key, this.embedded = false});
+  final bool embedded;
   @override
   ConsumerState<TodayMealsPage> createState() => _TodayMealsPageState();
 }
@@ -53,7 +54,10 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        appBar: widget.embedded ? null : AppBar(title: const Text('今日记录')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
     // 按餐次分组
     final groups = <String, List<MealLog>>{};
@@ -69,7 +73,7 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     };
 
     return Scaffold(
-      appBar: AppBar(title: const Text('今日记录')),
+      appBar: widget.embedded ? null : AppBar(title: const Text('今日记录')),
       body: _meals.isEmpty
           ? const Center(child: Text('今日暂无记录，去拍一张吧'))
           : ListView(

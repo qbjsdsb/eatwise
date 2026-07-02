@@ -15,37 +15,35 @@ class RecordsTabPage extends StatefulWidget {
 class _RecordsTabPageState extends State<RecordsTabPage> {
   int _index = 0;
 
+  static const _titles = ['今日明细', '体重', '食物库'];
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar.large(title: const Text('记录')),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: SegmentedButton<int>(
-                segments: const [
-                  ButtonSegment(value: 0, label: Text('今日明细')),
-                  ButtonSegment(value: 1, label: Text('体重')),
-                  ButtonSegment(value: 2, label: Text('食物库')),
-                ],
-                selected: {_index},
-                onSelectionChanged: (v) => setState(() => _index = v.first),
-              ),
-            ),
-          ),
-          SliverFillRemaining(
-            hasScrollBody: true,
-            child: IndexedStack(
-              index: _index,
-              children: const [
-                TodayMealsPage(),
-                WeightPage(),
-                FoodLibraryPage(),
+      appBar: AppBar(
+        title: Text(_titles[_index]),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(56),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(value: 0, label: Text('今日明细')),
+                ButtonSegment(value: 1, label: Text('体重')),
+                ButtonSegment(value: 2, label: Text('食物库')),
               ],
+              selected: {_index},
+              onSelectionChanged: (v) => setState(() => _index = v.first),
             ),
           ),
+        ),
+      ),
+      body: IndexedStack(
+        index: _index,
+        children: const [
+          TodayMealsPage(embedded: true),
+          WeightPage(embedded: true),
+          FoodLibraryPage(embedded: true),
         ],
       ),
     );

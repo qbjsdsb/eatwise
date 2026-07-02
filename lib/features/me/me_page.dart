@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/database/database.dart';
@@ -37,7 +38,8 @@ class _MePageState extends ConsumerState<MePage> {
 
   /// 跳转子页，返回后刷新用户卡片
   Future<void> _pushAndRefresh(Widget page) async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    await Navigator.of(context, rootNavigator: true)
+        .push(MaterialPageRoute(builder: (_) => page));
     _refresh();
   }
 
@@ -52,6 +54,26 @@ class _MePageState extends ConsumerState<MePage> {
             child: FutureBuilder<Profile>(
               future: _future,
               builder: (context, snap) {
+                if (snap.hasError) {
+                  return Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.error_outline, size: 48),
+                          const SizedBox(height: 16),
+                          const Text('数据加载失败'),
+                          const SizedBox(height: 8),
+                          FilledButton(
+                            onPressed: _refresh,
+                            child: const Text('重试'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
                 if (!snap.hasData) {
                   return const Padding(
                     padding: EdgeInsets.all(32),
@@ -155,7 +177,7 @@ class _MePageState extends ConsumerState<MePage> {
                 _listItem(
                   Icons.privacy_tip_outlined,
                   '隐私政策',
-                  () => _showPrivacy(context),
+                  () => _showPrivacy(),
                 ),
               ]),
               const SizedBox(height: 32),
@@ -244,9 +266,24 @@ class _MePageState extends ConsumerState<MePage> {
     );
   }
 
-  Future<void> _showPrivacy(BuildContext context) async {
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => const SettingsPage(),
-    ));
+  Future<void> _showPrivacy() async {
+    final text = await rootBundle.loadString('assets/privacy_policy.md');
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('隐私政策'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(child: Text(text)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
   }
 }

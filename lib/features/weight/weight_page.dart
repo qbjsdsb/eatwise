@@ -11,7 +11,8 @@ import '../recognize/providers.dart' as recognize;
 
 /// 体重记录页：录入体重 + fl_chart 折线趋势图
 class WeightPage extends ConsumerStatefulWidget {
-  const WeightPage({super.key});
+  const WeightPage({super.key, this.embedded = false});
+  final bool embedded;
   @override
   ConsumerState<WeightPage> createState() => _WeightPageState();
 }
@@ -59,10 +60,13 @@ class _WeightPageState extends ConsumerState<WeightPage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        appBar: widget.embedded ? null : AppBar(title: const Text('体重记录')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('体重记录')),
+      appBar: widget.embedded ? null : AppBar(title: const Text('体重记录')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [

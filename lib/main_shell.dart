@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
-import 'features/recognize/recognize_page.dart';
-
 /// 主壳层：底部导航 + 居中 FAB（拍照）
 /// 4 tab（今日/记录/洞察/我的）+ FAB 短按直接进拍照页
 class MainShell extends StatelessWidget {
@@ -58,8 +56,6 @@ class MainShell extends StatelessWidget {
 
   /// FAB 短按：直接进拍照页
   void _onFabTap(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const RecognizePage()),
-    );
+    context.push('/recognize');
   }
 }

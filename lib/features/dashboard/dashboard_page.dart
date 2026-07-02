@@ -308,6 +308,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
       groups.putIfAbsent(m.mealType, () => []).add(m);
     }
     final mealOrder = ['breakfast', 'lunch', 'dinner', 'snack'];
+    // 先算出最后一个有记录的餐次
+    final presentMealTypes =
+        mealOrder.where((mt) => groups[mt] != null).toList();
+    final lastPresentMt =
+        presentMealTypes.isEmpty ? null : presentMealTypes.last;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -346,7 +351,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                             style: TextStyle(
                                 fontSize: 13, color: cs.onSurfaceVariant)),
                       ),
-                      if (m != groups[mt]!.last || mt != mealOrder.last)
+                      // 只在非"最后一条记录"时显示分割线
+                      if (!(m == groups[mt]!.last && mt == lastPresentMt))
                         Divider(height: 1, indent: 56, color: cs.outlineVariant),
                     ],
               ],

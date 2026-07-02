@@ -12,8 +12,9 @@ import 'food_edit_page.dart';
 /// pickForReuse=true: 从手动录入页跳来选食物复用，pop 返回选中 FoodItem
 /// pickForReuse=false: 普通浏览，点击进编辑页
 class FoodLibraryPage extends ConsumerStatefulWidget {
-  const FoodLibraryPage({super.key, this.pickForReuse = false});
+  const FoodLibraryPage({super.key, this.pickForReuse = false, this.embedded = false});
   final bool pickForReuse;
+  final bool embedded;
 
   @override
   ConsumerState<FoodLibraryPage> createState() => _FoodLibraryPageState();
@@ -79,7 +80,7 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
   Widget build(BuildContext context) {
     final list = _searching ? _searchResults : _frequent;
     return Scaffold(
-      appBar: AppBar(title: const Text('食物库')),
+      appBar: widget.embedded ? null : AppBar(title: const Text('食物库')),
       body: Column(
         children: [
           Padding(
