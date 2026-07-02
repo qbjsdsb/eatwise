@@ -9,6 +9,8 @@ import 'background/background_dispatcher.dart';
 import 'background/background_tasks.dart';
 import 'core/config/app_config.dart';
 import 'core/error/sentry_init.dart';
+import 'data/backup/image_cleanup.dart';
+import 'data/database/database.dart';
 import 'features/offline/offline_queue_controller.dart';
 
 void main() async {
@@ -35,6 +37,17 @@ void main() async {
     await offlineQueue.start();
   } catch (e) {
     debugPrint('OfflineQueueController.start 失败：$e');
+  }
+
+  // T47：启动时前台异步清理图片积压（设计 9.4：>50 项触发）
+  try {
+    final db = await container.read(databaseProvider.future);
+    // 不 await，不阻塞启动（前台异步）
+    ImageCleanup.runIfBacklogLarge(db).catchError((e) {
+      debugPrint('ImageCleanup 启动清理失败：$e');
+    });
+  } catch (e) {
+    debugPrint('ImageCleanup 初始化失败：$e');
   }
 
   // 初始化 Sentry 并获取包裹后的 app（T17）
