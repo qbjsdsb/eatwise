@@ -65,6 +65,10 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
           String imagePath, String mealType, String date, String promptVersion)?
       _onOfflineEnqueue;
 
+  // T36：L3 转手动录入回调（page 注入，非 retryable 错误时跳 ManualEntryPage）
+  // 为 null 时仅置 error 状态，向后兼容
+  final void Function()? _onL3Fallback;
+
   // T23：本地限流（每分钟最多 2 次，间隔 30s，防误触连点烧 token）
   DateTime? _lastRecognizeTime;
   static const _minInterval = Duration(seconds: 30);
@@ -76,7 +80,9 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
     Future<void> Function(
             String imagePath, String mealType, String date, String promptVersion)?
         onOfflineEnqueue,
+    void Function()? onL3Fallback,
   })  : _onOfflineEnqueue = onOfflineEnqueue,
+        _onL3Fallback = onL3Fallback,
         super(RecognizeUiState());
 
   /// 当前状态（供外部一次性读取，避免直接访问 StateNotifier 的 protected state）
@@ -88,6 +94,9 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   @visibleForTesting
   Future<void> Function(String, String, String, String)? get onOfflineEnqueueForTest =>
       _onOfflineEnqueue;
+
+  @visibleForTesting
+  void Function()? get onL3FallbackForTest => _onL3Fallback;
 
   /// 拍照入口
   /// Sprint 2 T0：新增 mealType 参数（breakfast/lunch/dinner/snack）
@@ -134,16 +143,46 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
 
       final imageBase64 = base64Encode(compressedBytes);
 
-      // 调 Vision API（主→备降级）
+      // 调 Vision API（L1 重试 + L2 切备 + L3 转手动 容灾链路）
       state = state.copyWith(state: RecognizeState.recognizing);
       _lastRecognizeTime = DateTime.now(); // T23 限流：记录本次识别时间
       VisionRecognitionResult result;
       try {
         result = await _primaryProvider.recognize(imageBase64);
-      } catch (e) {
-        if (_fallbackProvider == null) rethrow;
-        // 主失败，转备
-        result = await _fallbackProvider.recognize(imageBase64);
+      } on VisionRecognitionException catch (e) {
+        // 🚨 T36 关键设计（第2轮 Self-Review 修正）：
+        // - retryable 错误（网络/超时/5xx/429 重试失败）必须 rethrow 走【外层 catch 离线入队】
+        //   （保留 Sprint 2 T14 P0 离线拍照入队功能）
+        // - 只有非 retryable（malformed JSON / 401 / 403）才 L3 转手动
+        // - 不能让 L3 吞掉 retryable 错误（否则离线拍照队列会被杀死）
+        if (e.retryAfter != null && e.retryAfter!.inSeconds <= 60) {
+          // 429：等待 Retry-After 后 L1 重试一次（上限 60s 避免卡死 UI）
+          await Future.delayed(e.retryAfter!);
+          try {
+            result = await _primaryProvider.recognize(imageBase64);
+            // L1 重试成功
+          } catch (_) {
+            // L1 重试失败 → L2 切备（无备则 rethrow 走外层离线入队）
+            if (_fallbackProvider == null) rethrow;
+            try {
+              result = await _fallbackProvider.recognize(imageBase64);
+            } catch (_) {
+              rethrow; // L2 失败 → 外层离线入队（429 稍后恢复，入队重试合理）
+            }
+          }
+        } else if (!e.retryable) {
+          // 非 retryable（malformed JSON / 401 / 403）→ L3 转手动（重试或入队都无法解决）
+          _triggerL3Fallback();
+          return;
+        } else {
+          // retryable 非 429（网络/超时/5xx）→ L2 切备，失败 rethrow 走外层离线入队
+          if (_fallbackProvider == null) rethrow;
+          try {
+            result = await _fallbackProvider.recognize(imageBase64);
+          } catch (_) {
+            rethrow; // L2 失败 → 外层离线入队（保留 Sprint 2 T14）
+          }
+        }
       }
 
       // 查库回填营养素
@@ -193,6 +232,24 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         }
       }
       state = state.copyWith(state: RecognizeState.error, errorMessage: e.toString());
+    }
+  }
+
+  /// T36：L3 转手动录入触发器
+  /// 非 retryable 错误（malformed JSON / 401 / 403）调用：重试或入队都无法解决，
+  /// 引导用户转手动录入。onL3Fallback 为 null 时仅置 error 状态（向后兼容）。
+  void _triggerL3Fallback() {
+    if (_onL3Fallback != null) {
+      state = state.copyWith(
+        state: RecognizeState.error,
+        errorMessage: '识别失败，已转手动录入',
+      );
+      _onL3Fallback();
+    } else {
+      state = state.copyWith(
+        state: RecognizeState.error,
+        errorMessage: '识别失败',
+      );
     }
   }
 }

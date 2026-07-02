@@ -46,6 +46,13 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
           promptVersion: promptVersion,
         );
       },
+      onL3Fallback: () {
+        // T36：非 retryable 错误（malformed/401/403）→ 跳手动录入页
+        if (!mounted) return;
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => const ManualEntryPage(),
+        ));
+      },
     );
     return _controller!;
   }

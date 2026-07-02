@@ -85,6 +85,7 @@ class QwenVlProvider implements VisionProvider {
       throw VisionRecognitionException(
         '限流 429${waitSec != null ? "，Retry-After: ${waitSec}s" : ""}',
         retryable: true,
+        retryAfter: e.retryAfter, // 透传 Duration 给上层 L1 等待重试
       );
     } on AuthenticationException catch (e) {
       // 401：key 失效，引导到设置页（设计文档 3.2 节，非 retryable）
