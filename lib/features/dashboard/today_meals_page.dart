@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ai/prompts.dart';
 import '../../data/database/database.dart';
+import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/pending_recognition_repository.dart';
 import '../../data/repositories/recognition_feedback_repository.dart';
 import '../recognize/providers.dart' as recognize;
@@ -19,6 +20,7 @@ class TodayMealsPage extends ConsumerStatefulWidget {
 class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   late final String _today;
   List<MealLog> _meals = [];
+  Map<int, String> _foodNames = {};
   bool _loading = true;
 
   @override
@@ -31,8 +33,20 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   }
 
   Future<void> _load() async {
-    final repo = await ref.read(recognize.mealLogRepoProvider.future);
-    _meals = await repo.getMealsByDate(_today);
+    final mealRepo = await ref.read(recognize.mealLogRepoProvider.future);
+    final meals = await mealRepo.getMealsByDate(_today);
+    // 批量反查食物名
+    final db = await ref.read(recognize.databaseProvider.future);
+    final foodRepo = FoodItemRepository(db);
+    final names = <int, String>{};
+    for (final m in meals) {
+      if (!names.containsKey(m.foodItemId)) {
+        final food = await foodRepo.getById(m.foodItemId);
+        names[m.foodItemId] = food?.name ?? '食物 #${m.foodItemId}';
+      }
+    }
+    _meals = meals;
+    _foodNames = names;
     if (mounted) setState(() => _loading = false);
   }
 
@@ -108,7 +122,7 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
                     Icons.broken_image_outlined,
                     color: Colors.grey))
             : const Icon(Icons.restaurant_outlined, color: Colors.grey),
-        title: Text('食物ID ${m.foodItemId}'), // MVP：显示 ID（T9 食物库可反查名称）
+        title: Text(_foodNames[m.foodItemId] ?? '食物 #${m.foodItemId}'),
         subtitle: Text(
             '${m.actualServingG.toStringAsFixed(0)}g · ${m.actualCalories.toStringAsFixed(0)} kcal'),
         trailing: m.recognitionConfidence != null
