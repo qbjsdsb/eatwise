@@ -1,3 +1,4 @@
+import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -20,6 +21,10 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   bool _loading = false;
   late String _weekStart;
   late String _weekEnd;
+  // 本周聚合数据（供 fl_chart 折线图渲染）
+  List<double> _dailyCal = []; // 本周每日热量（周一~周日，7 元素）
+  List<double> _dailyWeight = []; // 本周每日体重（按 weight_log 记录顺序）
+  int _targetCal = 2000; // 目标热量（读自 profile.dailyCalorieTarget）
 
   @override
   void initState() {
@@ -35,7 +40,49 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   String _fmt(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  /// 聚合本周数据（热量按日 + 体重序列 + 目标热量），供图表与 AI 生成共用。
+  /// 结果同时写入 state 字段 _dailyCal/_dailyWeight/_targetCal，避免重复查询。
+  Future<({List<double> dailyCal, List<double> dailyWeight, int targetCal, String goal})>
+      _aggregateWeek() async {
+    final db = await ref.read(recognize.databaseProvider.future);
+    final mealRepo = MealLogRepository(db);
+    final weightRepo = WeightLogRepository(db);
+    final profileRepo = ProfileRepository(db);
+
+    final meals = await mealRepo.getRange(_weekStart, _weekEnd);
+    final weights = await weightRepo.getRange(_weekStart, _weekEnd);
+    final profile = await profileRepo.get();
+
+    // 按日聚合热量（周一~周日 7 天）
+    final dailyCal = <double>[];
+    for (var i = 0; i < 7; i++) {
+      final date = _fmt(DateTime.parse(_weekStart).add(Duration(days: i)));
+      final cal = meals
+          .where((m) => m.date == date)
+          .fold<double>(0, (s, m) => s + m.actualCalories);
+      dailyCal.add(cal);
+    }
+    final dailyWeight = weights.map((w) => w.weightKg).toList();
+    final targetCal = profile.dailyCalorieTarget;
+
+    if (mounted) {
+      setState(() {
+        _dailyCal = dailyCal;
+        _dailyWeight = dailyWeight;
+        _targetCal = targetCal;
+      });
+    }
+    return (
+      dailyCal: dailyCal,
+      dailyWeight: dailyWeight,
+      targetCal: targetCal,
+      goal: profile.goal,
+    );
+  }
+
   Future<void> _loadExisting() async {
+    // 先聚合本周数据填充图表 state 字段（_dailyCal/_dailyWeight/_targetCal）
+    await _aggregateWeek();
     final db = await ref.read(recognize.databaseProvider.future);
     final repo = InsightRepository(db);
     final existing = await repo.find('weekly', _weekStart, _weekEnd);
@@ -48,25 +95,8 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     if (!mounted) return;
     setState(() => _loading = true);
     try {
-      final db = await ref.read(recognize.databaseProvider.future);
-      final mealRepo = MealLogRepository(db);
-      final weightRepo = WeightLogRepository(db);
-      final profileRepo = ProfileRepository(db);
-
-      final meals = await mealRepo.getRange(_weekStart, _weekEnd);
-      final weights = await weightRepo.getRange(_weekStart, _weekEnd);
-      final profile = await profileRepo.get();
-
-      // 按日聚合热量
-      final dailyCal = <double>[];
-      for (var i = 0; i < 7; i++) {
-        final date = _fmt(DateTime.parse(_weekStart).add(Duration(days: i)));
-        final cal = meals
-            .where((m) => m.date == date)
-            .fold<double>(0, (s, m) => s + m.actualCalories);
-        dailyCal.add(cal);
-      }
-      final dailyWeight = weights.map((w) => w.weightKg).toList();
+      // 复用 _aggregateWeek 的聚合结果（避免重复查询，同时刷新图表 state）
+      final agg = await _aggregateWeek();
 
       final apiKey = ref.read(recognize.glmApiKeyProvider);
       final baseUrl = ref.read(recognize.glmBaseUrlProvider);
@@ -82,12 +112,13 @@ class _InsightPageState extends ConsumerState<InsightPage> {
             : baseUrl,
       );
       final text = await provider.generateWeeklySummary({
-        'daily_calories': dailyCal,
-        'daily_weights': dailyWeight,
-        'target_calories': profile.dailyCalorieTarget,
-        'goal': profile.goal,
+        'daily_calories': agg.dailyCal,
+        'daily_weights': agg.dailyWeight,
+        'target_calories': agg.targetCal,
+        'goal': agg.goal,
       });
 
+      final db = await ref.read(recognize.databaseProvider.future);
       final insightRepo = InsightRepository(db);
       await insightRepo.regenerate(
         periodType: 'weekly',
@@ -155,6 +186,16 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // 周热量折线图（含目标/均值参考线）
+          if (_dailyCal.isNotEmpty) ...[
+            SizedBox(height: 200, child: _buildCaloriesChart()),
+            const SizedBox(height: 16),
+          ],
+          // 体重趋势折线图（至少 2 条记录才渲染）
+          if (_dailyWeight.length >= 2) ...[
+            SizedBox(height: 150, child: _buildWeightChart()),
+            const SizedBox(height: 16),
+          ],
           if (_summary != null)
             Card(
               child: Padding(
@@ -181,5 +222,131 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         ],
       ),
     );
+  }
+
+  /// 周热量折线图：每日摄入 + 目标热量参考线 + 均值参考线
+  Widget _buildCaloriesChart() {
+    final spots = <FlSpot>[];
+    for (var i = 0; i < _dailyCal.length; i++) {
+      spots.add(FlSpot(i.toDouble(), _dailyCal[i]));
+    }
+    final maxCal = _dailyCal.reduce((a, b) => a > b ? a : b);
+    final avgCal = _dailyCal.reduce((a, b) => a + b) / _dailyCal.length;
+
+    return LineChart(LineChartData(
+      gridData: const FlGridData(show: true),
+      borderData: FlBorderData(
+        show: true,
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      minX: 0,
+      maxX: (_dailyCal.length - 1).toDouble(),
+      minY: 0,
+      maxY: maxCal * 1.2,
+      titlesData: FlTitlesData(
+        bottomTitles: AxisTitles(
+          sideTitles: SideTitles(
+            showTitles: true,
+            getTitlesWidget: (value, meta) {
+              const days = ['一', '二', '三', '四', '五', '六', '日'];
+              final idx = value.toInt();
+              if (idx < 0 || idx >= days.length) {
+                return const SizedBox.shrink();
+              }
+              return Text(days[idx], style: const TextStyle(fontSize: 10));
+            },
+          ),
+        ),
+        leftTitles: const AxisTitles(
+          sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+        ),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles:
+            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+      ),
+      extraLinesData: ExtraLinesData(
+        horizontalLines: [
+          // 目标热量参考线
+          HorizontalLine(
+            y: _targetCal.toDouble(),
+            color: Colors.green,
+            strokeWidth: 1,
+            dashArray: [5, 5],
+            label: HorizontalLineLabel(
+              show: true,
+              alignment: Alignment.topRight,
+              style: const TextStyle(fontSize: 9, color: Colors.green),
+              labelResolver: (_) => '目标 $_targetCal',
+            ),
+          ),
+          // 平均线
+          HorizontalLine(
+            y: avgCal,
+            color: Colors.orange,
+            strokeWidth: 1,
+            dashArray: [5, 5],
+            label: HorizontalLineLabel(
+              show: true,
+              alignment: Alignment.bottomRight,
+              style: const TextStyle(fontSize: 9, color: Colors.orange),
+              labelResolver: (_) => '均值 ${avgCal.round()}',
+            ),
+          ),
+        ],
+      ),
+      lineBarsData: [
+        LineChartBarData(
+          spots: spots,
+          isCurved: true,
+          color: Colors.blue,
+          barWidth: 3,
+          dotData: const FlDotData(show: true),
+          belowBarData: BarAreaData(
+            show: true,
+            color: Colors.blue.withValues(alpha: 0.1),
+          ),
+        ),
+      ],
+    ));
+  }
+
+  /// 体重趋势折线图
+  Widget _buildWeightChart() {
+    final spots = <FlSpot>[];
+    for (var i = 0; i < _dailyWeight.length; i++) {
+      spots.add(FlSpot(i.toDouble(), _dailyWeight[i]));
+    }
+    final minW = spots.map((s) => s.y).reduce((a, b) => a < b ? a : b);
+    final maxW = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
+    final padding = (maxW - minW) * 0.1 + 0.5;
+
+    return LineChart(LineChartData(
+      gridData: const FlGridData(show: false),
+      borderData: FlBorderData(
+        show: true,
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      minX: 0,
+      maxX: (_dailyWeight.length - 1).toDouble(),
+      minY: minW - padding,
+      maxY: maxW + padding,
+      titlesData: const FlTitlesData(
+        bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        leftTitles: AxisTitles(
+          sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+        ),
+        topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+      ),
+      lineBarsData: [
+        LineChartBarData(
+          spots: spots,
+          isCurved: true,
+          color: Colors.purple,
+          barWidth: 2,
+          dotData: const FlDotData(show: true),
+        ),
+      ],
+    ));
   }
 }
