@@ -38,6 +38,21 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     _recFuture = _loadRecommendations();
   }
 
+  /// 从子页面返回后刷新主数据 + 推荐
+  void _refresh() {
+    if (!mounted) return;
+    setState(() {
+      _future = _loadData();
+      _recFuture = _loadRecommendations();
+    });
+  }
+
+  /// 跳转子页面，返回后自动刷新数据
+  Future<void> _pushAndRefresh(Widget page) async {
+    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    _refresh();
+  }
+
   Future<List<RecommendedFood>> _loadRecommendations() async {
     final db = await ref.read(recognize.databaseProvider.future);
     final foodRepo = FoodItemRepository(db);
@@ -89,29 +104,17 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            onPressed: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => const SettingsPage())),
+            onPressed: () => _pushAndRefresh(const SettingsPage()),
           ),
           IconButton(
             icon: const Icon(Icons.list_alt),
-            onPressed: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => const TodayMealsPage())),
+            onPressed: () => _pushAndRefresh(const TodayMealsPage()),
           ),
         ],
       ),
       drawer: _buildDrawer(context),
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await Navigator.of(context)
-              .push(MaterialPageRoute(builder: (_) => const RecognizePage()));
-          // 返回后刷新主数据 + 推荐（拍照识别记录后热量/宏量/推荐都应更新）
-          if (mounted) {
-            setState(() {
-              _future = _loadData();
-              _recFuture = _loadRecommendations();
-            });
-          }
-        },
+        onPressed: () => _pushAndRefresh(const RecognizePage()),
         child: const Icon(Icons.add),
       ),
       body: FutureBuilder<
@@ -274,12 +277,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                           initialName: rec.food.name,
                         ),
                       ));
-                      if (mounted) {
-                        setState(() {
-                          _future = _loadData();
-                          _recFuture = _loadRecommendations();
-                        });
-                      }
+                      _refresh();
                     },
                   ),
               ],
@@ -316,9 +314,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     return ListTile(
       leading: Icon(icon),
       title: Text(title),
-      onTap: () {
+      onTap: () async {
         Navigator.of(context).pop(); // 先关 Drawer
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => pageBuilder()));
+        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => pageBuilder()));
+        _refresh(); // 返回后刷新（个人档案/体重/手动录入/备份等都会改数据）
       },
     );
   }
