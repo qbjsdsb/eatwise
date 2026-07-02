@@ -143,7 +143,6 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       if (!mounted) return;
       // v1.2 一桌多菜：additionalItems 非空 → 跳多菜列表页（每菜可校准+合并记录）
       if (state.additionalItems.isNotEmpty) {
-        final foodItemRepo = await ref.read(foodItemRepoProvider.future);
         if (!mounted) return;
         Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => MultiDishPage(
@@ -153,7 +152,6 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
             additionalItems: state.additionalItems,
             mealType: state.mealType,
             imagePath: state.imagePath,
-            foodItemRepo: foodItemRepo,
           ),
         ));
         return;

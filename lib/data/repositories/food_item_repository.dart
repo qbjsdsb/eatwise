@@ -209,6 +209,15 @@ class FoodItemRepository {
         .write(FoodItemsCompanion(defaultServingG: Value(servingG)));
   }
 
+  /// 查询全部食物（推荐算法用，遍历全库按缺口评分）
+  /// 排除 source='ai_recognized'（复合菜，无 per100g 密度，不适合推荐）
+  Future<List<FoodItem>> listAllForRecommendation() async {
+    return (_db.foodItems.select()
+          ..where((f) => f.source.isNotIn(['ai_recognized']))
+          ..orderBy([(f) => OrderingTerm.asc(f.name)]))
+        .get();
+  }
+
   /// 更新营养素（仅 ai_recognized / manual 来源允许，UI 层控制）
   Future<void> updateNutrients({
     required int id,

@@ -41,7 +41,8 @@ class VisionRecognitionResult {
         ? (json['estimated_weight_g_high'] as num).toDouble()
         : mid;
     // v1.2：解析 additional_dishes（单菜/旧响应无此字段 → 空数组）
-    // 递归但只一层：子菜的 additionalDishes 强制为空（fromJson 传空 json 自然为空）
+    // 完全递归解析（模型若违反 prompt 返回多层嵌套也会解析），但 controller 只处理第一层，
+    // 深层 additionalDishes 会被静默丢弃（prompt 规则要求子菜 additional_dishes 为空）
     final additional = ((json['additional_dishes'] as List?) ?? const [])
         .map((e) => VisionRecognitionResult.fromJson(
               e as Map<String, dynamic>,

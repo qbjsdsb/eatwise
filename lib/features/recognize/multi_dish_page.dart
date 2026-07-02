@@ -1,9 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
-import '../../data/repositories/food_item_repository.dart';
 import 'providers.dart';
 import 'recognize_controller.dart';
 
@@ -11,9 +12,6 @@ import 'recognize_controller.dart';
 ///
 /// 拍一桌菜识别出多个菜后，显示所有菜品列表，每菜可单独校准份量，
 /// 最后"全部记录"合并写入 meal_log（每菜一条记录，同餐次同日期）。
-///
-/// 设计：每菜一个 ExpansionTile，展开后内嵌校准控件（复用 CalibrationPage 的逻辑思路，
-/// 但为列表紧凑性简化为行内滑块）。主菜 + additionalDishes 全部列出。
 class MultiDishPage extends ConsumerStatefulWidget {
   final VisionRecognitionResult mainDish;
   final NutritionResult? mainSingle;
@@ -21,7 +19,6 @@ class MultiDishPage extends ConsumerStatefulWidget {
   final List<MultiDishItem> additionalItems;
   final String mealType;
   final String? imagePath;
-  final FoodItemRepository foodItemRepo;
 
   const MultiDishPage({
     super.key,
@@ -31,7 +28,6 @@ class MultiDishPage extends ConsumerStatefulWidget {
     required this.additionalItems,
     required this.mealType,
     this.imagePath,
-    required this.foodItemRepo,
   });
 
   @override
@@ -43,21 +39,27 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
   late List<double> _servings;
   // 每菜是否命中库（未命中需标红提示转手动）
   late List<bool> _hitFlags;
+  // 防重入：记录中禁止连点
+  bool _isRecording = false;
 
   @override
   void initState() {
     super.initState();
-    // 主菜 + additionalDishes 组成完整列表
+    // 主菜 + additionalDishes 组成完整列表（additionalDishes 防 >5 截断）
     final allDishes = [
       widget.mainDish,
-      ...widget.additionalItems.map((e) => e.dish),
+      ...widget.additionalItems.take(5).map((e) => e.dish),
     ];
-    _servings = allDishes.map((d) => d.estimatedWeightGMid).toList();
+    // 份量初值 clamp 到滑块范围 [0,1000] 防 Slider 越界崩溃
+    _servings = allDishes
+        .map((d) => d.estimatedWeightGMid.clamp(0.0, 1000.0))
+        .toList();
     // 命中标志：主菜 single/composite 任一非空即命中；additionalDish 同理
     _hitFlags = [
       widget.mainSingle != null || widget.mainComposite != null,
-      ...widget.additionalItems.map(
-          (e) => e.singleNutrition != null || e.compositeNutrition != null),
+      ...widget.additionalItems
+          .take(5)
+          .map((e) => e.singleNutrition != null || e.compositeNutrition != null),
     ];
   }
 
@@ -65,7 +67,7 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
   Widget build(BuildContext context) {
     final allDishes = [
       widget.mainDish,
-      ...widget.additionalItems.map((e) => e.dish),
+      ...widget.additionalItems.take(5).map((e) => e.dish),
     ];
     // 合并营养素总计（仅命中菜品）
     double totalCal = 0, totalProtein = 0, totalFat = 0, totalCarbs = 0;
@@ -107,8 +109,15 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
-                    onPressed: _recordAll,
-                    child: const Text('全部记录'),
+                    // 防重入：记录中禁用按钮
+                    onPressed: _isRecording ? null : _recordAll,
+                    child: _isRecording
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : const Text('全部记录'),
                   ),
                 ),
               ],
@@ -174,11 +183,14 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
     );
   }
 
-  /// 计算某菜当前份量的营养素（基于查库结果按比例）
+  /// 计算某菜当前份量的营养素（基于查库结果按比例缩放）
+  /// 单品和复合菜都按 ratio = serving / estimatedWeightGMid 缩放
   (double, double, double, double) _calcNutrition(
       int index, VisionRecognitionResult dish) {
     final serving = _servings[index];
-    final ratio = serving / dish.estimatedWeightGMid;
+    // 防除零：estimatedWeightGMid <= 0 时 ratio=1（用原值）
+    final mid = dish.estimatedWeightGMid;
+    final ratio = mid > 0 ? serving / mid : 1.0;
     if (index == 0) {
       // 主菜
       if (widget.mainSingle != null) {
@@ -192,7 +204,12 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
       }
       if (widget.mainComposite != null) {
         final n = widget.mainComposite!;
-        return (n.calories, n.proteinG, n.fatG, n.carbsG);
+        return (
+          n.calories * ratio,
+          n.proteinG * ratio,
+          n.fatG * ratio,
+          n.carbsG * ratio,
+        );
       }
     } else {
       // additionalDishes（index-1 对应 additionalItems）
@@ -208,7 +225,12 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
       }
       if (item.compositeNutrition != null) {
         final n = item.compositeNutrition!;
-        return (n.calories, n.proteinG, n.fatG, n.carbsG);
+        return (
+          n.calories * ratio,
+          n.proteinG * ratio,
+          n.fatG * ratio,
+          n.carbsG * ratio,
+        );
       }
     }
     return (0, 0, 0, 0);
@@ -216,78 +238,108 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
 
   /// 全部记录：对每个命中菜品写一条 meal_log（同日期同餐次）
   Future<void> _recordAll() async {
-    final mealRepo = await ref.read(mealLogRepoProvider.future);
-    final foodRepo = await ref.read(foodItemRepoProvider.future);
-    final now = DateTime.now();
-    final today =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    final allDishes = [
-      widget.mainDish,
-      ...widget.additionalItems.map((e) => e.dish),
-    ];
+    if (_isRecording) return; // 防重入
+    setState(() => _isRecording = true);
+    try {
+      final mealRepo = await ref.read(mealLogRepoProvider.future);
+      final foodRepo = await ref.read(foodItemRepoProvider.future);
+      final now = DateTime.now();
+      final today =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final allDishes = [
+        widget.mainDish,
+        ...widget.additionalItems.take(5).map((e) => e.dish),
+      ];
 
-    int recordedCount = 0;
-    double totalCal = 0;
-    for (var i = 0; i < allDishes.length; i++) {
-      if (!_hitFlags[i]) continue; // 未命中跳过
-      final dish = allDishes[i];
-      final serving = _servings[i];
-      final (cal, p, f, c) = _calcNutrition(i, dish);
+      int recordedCount = 0;
+      double totalCal = 0;
+      for (var i = 0; i < allDishes.length; i++) {
+        if (!_hitFlags[i]) continue; // 未命中跳过
+        if (!mounted) return; // 页面销毁则中止
+        final dish = allDishes[i];
+        final serving = _servings[i];
+        final (cal, p, f, c) = _calcNutrition(i, dish);
 
-      // 获取 foodItemId：单品用查库命中的 foodItemId，复合菜 upsert ai_recognized
-      int foodItemId;
-      if (i == 0) {
-        if (widget.mainSingle != null) {
-          foodItemId = widget.mainSingle!.foodItemId;
+        // 获取 foodItemId：单品用查库命中的 foodItemId，复合菜 upsert ai_recognized
+        int foodItemId;
+        if (i == 0) {
+          if (widget.mainSingle != null) {
+            foodItemId = widget.mainSingle!.foodItemId;
+          } else {
+            foodItemId = await foodRepo.upsertAiRecognized(
+              name: dish.dishName,
+              caloriesPer100g: 0,
+              proteinPer100g: 0,
+              fatPer100g: 0,
+              carbsPer100g: 0,
+              confidence: dish.confidence,
+              componentsJson: _encodeComponents(dish),
+            );
+          }
         } else {
-          foodItemId = await foodRepo.upsertAiRecognized(
-            name: dish.dishName,
-            caloriesPer100g: 0,
-            proteinPer100g: 0,
-            fatPer100g: 0,
-            carbsPer100g: 0,
-            confidence: dish.confidence,
-          );
+          final item = widget.additionalItems[i - 1];
+          if (item.singleNutrition != null) {
+            foodItemId = item.singleNutrition!.foodItemId;
+          } else {
+            foodItemId = await foodRepo.upsertAiRecognized(
+              name: dish.dishName,
+              caloriesPer100g: 0,
+              proteinPer100g: 0,
+              fatPer100g: 0,
+              carbsPer100g: 0,
+              confidence: dish.confidence,
+              componentsJson: _encodeComponents(dish),
+            );
+          }
         }
-      } else {
-        final item = widget.additionalItems[i - 1];
-        if (item.singleNutrition != null) {
-          foodItemId = item.singleNutrition!.foodItemId;
-        } else {
-          foodItemId = await foodRepo.upsertAiRecognized(
-            name: dish.dishName,
-            caloriesPer100g: 0,
-            proteinPer100g: 0,
-            fatPer100g: 0,
-            carbsPer100g: 0,
-            confidence: dish.confidence,
-          );
-        }
+
+        await mealRepo.insertMealLog(
+          date: today,
+          mealType: widget.mealType,
+          foodItemId: foodItemId,
+          actualServingG: serving,
+          actualCalories: cal,
+          actualProteinG: p,
+          actualFatG: f,
+          actualCarbsG: c,
+          originalImagePath: i == 0 ? widget.imagePath : null,
+          recognitionConfidence: dish.confidence,
+        );
+        recordedCount++;
+        totalCal += cal;
       }
 
-      await mealRepo.insertMealLog(
-        date: today,
-        mealType: widget.mealType,
-        foodItemId: foodItemId,
-        actualServingG: serving,
-        actualCalories: cal,
-        actualProteinG: p,
-        actualFatG: f,
-        actualCarbsG: c,
-        originalImagePath: i == 0 ? widget.imagePath : null,
-        recognitionConfidence: dish.confidence,
-      );
-      recordedCount++;
-      totalCal += cal;
+      if (!mounted) return;
+      if (recordedCount == 0) {
+        // 全未命中兜底：引导转手动录入
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('所有菜品均未命中库，请转手动录入')),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(
+                  '已记录 $recordedCount 道菜，合计 ${totalCal.toStringAsFixed(0)} kcal')),
+        );
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      // 异常处理：提示用户，不静默失败
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('记录失败：$e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isRecording = false);
     }
+  }
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(
-                '已记录 $recordedCount 道菜，合计 ${totalCal.toStringAsFixed(0)} kcal')),
-      );
-      Navigator.of(context).pop();
-    }
+  /// 把复合菜组分序列化为 JSON 字符串（落库 food_item.components_json 用）
+  String? _encodeComponents(VisionRecognitionResult dish) {
+    if (dish.foodComponents.isEmpty) return null;
+    return jsonEncode(dish.foodComponents
+        .map((c) => {'name': c.name, 'estimated_g': c.estimatedG})
+        .toList());
   }
 }

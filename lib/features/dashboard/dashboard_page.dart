@@ -2,8 +2,10 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/profile_repository.dart';
+import '../../nutrition/recommendation_service.dart';
 import '../backup/backup_page.dart';
 import '../food_library/food_library_page.dart';
 import '../insight/insight_page.dart';
@@ -26,11 +28,27 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   // 缓存 future 避免每次 build 重建 Future 导致反复查询 + 闪烁
   Future<({double cal, double protein, double fat, double carbs, int target, double proteinGoal, double fatGoal, double carbGoal, double weightKg})>?
       _future;
+  // C 智能推荐：独立 future，避免影响主数据加载性能
+  Future<List<RecommendedFood>>? _recFuture;
 
   @override
   void initState() {
     super.initState();
     _future = _loadData();
+    _recFuture = _loadRecommendations();
+  }
+
+  Future<List<RecommendedFood>> _loadRecommendations() async {
+    final db = await ref.read(recognize.databaseProvider.future);
+    final foodRepo = FoodItemRepository(db);
+    final mealRepo = MealLogRepository(db);
+    final profileRepo = ProfileRepository(db);
+    final service = RecommendationService(foodRepo, mealRepo, profileRepo);
+    final now = DateTime.now();
+    final today =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final remaining = await service.getDailyRemaining(today);
+    return service.recommend(remaining: remaining, limit: 5);
   }
 
   Future<({double cal, double protein, double fat, double carbs, int target, double proteinGoal, double fatGoal, double carbGoal, double weightKg})>
@@ -172,10 +190,94 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               _macroBar('蛋白质', d.protein, d.proteinGoal, Colors.blue, d.weightKg),
               _macroBar('脂肪', d.fat, d.fatGoal, Colors.orange, d.weightKg),
               _macroBar('碳水', d.carbs, d.carbGoal, Colors.purple, d.weightKg),
+              // C 智能推荐卡片
+              const SizedBox(height: 16),
+              _buildRecommendationCard(d),
             ],
           );
         },
       ),
+    );
+  }
+
+  /// C 智能推荐卡片（基于当日剩余额度推荐食物填补缺口）
+  Widget _buildRecommendationCard(
+      ({double cal, double protein, double fat, double carbs, int target, double proteinGoal, double fatGoal, double carbGoal, double weightKg}) d) {
+    return FutureBuilder<List<RecommendedFood>>(
+      future: _recFuture,
+      builder: (context, snap) {
+        if (snap.hasError) {
+          // 推荐加载失败不影响主看板，静默不显示
+          return const SizedBox.shrink();
+        }
+        if (!snap.hasData || snap.data!.isEmpty) {
+          return const SizedBox.shrink();
+        }
+        final recs = snap.data!;
+        final remain = d.target - d.cal;
+        final proteinRemain = d.proteinGoal - d.protein;
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.lightbulb_outline, size: 20, color: Colors.amber),
+                    const SizedBox(width: 8),
+                    Text('智能推荐',
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  proteinRemain > 5
+                      ? '今日还差 ${proteinRemain.toStringAsFixed(0)}g 蛋白质，推荐：'
+                      : remain > 0
+                          ? '今日还可摄入 ${remain.toStringAsFixed(0)} kcal，推荐：'
+                          : '今日热量已达标，推荐低卡食物：',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+                const SizedBox(height: 12),
+                for (final rec in recs)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(rec.food.name),
+                    subtitle: Text(
+                        '${rec.food.caloriesPer100g.toStringAsFixed(0)} kcal/100g · 蛋白 ${rec.food.proteinPer100g.toStringAsFixed(1)}g',
+                        style: const TextStyle(fontSize: 11)),
+                    trailing: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(rec.reason,
+                          style: TextStyle(fontSize: 10, color: Colors.green.shade700)),
+                    ),
+                    onTap: () async {
+                      // 点击推荐 → 跳手动录入页快速记录（预填菜名）
+                      // 返回后刷新主数据 + 推荐（用户记录后热量/宏量/推荐都应更新）
+                      await Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => ManualEntryPage(
+                          initialName: rec.food.name,
+                        ),
+                      ));
+                      if (mounted) {
+                        setState(() {
+                          _future = _loadData();
+                          _recFuture = _loadRecommendations();
+                        });
+                      }
+                    },
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 

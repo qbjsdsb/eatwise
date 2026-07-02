@@ -48,8 +48,12 @@ class _CalibrationPageState extends State<CalibrationPage> {
   void initState() {
     super.initState();
     // 智能份量校准：单品路径优先用历史中位数，无历史回退 AI 估算 mid
-    if (widget.singleNutrition != null && widget.suggestedServingG != null) {
-      _servingG = widget.suggestedServingG!;
+    // 历史中位数需 >0（0 通常是数据质量问题）且 clamp 到滑块范围 [0,1000] 防崩溃
+    final suggested = widget.suggestedServingG;
+    if (widget.singleNutrition != null &&
+        suggested != null &&
+        suggested > 0) {
+      _servingG = suggested.clamp(1.0, 1000.0);
       _usedHistoryServing = true;
     } else {
       _servingG = widget.recognitionResult.estimatedWeightGMid;
@@ -159,13 +163,16 @@ class _CalibrationPageState extends State<CalibrationPage> {
   Widget _buildNutritionPreview() {
     if (widget.singleNutrition != null) {
       // 单品路径：按总份量滑块比例重算
-      final ratio = _servingG / widget.recognitionResult.estimatedWeightGMid;
+      // 防除零：AI 返回 estimatedWeightGMid <= 0 时 ratio=1（用原值，不按比例换算）
+      final mid = widget.recognitionResult.estimatedWeightGMid;
+      final ratio = mid > 0 ? _servingG / mid : 1.0;
       final cal = widget.singleNutrition!.calories * ratio;
       final protein = widget.singleNutrition!.proteinG * ratio;
       final fat = widget.singleNutrition!.fatG * ratio;
       final carbs = widget.singleNutrition!.carbsG * ratio;
-      final lowRatio = widget.recognitionResult.estimatedWeightGLow / widget.recognitionResult.estimatedWeightGMid;
-      final highRatio = widget.recognitionResult.estimatedWeightGHigh / widget.recognitionResult.estimatedWeightGMid;
+      // 防除零：mid <= 0 时 lowRatio/highRatio = 1（不显示区间）
+      final lowRatio = mid > 0 ? widget.recognitionResult.estimatedWeightGLow / mid : 1.0;
+      final highRatio = mid > 0 ? widget.recognitionResult.estimatedWeightGHigh / mid : 1.0;
       final calRange = ' (${(cal * lowRatio).toStringAsFixed(0)}-${(cal * highRatio).toStringAsFixed(0)})';
       return _nutritionCard(cal, protein, fat, carbs, calRange: calRange);
     }
@@ -258,12 +265,13 @@ class _CalibrationPageState extends State<CalibrationPage> {
   }
 
   void _confirmOneClick() {
-    // 一键记录：用 AI 中值，不校准
-    _confirmWithServing(widget.recognitionResult.estimatedWeightGMid);
+    // 一键记录：用当前滑块值（无历史预填时 _servingG 默认就是 AI mid，行为不变；
+    // 有历史预填时用历史中位数更准，与 UI 显示一致，避免"显示历史值却记录 AI 值"的语义冲突）
+    _confirmWithServing(_servingG);
   }
 
   void _trustAi() {
-    _confirmWithServing(widget.recognitionResult.estimatedWeightGMid);
+    _confirmWithServing(_servingG);
   }
 
   void _confirmManual() {
@@ -272,7 +280,9 @@ class _CalibrationPageState extends State<CalibrationPage> {
 
   void _confirmWithServing(double servingG) {
     if (widget.singleNutrition != null) {
-      final ratio = servingG / widget.recognitionResult.estimatedWeightGMid;
+      // 防除零：AI 返回 estimatedWeightGMid <= 0 时 ratio=1
+      final mid = widget.recognitionResult.estimatedWeightGMid;
+      final ratio = mid > 0 ? servingG / mid : 1.0;
       widget.onConfirm(
         servingG,
         widget.singleNutrition!.calories * ratio,
