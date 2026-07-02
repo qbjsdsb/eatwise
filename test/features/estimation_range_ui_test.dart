@@ -42,7 +42,7 @@ void main() {
         singleNutrition: nutrition,
         foodItemRepo: FoodItemRepository(db),
         onConfirm: (servingG, calories, protein, fat, carbs,
-            {componentsSnapshot}) {},
+            {componentsSnapshot}) async {},
       ),
     ));
 

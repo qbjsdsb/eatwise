@@ -15,7 +15,7 @@ class CalibrationPage extends StatefulWidget {
   final NutritionResult? singleNutrition;
   final CompositeNutritionResult? compositeNutrition;
   final FoodItemRepository foodItemRepo;
-  final void Function(double servingG, double calories, double protein, double fat, double carbs, {String? componentsSnapshot}) onConfirm;
+  final Future<void> Function(double servingG, double calories, double protein, double fat, double carbs, {String? componentsSnapshot}) onConfirm;
   // 智能份量校准：基于历史记录的中位数（B 功能）。
   // 非空时滑块初值用它（而非 AI 估算 mid），减少手动拖滑块。
   // 仅单品路径生效；复合菜份量按组分，不走此参数。
@@ -357,18 +357,26 @@ class _CalibrationPageState extends State<CalibrationPage> {
     _confirmWithServing(_servingG);
   }
 
-  void _confirmWithServing(double servingG) {
+  Future<void> _confirmWithServing(double servingG) async {
     if (widget.singleNutrition != null) {
       // 防除零：AI 返回 estimatedWeightGMid <= 0 时 ratio=1
       final mid = widget.recognitionResult.estimatedWeightGMid;
       final ratio = mid > 0 ? servingG / mid : 1.0;
-      widget.onConfirm(
-        servingG,
-        widget.singleNutrition!.calories * ratio,
-        widget.singleNutrition!.proteinG * ratio,
-        widget.singleNutrition!.fatG * ratio,
-        widget.singleNutrition!.carbsG * ratio,
-      );
+      try {
+        await widget.onConfirm(
+          servingG,
+          widget.singleNutrition!.calories * ratio,
+          widget.singleNutrition!.proteinG * ratio,
+          widget.singleNutrition!.fatG * ratio,
+          widget.singleNutrition!.carbsG * ratio,
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('记录失败：$e')));
+        }
+        return; // 写入失败不 pop
+      }
     } else if (widget.compositeNutrition != null) {
       // 按调整后份量重算
       final composite = widget.compositeNutrition!;
@@ -385,16 +393,24 @@ class _CalibrationPageState extends State<CalibrationPage> {
       fat += oilFatPer100g * _oilG / 100;
       // 复合菜用总组分份量之和
       final totalG = _componentServings.values.fold<double>(0, (s, g) => s + g);
-      widget.onConfirm(
-        totalG,
-        cal,
-        protein,
-        fat,
-        carbs,
-        componentsSnapshot: _buildSnapshotJson(),
-      );
+      try {
+        await widget.onConfirm(
+          totalG,
+          cal,
+          protein,
+          fat,
+          carbs,
+          componentsSnapshot: _buildSnapshotJson(),
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('记录失败：$e')));
+        }
+        return; // 写入失败不 pop
+      }
     }
-    Navigator.of(context).pop();
+    if (mounted) Navigator.of(context).pop();
   }
 
   String _buildSnapshotJson() {

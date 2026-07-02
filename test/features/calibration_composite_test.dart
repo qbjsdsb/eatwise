@@ -70,7 +70,7 @@ void main() {
         recognitionResult: recognition,
         compositeNutrition: composite,
         foodItemRepo: foodRepo,
-        onConfirm: (_, __, ___, ____, _____, {componentsSnapshot}) {},
+        onConfirm: (_, __, ___, ____, _____, {componentsSnapshot}) async {},
       ),
     ));
 
@@ -112,7 +112,7 @@ void main() {
         recognitionResult: recognition,
         compositeNutrition: composite,
         foodItemRepo: foodRepo,
-        onConfirm: (_, calories, protein, __, _____, {componentsSnapshot}) {
+        onConfirm: (_, calories, protein, __, _____, {componentsSnapshot}) async {
           capturedCalories = calories;
           capturedProtein = protein;
         },
