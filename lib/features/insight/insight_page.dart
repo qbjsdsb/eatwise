@@ -68,14 +68,19 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       }
       final dailyWeight = weights.map((w) => w.weightKg).toList();
 
-      final apiKey = const String.fromEnvironment('GLM_API_KEY');
+      final apiKey = ref.read(recognize.glmApiKeyProvider);
+      final baseUrl = ref.read(recognize.glmBaseUrlProvider);
       if (apiKey.isEmpty) {
         if (!mounted) return;
-        setState(() =>
-            _summary = '未配置 GLM_API_KEY（用 --dart-define=GLM_API_KEY=xxx 启动）');
+        setState(() => _summary = '未配置 GLM API Key，请到设置页填写');
         return;
       }
-      final provider = GlmFlashProvider(apiKey: apiKey);
+      final provider = GlmFlashProvider(
+        apiKey: apiKey,
+        baseUrl: baseUrl.isEmpty
+            ? 'https://open.bigmodel.cn/api/paas/v4'
+            : baseUrl,
+      );
       final text = await provider.generateWeeklySummary({
         'daily_calories': dailyCal,
         'daily_weights': dailyWeight,
