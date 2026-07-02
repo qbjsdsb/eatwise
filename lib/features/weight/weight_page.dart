@@ -17,7 +17,7 @@ class WeightPage extends ConsumerStatefulWidget {
   ConsumerState<WeightPage> createState() => WeightPageState();
 }
 
-/// 公开 State：RecordsTabPage 通过 GlobalKey<WeightPageState> 调用 refresh()
+/// 公开 State：RecordsTabPage 通过 `GlobalKey<WeightPageState>` 调用 refresh()
 class WeightPageState extends ConsumerState<WeightPage> {
   final _weightCtrl = TextEditingController();
   List<WeightLog> _logs = [];
@@ -161,24 +161,26 @@ class WeightPageState extends ConsumerState<WeightPage> {
             reservedSize: 40,
           ),
         ),
-        topTitles: AxisTitles(
+        topTitles: const AxisTitles(
+          sideTitles: SideTitles(showTitles: false),
+        ),
+        rightTitles: AxisTitles(
           axisNameWidget: Text('kg',
               style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant)),
           sideTitles: SideTitles(
             showTitles: true,
             reservedSize: 40,
-            interval: ((maxW - minW) / 4).clamp(0.1, 10).toDouble(),
+            // 双轴：右 Y 轴显示体重刻度。interval 用热量轴单位
+            //（getTitlesWidget 收到的 value 是热量轴值，按比例反推体重）
+            interval: (calRange / 4).clamp(1, double.infinity),
             getTitlesWidget: (value, meta) {
-              // 将热量轴值反向映射回体重轴值
+              // value 是热量轴（左 Y 轴）值，反向映射回体重轴值
               final ratio = value / calRange;
               final w = wMin + (wMax - wMin) * ratio;
               return Text(w.toStringAsFixed(1),
                   style: TextStyle(fontSize: 9, color: colorScheme.onSurfaceVariant));
             },
           ),
-        ),
-        rightTitles: const AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
         ),
       ),
       lineBarsData: [

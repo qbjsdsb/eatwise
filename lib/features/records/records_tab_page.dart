@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/util/refresh_bus.dart';
 import '../dashboard/today_meals_page.dart';
 import '../food_library/food_library_page.dart';
 import '../weight/weight_page.dart';
@@ -20,6 +21,30 @@ class _RecordsTabPageState extends State<RecordsTabPage> {
   // GlobalKey 用于切换时调用子页 refresh（今日明细/体重数据随记录变化）
   final _todayMealsKey = GlobalKey<TodayMealsPageState>();
   final _weightKey = GlobalKey<WeightPageState>();
+
+  @override
+  void initState() {
+    super.initState();
+    // 监听刷新总线：拍照记录返回后刷新当前可见子页数据
+    RefreshBus.instance.addListener(_onRefreshBus);
+  }
+
+  @override
+  void dispose() {
+    RefreshBus.instance.removeListener(_onRefreshBus);
+    super.dispose();
+  }
+
+  /// 收到刷新通知：刷新当前可见的子页（IndexedStack 中非当前页用户看不到，暂不刷）
+  void _onRefreshBus() {
+    if (!mounted) return;
+    if (_index == 0) {
+      _todayMealsKey.currentState?.refresh();
+    } else if (_index == 1) {
+      _weightKey.currentState?.refresh();
+    }
+    // FoodLibraryPage 无公开 refresh（编辑返回时自行 _loadFrequent）
+  }
 
   @override
   Widget build(BuildContext context) {

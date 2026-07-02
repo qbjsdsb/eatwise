@@ -18,7 +18,7 @@ class TodayMealsPage extends ConsumerStatefulWidget {
   ConsumerState<TodayMealsPage> createState() => TodayMealsPageState();
 }
 
-/// 公开 State：RecordsTabPage 通过 GlobalKey<TodayMealsPageState> 调用 refresh()
+/// 公开 State：RecordsTabPage 通过 `GlobalKey<TodayMealsPageState>` 调用 refresh()
 class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   late final String _today;
   List<MealLog> _meals = [];
@@ -174,18 +174,28 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       servingCtrl.dispose();
     }
     if (result == null || result <= 0) return;
-    // 除零保护：原份量为 0 时直接用新值（比例 1:1 重算为 0）
-    if (m.actualServingG <= 0) return;
-    final ratio = result / m.actualServingG;
     final repo = await ref.read(recognize.mealLogRepoProvider.future);
-    await repo.updateMealLog(
-      id: m.id,
-      actualServingG: result,
-      actualCalories: m.actualCalories * ratio,
-      actualProteinG: m.actualProteinG * ratio,
-      actualFatG: m.actualFatG * ratio,
-      actualCarbsG: m.actualCarbsG * ratio,
-    );
+    if (m.actualServingG <= 0) {
+      // 原份量异常（≤0），无法按比例重算 → 直接用新份量，营养素保持原值
+      await repo.updateMealLog(
+        id: m.id,
+        actualServingG: result,
+        actualCalories: m.actualCalories,
+        actualProteinG: m.actualProteinG,
+        actualFatG: m.actualFatG,
+        actualCarbsG: m.actualCarbsG,
+      );
+    } else {
+      final ratio = result / m.actualServingG;
+      await repo.updateMealLog(
+        id: m.id,
+        actualServingG: result,
+        actualCalories: m.actualCalories * ratio,
+        actualProteinG: m.actualProteinG * ratio,
+        actualFatG: m.actualFatG * ratio,
+        actualCarbsG: m.actualCarbsG * ratio,
+      );
+    }
     if (mounted) _load();
   }
 
@@ -221,31 +231,36 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     String? correctedDishName;
     double? correctedServingG;
     if (!isCorrect) {
-      final correction = await showDialog<_CorrectionResult>(
-        context: context,
-        builder: (ctx) {
-          // 【第2轮修正】：MealLog 无 foodItemName 字段（today_meals_page.dart:125 用 _foodNames map 反查）
-          final nameCtrl = TextEditingController(text: _foodNames[m.foodItemId] ?? '');
-          final servingCtrl = TextEditingController();
-          return AlertDialog(
+      // controller 提到外层，try/finally 释放（避免泄漏）
+      final nameCtrl =
+          TextEditingController(text: _foodNames[m.foodItemId] ?? '');
+      final servingCtrl = TextEditingController();
+      try {
+        final correction = await showDialog<_CorrectionResult>(
+          context: context,
+          builder: (ctx) => AlertDialog(
             title: const Text('请输入正确信息'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 TextField(
                   controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: '正确菜名', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(
+                      labelText: '正确菜名', border: OutlineInputBorder()),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: servingCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: '正确份量(g)', border: OutlineInputBorder()),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                      labelText: '正确份量(g)', border: OutlineInputBorder()),
                 ),
               ],
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('跳过')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx), child: const Text('跳过')),
               FilledButton(
                 onPressed: () => Navigator.pop(ctx, _CorrectionResult(
                   nameCtrl.text.trim().isEmpty ? null : nameCtrl.text.trim(),
@@ -254,12 +269,15 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
                 child: const Text('提交'),
               ),
             ],
-          );
-        },
-      );
-      if (correction != null) {
-        correctedDishName = correction.name;
-        correctedServingG = correction.servingG;
+          ),
+        );
+        if (correction != null) {
+          correctedDishName = correction.name;
+          correctedServingG = correction.servingG;
+        }
+      } finally {
+        nameCtrl.dispose();
+        servingCtrl.dispose();
       }
     }
     if (!mounted) return;

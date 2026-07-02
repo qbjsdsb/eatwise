@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/util/refresh_bus.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
@@ -24,6 +25,14 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     super.initState();
     _future = _loadData();
     _recFuture = _loadRecommendations();
+    // 监听刷新总线：拍照记录返回后刷新首页数据
+    RefreshBus.instance.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    RefreshBus.instance.removeListener(_refresh);
+    super.dispose();
   }
 
   void _refresh() {
@@ -35,7 +44,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   }
 
   Future<void> _pushAndRefresh(Widget page) async {
-    await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
+    await Navigator.of(context, rootNavigator: true)
+        .push(MaterialPageRoute(builder: (_) => page));
     _refresh();
   }
 

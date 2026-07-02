@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ai/glm_flash_provider.dart';
+import '../../core/util/refresh_bus.dart';
 import '../../data/repositories/insight_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/profile_repository.dart';
@@ -31,6 +32,20 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   void initState() {
     super.initState();
     _calcPeriod();
+    _loadExisting();
+    // 监听刷新总线：拍照记录返回后刷新图表与汇总数据
+    RefreshBus.instance.addListener(_onRefreshBus);
+  }
+
+  @override
+  void dispose() {
+    RefreshBus.instance.removeListener(_onRefreshBus);
+    super.dispose();
+  }
+
+  /// 收到刷新通知：重新聚合周期数据 + 加载已有汇总
+  void _onRefreshBus() {
+    if (!mounted) return;
     _loadExisting();
   }
 
@@ -269,8 +284,8 @@ class _InsightPageState extends ConsumerState<InsightPage> {
             ),
           ),
           const SizedBox(height: 16),
-          // 热量折线图（含目标/均值参考线）
-          if (_dailyCal.isNotEmpty) ...[
+          // 热量折线图（含目标/均值参考线，至少 2 天数据才渲染）
+          if (_dailyCal.length >= 2) ...[
             SizedBox(height: 200, child: _buildCaloriesChart()),
             const SizedBox(height: 16),
           ],
