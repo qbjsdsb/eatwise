@@ -14,10 +14,11 @@ class WeightPage extends ConsumerStatefulWidget {
   const WeightPage({super.key, this.embedded = false});
   final bool embedded;
   @override
-  ConsumerState<WeightPage> createState() => _WeightPageState();
+  ConsumerState<WeightPage> createState() => WeightPageState();
 }
 
-class _WeightPageState extends ConsumerState<WeightPage> {
+/// 公开 State：RecordsTabPage 通过 GlobalKey<WeightPageState> 调用 refresh()
+class WeightPageState extends ConsumerState<WeightPage> {
   final _weightCtrl = TextEditingController();
   List<WeightLog> _logs = [];
   List<MealLog> _meals = []; // 30 天 meal_log（双轴图热量用）
@@ -29,6 +30,9 @@ class _WeightPageState extends ConsumerState<WeightPage> {
     super.initState();
     _load();
   }
+
+  /// 公开刷新方法：切换到该页时由父容器调用
+  void refresh() => _load();
 
   @override
   void dispose() {

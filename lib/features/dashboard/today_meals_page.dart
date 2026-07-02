@@ -15,10 +15,11 @@ class TodayMealsPage extends ConsumerStatefulWidget {
   const TodayMealsPage({super.key, this.embedded = false});
   final bool embedded;
   @override
-  ConsumerState<TodayMealsPage> createState() => _TodayMealsPageState();
+  ConsumerState<TodayMealsPage> createState() => TodayMealsPageState();
 }
 
-class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
+/// 公开 State：RecordsTabPage 通过 GlobalKey<TodayMealsPageState> 调用 refresh()
+class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   late final String _today;
   List<MealLog> _meals = [];
   Map<int, String> _foodNames = {};
@@ -32,6 +33,9 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     _load();
   }
+
+  /// 公开刷新方法：切换到该页时由父容器调用
+  void refresh() => _load();
 
   Future<void> _load() async {
     final mealRepo = await ref.read(recognize.mealLogRepoProvider.future);

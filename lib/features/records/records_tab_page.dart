@@ -5,7 +5,7 @@ import '../food_library/food_library_page.dart';
 import '../weight/weight_page.dart';
 
 /// 记录 tab 容器页：SegmentedButton 切换 今日明细 / 体重 / 食物库
-/// 用 IndexedStack 保留 3 子视图状态
+/// 用 IndexedStack 保留 3 子视图状态，切换时刷新对应页数据
 class RecordsTabPage extends StatefulWidget {
   const RecordsTabPage({super.key});
   @override
@@ -16,6 +16,10 @@ class _RecordsTabPageState extends State<RecordsTabPage> {
   int _index = 0;
 
   static const _titles = ['今日明细', '体重', '食物库'];
+
+  // GlobalKey 用于切换时调用子页 refresh（今日明细/体重数据随记录变化）
+  final _todayMealsKey = GlobalKey<TodayMealsPageState>();
+  final _weightKey = GlobalKey<WeightPageState>();
 
   @override
   Widget build(BuildContext context) {
@@ -33,17 +37,25 @@ class _RecordsTabPageState extends State<RecordsTabPage> {
                 ButtonSegment(value: 2, label: Text('食物库')),
               ],
               selected: {_index},
-              onSelectionChanged: (v) => setState(() => _index = v.first),
+              onSelectionChanged: (v) {
+                setState(() => _index = v.first);
+                // 切换到对应页时刷新数据（拍照记录后切回可见最新）
+                if (_index == 0) {
+                  _todayMealsKey.currentState?.refresh();
+                } else if (_index == 1) {
+                  _weightKey.currentState?.refresh();
+                }
+              },
             ),
           ),
         ),
       ),
       body: IndexedStack(
         index: _index,
-        children: const [
-          TodayMealsPage(embedded: true),
-          WeightPage(embedded: true),
-          FoodLibraryPage(embedded: true),
+        children: [
+          TodayMealsPage(embedded: true, key: _todayMealsKey),
+          WeightPage(embedded: true, key: _weightKey),
+          const FoodLibraryPage(embedded: true),
         ],
       ),
     );
