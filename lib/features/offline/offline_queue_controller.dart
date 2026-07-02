@@ -20,6 +20,7 @@ import '../recognize/providers.dart' as recognize;
 class OfflineQueueController {
   final EatWiseDatabase _db;
   final VisionProvider _visionProvider;
+  final VisionProvider? _fallbackProvider;
   final NutritionLookup _nutritionLookup;
   StreamSubscription<List<ConnectivityResult>>? _sub;
   bool _wasOffline = true;
@@ -28,9 +29,11 @@ class OfflineQueueController {
   OfflineQueueController({
     required EatWiseDatabase db,
     required VisionProvider visionProvider,
+    VisionProvider? fallbackProvider,
     required NutritionLookup nutritionLookup,
   })  : _db = db,
         _visionProvider = visionProvider,
+        _fallbackProvider = fallbackProvider,
         _nutritionLookup = nutritionLookup;
 
   /// 启动监听（App 启动时调用）
@@ -81,45 +84,96 @@ class OfflineQueueController {
           final imageBase64 = base64Encode(await imageFile.readAsBytes());
 
           // 调视觉模型（30s 超时，避免单条卡死整队列）
-          final result = await _visionProvider
-              .recognize(imageBase64)
-              .timeout(const Duration(seconds: 30));
+          // 主失败 → fallback（与 recognize_controller.dart 主备降级一致）
+          VisionRecognitionResult result;
+          try {
+            result = await _visionProvider
+                .recognize(imageBase64)
+                .timeout(const Duration(seconds: 30));
+          } catch (e) {
+            if (_fallbackProvider == null) rethrow;
+            result = await _fallbackProvider
+                .recognize(imageBase64)
+                .timeout(const Duration(seconds: 30));
+          }
 
-          // 查库回填营养素
-          final nutrition = await _nutritionLookup.lookupSingleItem(
-            dishName: result.dishName,
-            servingG: result.estimatedWeightGMid,
-          );
+          // 查库回填营养素：区分单品 / 复合菜
+          // （修复 bug：原无条件 lookupSingleItem 导致复合菜 nutrition==null 静默丢弃）
+          int foodItemId;
+          double actualCalories, actualProteinG, actualFatG, actualCarbsG;
+          double actualServingG = result.estimatedWeightGMid;
+          String? componentsJson;
 
-          if (nutrition == null) {
-            // 查库未命中 → upsertAiRecognized 后再标记 done
+          if (result.isSingleItem) {
+            final nutrition = await _nutritionLookup.lookupSingleItem(
+              dishName: result.dishName,
+              servingG: result.estimatedWeightGMid,
+            );
+            if (nutrition == null) {
+              // 单品未命中 → upsert 0 卡 + markDone（保留原逻辑：单品无营养数据无法记录热量）
+              final foodItemRepo = FoodItemRepository(_db);
+              final foodId = await foodItemRepo.upsertAiRecognized(
+                name: result.dishName,
+                caloriesPer100g: 0,
+                proteinPer100g: 0,
+                fatPer100g: 0,
+                carbsPer100g: 0,
+                confidence: result.confidence,
+              );
+              await pendingRepo.markDone(p.id, foodId);
+              continue;
+            }
+            foodItemId = nutrition.foodItemId;
+            actualCalories = nutrition.calories;
+            actualProteinG = nutrition.proteinG;
+            actualFatG = nutrition.fatG;
+            actualCarbsG = nutrition.carbsG;
+          } else {
+            // 复合菜 → lookupCompositeDish（组分累加 + 烹饪用油）
+            final composite = await _nutritionLookup.lookupCompositeDish(
+              components: result.foodComponents,
+              cookingMethod: result.cookingMethod,
+            );
+            // 复合菜 upsert ai_recognized（存组分快照，热量在 meal_log）
             final foodItemRepo = FoodItemRepository(_db);
-            final foodId = await foodItemRepo.upsertAiRecognized(
+            componentsJson = jsonEncode({
+              'components': result.foodComponents
+                  .map((c) => {'name': c.name, 'estimated_g': c.estimatedG})
+                  .toList(),
+              'oil_g': composite.oilG,
+            });
+            foodItemId = await foodItemRepo.upsertAiRecognized(
               name: result.dishName,
-              caloriesPer100g: 0,
+              caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储
               proteinPer100g: 0,
               fatPer100g: 0,
               carbsPer100g: 0,
               confidence: result.confidence,
+              componentsJson: componentsJson,
             );
-            await pendingRepo.markDone(p.id, foodId);
-            continue;
+            actualCalories = composite.calories;
+            actualProteinG = composite.proteinG;
+            actualFatG = composite.fatG;
+            actualCarbsG = composite.carbsG;
+            actualServingG = result.foodComponents
+                .fold<double>(0, (s, c) => s + c.estimatedG);
           }
 
-          // 写 meal_log
+          // 写 meal_log（复合菜不再静默丢弃）
           await mealRepo.insertMealLog(
             date: p.date,
             mealType: p.mealType,
-            foodItemId: nutrition.foodItemId,
-            actualServingG: result.estimatedWeightGMid,
-            actualCalories: nutrition.calories,
-            actualProteinG: nutrition.proteinG,
-            actualFatG: nutrition.fatG,
-            actualCarbsG: nutrition.carbsG,
+            foodItemId: foodItemId,
+            actualServingG: actualServingG,
+            actualCalories: actualCalories,
+            actualProteinG: actualProteinG,
+            actualFatG: actualFatG,
+            actualCarbsG: actualCarbsG,
             originalImagePath: p.imagePath,
             recognitionConfidence: result.confidence,
+            componentsSnapshotJson: componentsJson,
           );
-          await pendingRepo.markDone(p.id, nutrition.foodItemId);
+          await pendingRepo.markDone(p.id, foodItemId);
         } catch (e) {
           await pendingRepo.markFailed(p.id, e.toString());
         }
@@ -138,10 +192,12 @@ final offlineQueueControllerProvider =
     FutureProvider<OfflineQueueController>((ref) async {
   final db = await ref.read(recognize.databaseProvider.future);
   final qwen = ref.read(recognize.qwenVlProviderProvider);
+  final glm4v = ref.read(recognize.glm4vProviderProvider);
   final lookup = await ref.read(recognize.nutritionLookupProvider.future);
   final controller = OfflineQueueController(
     db: db,
     visionProvider: qwen,
+    fallbackProvider: glm4v,
     nutritionLookup: lookup,
   );
   // Provider 销毁时停止 connectivity 订阅，避免 StreamSubscription 泄漏
