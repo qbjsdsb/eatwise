@@ -1,4 +1,5 @@
 import 'package:eatwise/data/repositories/food_item_repository.dart';
+import 'off_provider.dart';
 import 'vision_provider.dart';
 
 /// 烹饪方式用油系数表（设计文档 3.1 节）
@@ -22,26 +23,57 @@ const oilFatPer100g = 99.9;
 
 class NutritionLookup {
   final FoodItemRepository _repo;
+  // OFF 云查兜底（可选：生产注入，测试不注入则行为同原逻辑，向后兼容）
+  final OffProvider? _offProvider;
 
-  NutritionLookup(this._repo);
+  NutritionLookup(this._repo, {OffProvider? offProvider})
+      : _offProvider = offProvider;
 
   /// 单品查库回填
+  /// 查库未命中 → OFF 云查兜底（若配置了 offProvider）→ 命中落库（source='off'）
   /// 返回 null 表示未命中（调用方转手动录入）
   Future<NutritionResult?> lookupSingleItem({
     required String dishName,
     required double servingG,
   }) async {
     final food = await _repo.findByNameOrAlias(dishName);
-    if (food == null) return null;
+    if (food != null) {
+      return NutritionResult(
+        foodItemId: food.id,
+        calories: food.caloriesPer100g * servingG / 100,
+        proteinG: food.proteinPer100g * servingG / 100,
+        fatG: food.fatPer100g * servingG / 100,
+        carbsG: food.carbsPer100g * servingG / 100,
+        oilG: 0,
+      );
+    }
 
-    return NutritionResult(
-      foodItemId: food.id,
-      calories: food.caloriesPer100g * servingG / 100,
-      proteinG: food.proteinPer100g * servingG / 100,
-      fatG: food.fatPer100g * servingG / 100,
-      carbsG: food.carbsPer100g * servingG / 100,
-      oilG: 0,
-    );
+    // miss → OFF 云查兜底
+    if (_offProvider != null) {
+      final off = await _offProvider.lookup(dishName);
+      if (off != null) {
+        // 命中落库：aliases 传菜名本身，下次同名精确命中（避免重复云查）
+        final foodId = await _repo.insertOff(
+          name: dishName,
+          caloriesPer100g: off.caloriesPer100g,
+          proteinPer100g: off.proteinPer100g,
+          fatPer100g: off.fatPer100g,
+          carbsPer100g: off.carbsPer100g,
+          defaultServingG: off.defaultServingG,
+          aliases: <String>[dishName],
+        );
+        return NutritionResult(
+          foodItemId: foodId,
+          calories: off.caloriesPer100g * servingG / 100,
+          proteinG: off.proteinPer100g * servingG / 100,
+          fatG: off.fatPer100g * servingG / 100,
+          carbsG: off.carbsPer100g * servingG / 100,
+          oilG: 0,
+        );
+      }
+    }
+
+    return null;
   }
 
   /// 复合菜组分累加 + 烹饪用油

@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../seed/food_seed_importer.dart';
 import 'connection.dart';
 import 'tables/profile_table.dart';
 import 'tables/food_item_table.dart';
@@ -23,7 +24,11 @@ part 'database.g.dart';
 ])
 class EatWiseDatabase extends _$EatWiseDatabase {
   /// 生产环境：传入 openEncryptedConnection() 的 executor
-  EatWiseDatabase(super.executor);
+  /// [seedOnCreate]：首次创建 DB 时是否自动导入食物种子库。
+  /// 默认 false（测试用 memory DB 期望空库）；生产 databaseProvider 传 true。
+  EatWiseDatabase(super.executor, {this.seedOnCreate = false});
+
+  final bool seedOnCreate;
 
   @override
   int get schemaVersion => 1;
@@ -52,6 +57,21 @@ class EatWiseDatabase extends _$EatWiseDatabase {
               fatGPerKg: 0.9,
               updatedAt: DateTime.now().millisecondsSinceEpoch,
             ));
+            // 首次创建时导入食物种子库（1664 条中国食物成分表 + 22 组别名）
+            // + 50 条品牌饮料零食（可乐/雪碧/薯片等，USDA 公开值）
+            // try-catch：导入失败绝不阻塞 DB 创建（否则 app 起不来）。
+            // 测试环境（seedOnCreate=false 或 binding 未初始化）静默跳过。
+            if (seedOnCreate) {
+              try {
+                final importer = FoodSeedImporter(this);
+                await importer.importFromAssetsFirstTime();
+                await importer.importBrandFoodsFirstTime();
+                await importer.supplementAliases();
+              } catch (_) {
+                // 测试环境 binding 未初始化 / 资源缺失 → 静默跳过（不阻塞 DB 创建）
+                // 生产环境 assets 已打包，不会走到这里
+              }
+            }
           }
         },
       );
@@ -60,7 +80,7 @@ class EatWiseDatabase extends _$EatWiseDatabase {
 /// 生产环境 Database Provider（Riverpod）
 final databaseProvider = FutureProvider<EatWiseDatabase>((ref) async {
   final executor = await openEncryptedConnection();
-  final db = EatWiseDatabase(executor);
+  final db = EatWiseDatabase(executor, seedOnCreate: true); // 生产环境首次创建导入食物种子库
   ref.onDispose(db.close);
   return db;
 });

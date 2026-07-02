@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 import 'package:eatwise/data/database/database.dart';
 
@@ -6,25 +8,113 @@ class FoodItemRepository {
 
   FoodItemRepository(this._db);
 
-  /// 按 name 或 aliases 精确匹配（解决"西红柿/番茄"同物异名）
+  /// 按 name 或 aliases 多级模糊匹配（解决"可口可乐/可乐/cola"同物异名 + 品牌前缀/量词/typo）
+  ///
+  /// 5 级优先级（防假阳性，逐级降级）：
+  /// 1. name 精确（归一化后）
+  /// 2. alias 精确（归一化后）
+  /// 3. name 双向 contains + 长度约束（防"可乐"误命中"可乐鸡翅"）
+  /// 4. alias 双向 contains + 长度约束
+  /// 5. name 编辑距离 ≤1（仅短名 ≤8 字，typo 容错，如"可东"→"可乐"）
+  ///
+  /// 归一化：去空白 + 小写（中文不受影响）。1714 条全表遍历 <50ms。
   Future<FoodItem?> findByNameOrAlias(String name) async {
-    // 先精确匹配 name
-    final byName = await (_db.foodItems.select()
-          ..where((f) => f.name.equals(name))
-          ..limit(1))
-        .getSingleOrNull();
-    if (byName != null) return byName;
+    final query = _normalize(name);
+    if (query.isEmpty) return null;
 
-    // 再遍历查 aliases_json（SQLite 无原生 JSON 查询，应用层过滤）
     final all = await _db.foodItems.select().get();
+    if (all.isEmpty) return null;
+
+    // 优先级 1：name 精确
     for (final item in all) {
-      if (item.aliasesJson == null) continue;
-      // 简单包含匹配（MVP 够用，数据量小）
-      if (item.aliasesJson!.contains('"$name"')) {
-        return item;
+      if (_normalize(item.name) == query) return item;
+    }
+    // 优先级 2：alias 精确
+    for (final item in all) {
+      for (final a in _decodeAliases(item.aliasesJson)) {
+        if (_normalize(a) == query) return item;
       }
     }
+    // 优先级 3：name 双向 contains（取长度差最小者）
+    FoodItem? containsHit;
+    int containsDiff = 1 << 30;
+    for (final item in all) {
+      final n = _normalize(item.name);
+      final diff = _containsLenDiff(query, n);
+      if (diff != null && diff < containsDiff) {
+        containsDiff = diff;
+        containsHit = item;
+      }
+    }
+    if (containsHit != null) return containsHit;
+    // 优先级 4：alias 双向 contains（首个命中即可）
+    for (final item in all) {
+      for (final a in _decodeAliases(item.aliasesJson)) {
+        if (_containsLenDiff(query, _normalize(a)) != null) return item;
+      }
+    }
+    // 优先级 5：name 编辑距离 ≤1（仅短名 typo 容错，如"可东"→"可乐"）
+    // 阈值 1 非 2：避免 2 字短名互相假阳性（如"黄瓜"→"鸡肉"编辑距离恰好 2）
+    if (query.length <= 8) {
+      FoodItem? editHit;
+      int best = 2;
+      for (final item in all) {
+        final d = _editDistance(query, _normalize(item.name));
+        if (d < best) {
+          best = d;
+          editHit = item;
+        }
+      }
+      if (editHit != null) return editHit;
+    }
     return null;
+  }
+
+  /// 归一化：去空白 + 小写
+  String _normalize(String s) => s.replaceAll(RegExp(r'\s'), '').toLowerCase();
+
+  /// 解析 aliasesJson 为字符串列表（容错）
+  List<String> _decodeAliases(String? json) {
+    if (json == null || json.isEmpty) return const [];
+    try {
+      final l = jsonDecode(json);
+      if (l is List) return l.map((e) => e.toString()).toList();
+    } catch (_) {}
+    return const [];
+  }
+
+  /// 双向 contains + 长度约束（防假阳性）
+  /// 返回长度差（小者优先）；不满足约束返回 null
+  /// 约束：长度差 ≤2 且 较长者 ≤ 较短者×2+1（防"可乐"命中"可乐鸡翅肉"等过长名）
+  int? _containsLenDiff(String query, String target) {
+    if (query.isEmpty || target.isEmpty) return null;
+    final qInT = target.contains(query);
+    final tInQ = query.contains(target);
+    if (!qInT && !tInQ) return null;
+    final diff = (target.length - query.length).abs();
+    final shorter = target.length > query.length ? query.length : target.length;
+    final longer = target.length > query.length ? target.length : query.length;
+    if (diff > 2 || longer > shorter * 2 + 1) return null;
+    return diff;
+  }
+
+  /// 莱文斯坦编辑距离（标准 DP）
+  int _editDistance(String a, String b) {
+    if (a == b) return 0;
+    if (a.isEmpty) return b.length;
+    if (b.isEmpty) return a.length;
+    final m = a.length, n = b.length;
+    final prev = List<int>.generate(n + 1, (j) => j);
+    final curr = List<int>.filled(n + 1, 0);
+    for (var i = 1; i <= m; i++) {
+      curr[0] = i;
+      for (var j = 1; j <= n; j++) {
+        final cost = a[i - 1] == b[j - 1] ? 0 : 1;
+        curr[j] = [prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost].reduce((x, y) => x < y ? x : y);
+      }
+      prev.setRange(0, n + 1, curr);
+    }
+    return prev[n];
   }
 
   /// 插入或更新（去重键 name + source）
@@ -139,6 +229,7 @@ class FoodItemRepository {
 
   /// 手动录入新食物（source='manual'）
   /// T10 手动录入页"查不到→自定义→存库"用
+  /// aliases：可选别名列表（如模型返回的原始菜名，用于自动学习，下次识别同名自动命中）
   Future<int> insertManual({
     required String name,
     required double caloriesPer100g,
@@ -146,6 +237,7 @@ class FoodItemRepository {
     required double fatPer100g,
     required double carbsPer100g,
     double defaultServingG = 100,
+    List<String>? aliases,
   }) async {
     return _db.into(_db.foodItems).insert(FoodItemsCompanion.insert(
           name: name,
@@ -154,8 +246,36 @@ class FoodItemRepository {
           proteinPer100g: proteinPer100g,
           fatPer100g: fatPer100g,
           carbsPer100g: carbsPer100g,
+          aliasesJson: Value(
+              aliases == null || aliases.isEmpty ? null : jsonEncode(aliases)),
           source: 'manual',
           sourceVersion: 'manual',
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+        ));
+  }
+
+  /// OFF 云查命中落库（source='off'）
+  /// aliases 传入菜名本身，下次同名精确命中（避免重复云查）
+  Future<int> insertOff({
+    required String name,
+    required double caloriesPer100g,
+    required double proteinPer100g,
+    required double fatPer100g,
+    required double carbsPer100g,
+    double defaultServingG = 100,
+    List<String>? aliases,
+  }) async {
+    return _db.into(_db.foodItems).insert(FoodItemsCompanion.insert(
+          name: name,
+          defaultServingG: defaultServingG,
+          caloriesPer100g: caloriesPer100g,
+          proteinPer100g: proteinPer100g,
+          fatPer100g: fatPer100g,
+          carbsPer100g: carbsPer100g,
+          aliasesJson: Value(
+              aliases == null || aliases.isEmpty ? null : jsonEncode(aliases)),
+          source: 'off',
+          sourceVersion: 'off_v1',
           createdAt: DateTime.now().millisecondsSinceEpoch,
         ));
   }

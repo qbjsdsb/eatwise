@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ai/glm_4v_provider.dart';
 import '../../ai/nutrition_lookup.dart';
+import '../../ai/off_provider.dart';
 import '../../ai/qwen_vl_provider.dart';
 import '../../core/config/app_config.dart';
 import '../../data/database/database.dart';
@@ -68,7 +69,11 @@ final mealLogRepoProvider = FutureProvider<MealLogRepository>((ref) async {
 
 final nutritionLookupProvider = FutureProvider<NutritionLookup>((ref) async {
   final repo = await ref.watch(foodItemRepoProvider.future);
-  return NutritionLookup(repo);
+  // OFF 云查兜底：闭包实时读 networkAvailableProvider（离线时跳过，省电省流量）
+  // 测试可用 override networkAvailableProvider 返回 false 模拟离线
+  Future<bool> isOnline() async =>
+      await ref.read(networkAvailableProvider.future);
+  return NutritionLookup(repo, offProvider: OffProvider(isOnline: isOnline));
 });
 
 // T37 断路器 Provider（用 SecureConfigStore 作存储后端，跨 session + 后台回补感知）

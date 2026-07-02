@@ -9,8 +9,11 @@ import '../food_library/food_library_page.dart';
 
 /// 手动录入页（兜底：搜库→选份量→记录；查不到→自定义→存库→记录）
 class ManualEntryPage extends ConsumerStatefulWidget {
-  const ManualEntryPage({super.key, this.initialName});
+  const ManualEntryPage({super.key, this.initialName, this.modelDishName});
   final String? initialName; // 从识别页转来时预填菜名
+  // 模型返回的原始菜名（用于自动学习：存为 alias，下次识别同名自动命中）
+  // 与 initialName 区别：initialName 是预填到输入框让用户改的，modelDishName 是学习用的原始值
+  final String? modelDishName;
   @override
   ConsumerState<ManualEntryPage> createState() => _ManualEntryPageState();
 }
@@ -190,12 +193,23 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
     final mealRepo = MealLogRepository(db);
 
     // 先存库（source=manual，用 T9 新增的 insertManual 方法）
+    // 自动学习：若 modelDishName 非空且与用户输入 name 不同，存为 alias，
+    // 下次模型返回同名时自动命中（无需用户再手动录入）
+    final userInputName = _nameCtrl.text.trim();
+    final modelDishName = widget.modelDishName?.trim();
+    final aliases = (modelDishName != null &&
+            modelDishName.isNotEmpty &&
+            modelDishName != userInputName)
+        ? <String>[modelDishName]
+        : null;
+
     final foodId = await foodRepo.insertManual(
-      name: _nameCtrl.text,
+      name: userInputName,
       caloriesPer100g: cal,
       proteinPer100g: protein,
       fatPer100g: fat,
       carbsPer100g: carbs,
+      aliases: aliases,
     );
 
     final ratio = serving / 100;

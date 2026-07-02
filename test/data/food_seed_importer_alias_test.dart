@@ -13,7 +13,8 @@ void main() {
   late FoodSeedImporter importer;
 
   setUp(() {
-    db = EatWiseDatabase(NativeDatabase.memory());
+    // seedOnCreate=false：测试期望空 DB，跳过 wasCreated 的种子自动导入
+    db = EatWiseDatabase(NativeDatabase.memory(), seedOnCreate: false);
     importer = FoodSeedImporter(db);
   });
   tearDown(() => db.close());

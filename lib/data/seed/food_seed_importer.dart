@@ -159,4 +159,48 @@ class FoodSeedImporter {
     final jsonList = (jsonDecode(jsonStr) as List).cast<Map<String, dynamic>>();
     return importFromJsonList(jsonList);
   }
+
+  /// 首次安装批量导入（batch 事务，跳过查重，性能优）
+  /// 仅在 food_items 表为空时调用（database wasCreated）。
+  /// importFromJsonList 逐条 select 查重 + insert，1664 条要 3300+ 次 SQL，
+  /// 首次启动卡 5-10s；本方法用 batch 一次事务提交，<1s。
+  /// 首次导入表必然空，无需查重。
+  Future<int> importFromAssetsFirstTime() async {
+    final jsonStr = await rootBundle.loadString('assets/sanotsu_common.json');
+    final jsonList = (jsonDecode(jsonStr) as List).cast<Map<String, dynamic>>();
+    final companions = parseJson(jsonList);
+    await _db.batch((b) {
+      for (final c in companions) {
+        b.insert(_db.foodItems, c);
+      }
+    });
+    return companions.length;
+  }
+
+  /// 首次安装批量导入品牌饮料/零食（assets/brand_foods.json）
+  /// 50 条高频品牌食品（可乐/雪碧/果汁/奶茶/薯片等，USDA 公开值），
+  /// 每条自带 aliases 数组（可口可乐/百事可乐/cola 等品牌别名）。
+  /// 补足 FCT 数据源无饮料类的缺口。
+  Future<int> importBrandFoodsFirstTime() async {
+    final jsonStr = await rootBundle.loadString('assets/brand_foods.json');
+    final jsonList = (jsonDecode(jsonStr) as List).cast<Map<String, dynamic>>();
+    await _db.batch((b) {
+      for (final raw in jsonList) {
+        final aliases = (raw['aliases'] as List?)?.cast<String>() ?? const [];
+        b.insert(_db.foodItems, FoodItemsCompanion.insert(
+          name: raw['name'] as String,
+          defaultServingG: (raw['defaultServingG'] as num).toDouble(),
+          caloriesPer100g: (raw['caloriesPer100g'] as num).toDouble(),
+          proteinPer100g: (raw['proteinPer100g'] as num).toDouble(),
+          fatPer100g: (raw['fatPer100g'] as num).toDouble(),
+          carbsPer100g: (raw['carbsPer100g'] as num).toDouble(),
+          aliasesJson: Value(aliases.isEmpty ? null : jsonEncode(aliases)),
+          source: 'usda_brand',
+          sourceVersion: 'usda_brand_v1',
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+        ));
+      }
+    });
+    return jsonList.length;
+  }
 }

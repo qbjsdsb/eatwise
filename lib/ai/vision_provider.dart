@@ -1,6 +1,7 @@
 /// 视觉大模型识别结果
 class VisionRecognitionResult {
   final String dishName;
+  final String brand; // v1.1：品牌名（可口可乐/乐事等，无品牌为空串）
   final double estimatedWeightGLow;
   final double estimatedWeightGMid;
   final double estimatedWeightGHigh;
@@ -20,6 +21,7 @@ class VisionRecognitionResult {
     required this.isSingleItem,
     required this.confidence,
     required this.promptVersion,
+    this.brand = '',
   });
 
   factory VisionRecognitionResult.fromJson(Map<String, dynamic> json, String promptVersion) {
@@ -33,6 +35,8 @@ class VisionRecognitionResult {
         : mid;
     return VisionRecognitionResult(
       dishName: json['dish_name'] as String,
+      // brand 可选（v1.1+），旧模型/v1.0 响应无此字段 → 空串
+      brand: (json['brand'] as String?) ?? '',
       estimatedWeightGLow: low,
       estimatedWeightGMid: mid,
       estimatedWeightGHigh: high,

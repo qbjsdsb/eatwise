@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
 import '../../core/config/app_config.dart';
 import '../../data/repositories/pending_recognition_repository.dart';
@@ -251,21 +252,41 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
 
     if (action == _NotFoundAction.manual) {
       Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ManualEntryPage(initialName: result.dishName),
+        builder: (_) => ManualEntryPage(
+          initialName: result.dishName,
+          modelDishName: result.dishName, // 自动学习：存为 alias，下次同名自动命中
+        ),
       ));
       return;
     }
 
-    // 改菜名重试
+    // 改菜名重试：模糊搜库 + 候选列表选择 + 5 级模糊兜底
     final newDishName = await _promptNewDishName(result.dishName);
     if (newDishName == null || newDishName.isEmpty || !mounted) return;
 
-    // 重新查库
-    final lookup = await ref.read(nutritionLookupProvider.future);
-    final nutrition = await lookup.lookupSingleItem(
-      dishName: newDishName,
-      servingG: result.estimatedWeightGMid,
-    );
+    final foodRepo = await ref.read(foodItemRepoProvider.future);
+    if (!mounted) return;
+    final candidates = await foodRepo.searchByName(newDishName, limit: 30);
+    if (!mounted) return;
+
+    NutritionResult? nutrition;
+    if (candidates.isEmpty) {
+      // searchByName 无结果 → 5 级模糊匹配兜底
+      final lookup = await ref.read(nutritionLookupProvider.future);
+      nutrition = await lookup.lookupSingleItem(
+        dishName: newDishName,
+        servingG: result.estimatedWeightGMid,
+      );
+    } else if (candidates.length == 1) {
+      // 唯一候选 → 直接用
+      nutrition = _nutritionFromFoodItem(candidates.first, result.estimatedWeightGMid);
+    } else {
+      // 多候选 → 列表选择
+      final selected = await _showFoodSelectionDialog(candidates);
+      if (selected == null || !mounted) return;
+      nutrition = _nutritionFromFoodItem(selected, result.estimatedWeightGMid);
+    }
+
     if (nutrition == null) {
       // 仍未命中 → 再次弹窗引导（递归，透传 mealType/imagePath）
       if (!mounted) return;
@@ -293,7 +314,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
           await mealRepo.insertMealLog(
             date: _todayLocalDate(),
             mealType: mealType,
-            foodItemId: nutrition.foodItemId,
+            foodItemId: nutrition!.foodItemId,
             actualServingG: servingG,
             actualCalories: calories,
             actualProteinG: protein,
@@ -309,6 +330,49 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
         },
       ),
     ));
+  }
+
+  /// 用 FoodItem + 份量构造 NutritionResult（候选列表选中后用）
+  NutritionResult _nutritionFromFoodItem(FoodItem food, double servingG) {
+    return NutritionResult(
+      foodItemId: food.id,
+      calories: food.caloriesPer100g * servingG / 100,
+      proteinG: food.proteinPer100g * servingG / 100,
+      fatG: food.fatPer100g * servingG / 100,
+      carbsG: food.carbsPer100g * servingG / 100,
+      oilG: 0,
+    );
+  }
+
+  /// 食物候选列表选择对话框（多候选时让用户选）
+  Future<FoodItem?> _showFoodSelectionDialog(List<FoodItem> candidates) async {
+    return showDialog<FoodItem>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('选择匹配的食物'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: candidates.length,
+            itemBuilder: (ctx, i) {
+              final f = candidates[i];
+              return ListTile(
+                title: Text(f.name),
+                subtitle: Text('${f.caloriesPer100g.toStringAsFixed(0)} kcal/100g'),
+                onTap: () => Navigator.pop(ctx, f),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<String?> _promptNewDishName(String original) async {
