@@ -1,23 +1,14 @@
-import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/profile_repository.dart';
 import '../../nutrition/recommendation_service.dart';
-import '../backup/backup_page.dart';
-import '../food_library/food_library_page.dart';
-import '../insight/insight_page.dart';
 import '../manual_entry/manual_entry_page.dart';
-import '../profile/profile_page.dart';
 import '../recognize/providers.dart' as recognize;
-import '../recognize/recognize_page.dart';
-import '../settings/settings_page.dart';
-import '../weight/weight_page.dart';
-import 'today_meals_page.dart';
 
-/// 看板：环形进度（热量）+ 三宏量进度条 + 余额预警
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
   @override
@@ -25,10 +16,7 @@ class DashboardPage extends ConsumerStatefulWidget {
 }
 
 class _DashboardPageState extends ConsumerState<DashboardPage> {
-  // 缓存 future 避免每次 build 重建 Future 导致反复查询 + 闪烁
-  Future<({double cal, double protein, double fat, double carbs, int target, double proteinGoal, double fatGoal, double carbGoal, double weightKg})>?
-      _future;
-  // C 智能推荐：独立 future，避免影响主数据加载性能
+  Future<DashboardData>? _future;
   Future<List<RecommendedFood>>? _recFuture;
 
   @override
@@ -38,7 +26,6 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     _recFuture = _loadRecommendations();
   }
 
-  /// 从子页面返回后刷新主数据 + 推荐
   void _refresh() {
     if (!mounted) return;
     setState(() {
@@ -47,7 +34,6 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     });
   }
 
-  /// 跳转子页面，返回后自动刷新数据
   Future<void> _pushAndRefresh(Widget page) async {
     await Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
     _refresh();
@@ -66,24 +52,31 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     return service.recommend(remaining: remaining, limit: 5);
   }
 
-  Future<({double cal, double protein, double fat, double carbs, int target, double proteinGoal, double fatGoal, double carbGoal, double weightKg})>
-      _loadData() async {
+  Future<DashboardData> _loadData() async {
     final db = await ref.read(recognize.databaseProvider.future);
     final mealRepo = MealLogRepository(db);
     final profileRepo = ProfileRepository(db);
+    final foodRepo = FoodItemRepository(db);
     final now = DateTime.now();
     final today =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     final macros = await mealRepo.getMacrosByDate(today);
     final profile = await profileRepo.get();
+    final meals = await mealRepo.getMealsByDate(today);
+    final foodNames = <int, String>{};
+    for (final m in meals) {
+      if (!foodNames.containsKey(m.foodItemId)) {
+        final food = await foodRepo.getById(m.foodItemId);
+        foodNames[m.foodItemId] = food?.name ?? '食物 #${m.foodItemId}';
+      }
+    }
     final proteinGoal = profile.proteinGPerKg * profile.weightKg;
     final fatGoal = profile.fatGPerKg * profile.weightKg;
-    // carbGPerKg 可空（减脂/维持时碳水填剩余热量），clamp 避免负值
     final carbGoalRaw = profile.carbGPerKg != null
         ? profile.carbGPerKg! * profile.weightKg
         : (profile.dailyCalorieTarget - proteinGoal * 4 - fatGoal * 9) / 4;
     final carbGoal = carbGoalRaw < 0 ? 0.0 : carbGoalRaw;
-    return (
+    return DashboardData(
       cal: macros.calories,
       protein: macros.protein,
       fat: macros.fat,
@@ -93,42 +86,15 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
       fatGoal: fatGoal,
       carbGoal: carbGoal,
       weightKg: profile.weightKg,
+      meals: meals,
+      foodNames: foodNames,
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('今日'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () => _pushAndRefresh(const SettingsPage()),
-          ),
-          IconButton(
-            icon: const Icon(Icons.list_alt),
-            onPressed: () => _pushAndRefresh(const TodayMealsPage()),
-          ),
-        ],
-      ),
-      drawer: _buildDrawer(context),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _pushAndRefresh(const RecognizePage()),
-        child: const Icon(Icons.add),
-      ),
-      body: FutureBuilder<
-          ({
-            double cal,
-            double protein,
-            double fat,
-            double carbs,
-            int target,
-            double proteinGoal,
-            double fatGoal,
-            double carbGoal,
-            double weightKg
-          })>(
+      body: FutureBuilder<DashboardData>(
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
@@ -137,7 +103,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                 padding: const EdgeInsets.all(24),
                 child: Text('数据加载失败：${snapshot.error}',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.error)),
               ),
             );
           }
@@ -145,67 +112,12 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
             return const Center(child: CircularProgressIndicator());
           }
           final d = snapshot.data!;
-          final remain = d.target - d.cal;
-          final overflow = remain < 0;
-          final colorScheme = Theme.of(context).colorScheme;
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              // 环形进度（热量）
-              SizedBox(
-                height: 200,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    PieChart(PieChartData(
-                      sectionsSpace: 0,
-                      centerSpaceRadius: 60,
-                      sections: [
-                        PieChartSectionData(
-                          value: d.cal > d.target
-                              ? d.target.toDouble()
-                              : d.cal,
-                          color: overflow ? colorScheme.error : colorScheme.primary,
-                          radius: 16,
-                          showTitle: false,
-                        ),
-                        if (d.cal < d.target)
-                          PieChartSectionData(
-                            value: (d.target - d.cal).toDouble(),
-                            color: colorScheme.surfaceContainerHighest,
-                            radius: 16,
-                            showTitle: false,
-                          ),
-                      ],
-                    )),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(d.cal.toStringAsFixed(0),
-                            style: Theme.of(context).textTheme.headlineMedium),
-                        Text('/ ${d.target} kcal',
-                            style: Theme.of(context).textTheme.bodySmall),
-                        if (overflow)
-                          Text('超 ${(-remain).toStringAsFixed(0)} kcal',
-                              style: TextStyle(
-                                  color: colorScheme.error,
-                                  fontWeight: FontWeight.bold)),
-                        if (!overflow)
-                          Text('余 ${remain.toStringAsFixed(0)} kcal',
-                              style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              // 三宏量进度条
-              _macroBar('蛋白质', d.protein, d.proteinGoal, colorScheme.primary, d.weightKg),
-              _macroBar('脂肪', d.fat, d.fatGoal, colorScheme.tertiary, d.weightKg),
-              _macroBar('碳水', d.carbs, d.carbGoal, colorScheme.secondary, d.weightKg),
-              // C 智能推荐卡片
-              const SizedBox(height: 16),
-              _buildRecommendationCard(d),
+          return CustomScrollView(
+            slivers: [
+              SliverAppBar.large(title: const Text('今日')),
+              SliverToBoxAdapter(child: _statusCard(d)),
+              SliverToBoxAdapter(child: _recommendationSection(d)),
+              SliverToBoxAdapter(child: _mealsSection(d)),
             ],
           );
         },
@@ -213,134 +125,285 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     );
   }
 
-  /// C 智能推荐卡片（基于当日剩余额度推荐食物填补缺口）
-  Widget _buildRecommendationCard(
-      ({double cal, double protein, double fat, double carbs, int target, double proteinGoal, double fatGoal, double carbGoal, double weightKg}) d) {
+  Widget _statusCard(DashboardData d) {
+    final cs = Theme.of(context).colorScheme;
+    final remain = d.target - d.cal;
+    final overflow = remain < 0;
+    final pct = d.target > 0 ? (d.cal / d.target).clamp(0.0, 1.0) : 0.0;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Card(
+        color: cs.primaryContainer,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.local_fire_department_rounded,
+                      color: cs.onPrimaryContainer, size: 20),
+                  const SizedBox(width: 8),
+                  Text('今日还可摄入',
+                      style: TextStyle(
+                          color: cs.onPrimaryContainer, fontSize: 14)),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                overflow ? (-remain).toStringAsFixed(0) : remain.toStringAsFixed(0),
+                style: TextStyle(
+                  color: overflow ? cs.error : cs.onPrimaryContainer,
+                  fontSize: 57,
+                  fontWeight: FontWeight.w300,
+                  height: 1.1,
+                ),
+              ),
+              Text('kcal · 已摄入 ${d.cal.toStringAsFixed(0)} / ${d.target}',
+                  style: TextStyle(
+                      color: cs.onPrimaryContainer.withValues(alpha: 0.8),
+                      fontSize: 12)),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: LinearProgressIndicator(
+                  value: pct,
+                  backgroundColor: cs.onPrimaryContainer.withValues(alpha: 0.12),
+                  color: overflow ? cs.error : cs.onPrimaryContainer,
+                  minHeight: 8,
+                ),
+              ),
+              const SizedBox(height: 16),
+              _miniMacro('蛋白', d.protein, d.proteinGoal, cs.onPrimaryContainer),
+              _miniMacro('脂肪', d.fat, d.fatGoal, cs.tertiary),
+              _miniMacro('碳水', d.carbs, d.carbGoal, cs.secondary),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _miniMacro(String label, double value, double goal, Color color) {
+    final pct = goal > 0 ? (value / goal).clamp(0.0, 1.0) : 0.0;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          SizedBox(
+              width: 40,
+              child: Text(label,
+                  style: TextStyle(color: color, fontSize: 12))),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: pct,
+                backgroundColor: color.withValues(alpha: 0.12),
+                color: color,
+                minHeight: 6,
+              ),
+            ),
+          ),
+          SizedBox(
+              width: 80,
+              child: Text(
+                  '${value.toStringAsFixed(0)}/${goal.toStringAsFixed(0)}g',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(color: color, fontSize: 11))),
+        ],
+      ),
+    );
+  }
+
+  Widget _recommendationSection(DashboardData d) {
+    final cs = Theme.of(context).colorScheme;
     return FutureBuilder<List<RecommendedFood>>(
       future: _recFuture,
       builder: (context, snap) {
-        if (snap.hasError) {
-          // 推荐加载失败不影响主看板，静默不显示
-          return const SizedBox.shrink();
-        }
         if (!snap.hasData || snap.data!.isEmpty) {
           return const SizedBox.shrink();
         }
         final recs = snap.data!;
         final remain = d.target - d.cal;
         final proteinRemain = d.proteinGoal - d.protein;
-        final colorScheme = Theme.of(context).colorScheme;
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 16, 8),
+              child: Text('智能推荐',
+                  style: TextStyle(
+                      color: cs.primary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600)),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Card(
+                child: Column(
                   children: [
-                    Icon(Icons.lightbulb_outline, size: 20, color: colorScheme.primary),
-                    const SizedBox(width: 8),
-                    Text('智能推荐',
-                        style: Theme.of(context).textTheme.titleMedium),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          proteinRemain > 5
+                              ? '今日还差 ${proteinRemain.toStringAsFixed(0)}g 蛋白质'
+                              : remain > 0
+                                  ? '今日还可摄入 ${remain.toStringAsFixed(0)} kcal'
+                                  : '今日热量已达标，推荐低卡食物',
+                          style: TextStyle(
+                              fontSize: 12, color: cs.onSurfaceVariant),
+                        ),
+                      ),
+                    ),
+                    for (final rec in recs) ...[
+                      Divider(height: 1, indent: 16, endIndent: 16, color: cs.outlineVariant),
+                      ListTile(
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: cs.secondaryContainer,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.restaurant_rounded,
+                              size: 20, color: cs.onSecondaryContainer),
+                        ),
+                        title: Text(rec.food.name),
+                        subtitle: Text(
+                            '${rec.food.caloriesPer100g.toStringAsFixed(0)} kcal/100g · 蛋白 ${rec.food.proteinPer100g.toStringAsFixed(1)}g',
+                            style: const TextStyle(fontSize: 11)),
+                        trailing: Text('${rec.food.caloriesPer100g.toStringAsFixed(0)} kcal',
+                            style: TextStyle(
+                                fontSize: 12, color: cs.onSurfaceVariant)),
+                        onTap: () => _pushAndRefresh(
+                            ManualEntryPage(initialName: rec.food.name)),
+                      ),
+                    ],
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  proteinRemain > 5
-                      ? '今日还差 ${proteinRemain.toStringAsFixed(0)}g 蛋白质，推荐：'
-                      : remain > 0
-                          ? '今日还可摄入 ${remain.toStringAsFixed(0)} kcal，推荐：'
-                          : '今日热量已达标，推荐低卡食物：',
-                  style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                ),
-                const SizedBox(height: 12),
-                for (final rec in recs)
-                  ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(rec.food.name),
-                    subtitle: Text(
-                        '${rec.food.caloriesPer100g.toStringAsFixed(0)} kcal/100g · 蛋白 ${rec.food.proteinPer100g.toStringAsFixed(1)}g',
-                        style: const TextStyle(fontSize: 11)),
-                    trailing: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: colorScheme.secondaryContainer,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(rec.reason,
-                          style: TextStyle(fontSize: 10, color: colorScheme.onSecondaryContainer)),
-                    ),
-                    onTap: () => _pushAndRefresh(
-                      ManualEntryPage(initialName: rec.food.name),
-                    ),
-                  ),
-              ],
+              ),
             ),
-          ),
+          ],
         );
       },
     );
   }
 
-  Widget _buildDrawer(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: BoxDecoration(color: colorScheme.primaryContainer),
-            child: Text('EatWise',
-                style: TextStyle(color: colorScheme.onPrimaryContainer, fontSize: 24)),
+  Widget _mealsSection(DashboardData d) {
+    final cs = Theme.of(context).colorScheme;
+    if (d.meals.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(24),
+        child: Center(
+          child: Text('今日还没有记录，点下方拍照按钮开始',
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+        ),
+      );
+    }
+    final groups = <String, List<MealLog>>{};
+    for (final m in d.meals) {
+      groups.putIfAbsent(m.mealType, () => []).add(m);
+    }
+    final mealOrder = ['breakfast', 'lunch', 'dinner', 'snack'];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 16, 8),
+          child: Text('今日餐次',
+              style: TextStyle(
+                  color: cs.primary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600)),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Card(
+            child: Column(
+              children: [
+                for (final mt in mealOrder)
+                  if (groups[mt] != null)
+                    for (final m in groups[mt]!) ...[
+                      ListTile(
+                        leading: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: cs.tertiaryContainer,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(_mealIcon(mt),
+                              size: 20, color: cs.onTertiaryContainer),
+                        ),
+                        title: Text(d.foodNames[m.foodItemId] ?? '食物'),
+                        subtitle: Text(
+                            '${_mealLabel(mt)} · ${_formatTime(m.loggedAt)}',
+                            style: const TextStyle(fontSize: 11)),
+                        trailing: Text('${m.actualCalories.toStringAsFixed(0)} kcal',
+                            style: TextStyle(
+                                fontSize: 13, color: cs.onSurfaceVariant)),
+                      ),
+                      if (m != groups[mt]!.last || mt != mealOrder.last)
+                        Divider(height: 1, indent: 56, color: cs.outlineVariant),
+                    ],
+              ],
+            ),
           ),
-          _drawerItem(Icons.person_outline, '个人档案', () => const ProfilePage()),
-          _drawerItem(Icons.monitor_weight_outlined, '体重记录', () => const WeightPage()),
-          _drawerItem(Icons.insights_outlined, 'AI 周报', () => const InsightPage()),
-          _drawerItem(Icons.restaurant_menu_outlined, '食物库', () => const FoodLibraryPage()),
-          _drawerItem(Icons.edit_note_outlined, '手动录入', () => const ManualEntryPage()),
-          _drawerItem(Icons.backup_outlined, '数据备份', () => const BackupPage()),
-          _drawerItem(Icons.settings_outlined, '设置', () => const SettingsPage()),
-        ],
-      ),
+        ),
+        const SizedBox(height: 16),
+      ],
     );
   }
 
-  Widget _drawerItem(IconData icon, String title, Widget Function() pageBuilder) {
-    return ListTile(
-      leading: Icon(icon),
-      title: Text(title),
-      onTap: () async {
-        Navigator.of(context).pop(); // 先关 Drawer
-        await Navigator.of(context).push(MaterialPageRoute(builder: (_) => pageBuilder()));
-        _refresh(); // 返回后刷新（个人档案/体重/手动录入/备份等都会改数据）
-      },
-    );
-  }
+  IconData _mealIcon(String mt) => {
+        'breakfast': Icons.free_breakfast_rounded,
+        'lunch': Icons.lunch_dining_rounded,
+        'dinner': Icons.dinner_dining_rounded,
+        'snack': Icons.cookie_rounded,
+      }[mt] ??
+      Icons.restaurant_rounded;
 
-  Widget _macroBar(String label, double value, double goal, Color color, double weightKg) {
-    final pct = goal > 0 ? (value / goal).clamp(0.0, 1.0) : 0.0;
-    final gPerKg = weightKg > 0 ? (value / weightKg).toStringAsFixed(1) : '-';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(label),
-              Text('${value.toStringAsFixed(1)} / ${goal.toStringAsFixed(0)} g ($gPerKg g/kg)'),
-            ],
-          ),
-          const SizedBox(height: 4),
-          LinearProgressIndicator(
-              value: pct,
-              backgroundColor: color.withValues(alpha: 0.1),
-              color: color,
-              minHeight: 8),
-        ],
-      ),
-    );
+  String _mealLabel(String mt) => {
+        'breakfast': '早餐',
+        'lunch': '午餐',
+        'dinner': '晚餐',
+        'snack': '加餐',
+      }[mt] ??
+      '加餐';
+
+  String _formatTime(int ms) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(ms);
+    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
+}
+
+class DashboardData {
+  final double cal;
+  final double protein;
+  final double fat;
+  final double carbs;
+  final int target;
+  final double proteinGoal;
+  final double fatGoal;
+  final double carbGoal;
+  final double weightKg;
+  final List<MealLog> meals;
+  final Map<int, String> foodNames;
+
+  DashboardData({
+    required this.cal,
+    required this.protein,
+    required this.fat,
+    required this.carbs,
+    required this.target,
+    required this.proteinGoal,
+    required this.fatGoal,
+    required this.carbGoal,
+    required this.weightKg,
+    required this.meals,
+    required this.foodNames,
+  });
 }

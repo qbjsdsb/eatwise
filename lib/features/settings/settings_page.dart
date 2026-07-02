@@ -86,162 +86,187 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    final colorScheme = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('设置')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          // --- AI 模型配置 ---
-          _sectionHeader('AI 模型配置'),
-          TextField(
-            controller: _qwenKeyCtrl,
-            decoration: const InputDecoration(labelText: 'Qwen API Key', border: OutlineInputBorder()),
-            obscureText: true,
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _qwenUrlCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Qwen Base URL (留空用默认)',
-              hintText: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _glmKeyCtrl,
-            decoration: const InputDecoration(labelText: 'GLM API Key', border: OutlineInputBorder()),
-            obscureText: true,
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _glmUrlCtrl,
-            decoration: const InputDecoration(
-              labelText: 'GLM Base URL (留空用默认)',
-              hintText: 'https://open.bigmodel.cn/api/paas/v4',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // --- 错误监控 ---
-          _sectionHeader('错误监控'),
-          SwitchListTile(
-            title: const Text('启用 Sentry 上报'),
-            subtitle: const Text('崩溃和未处理异常自动上报（经脱敏）'),
-            value: _sentryEnabled,
-            onChanged: (v) => setState(() => _sentryEnabled = v),
-          ),
-          TextField(
-            controller: _sentryDsnCtrl,
-            decoration: const InputDecoration(labelText: 'Sentry DSN', border: OutlineInputBorder()),
-          ),
-          const SizedBox(height: 16),
-
-          // --- 营养校准 ---
-          _sectionHeader('营养校准'),
-          SwitchListTile(
-            title: const Text('TDEE 自适应校准'),
-            subtitle: const Text('连续 4 周体重偏差 > 0.3 kg/周时自动微调每日目标'),
-            value: _tdeeAutoCalib,
-            onChanged: (v) => setState(() => _tdeeAutoCalib = v),
-          ),
-          const SizedBox(height: 16),
-
-          // --- 本月使用 ---
-          _sectionHeader('本月使用'),
-          ListTile(
-            leading: const Icon(Icons.analytics_outlined),
-            title: const Text('本月识别次数'),
-            trailing: Text('$_monthlyCount 次'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.payments_outlined),
-            title: const Text('估算花费'),
-            trailing: Text('${_estimatedCost!.toStringAsFixed(3)} 元'),
-          ),
-          if (_estimatedCost! >= _costWarningThreshold)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                '⚠️ 本月花费已达 ${_estimatedCost!.toStringAsFixed(2)} 元，建议在厂商控制台设置月度费用上限',
-                style: TextStyle(color: colorScheme.tertiary, fontSize: 12),
-              ),
-            ),
-          const SizedBox(height: 16),
-
-          // --- 图片管理 ---
-          _sectionHeader('图片管理'),
-          ListTile(
-            leading: const Icon(Icons.image_outlined),
-            title: const Text('原图保留期'),
-            trailing: SizedBox(
-              width: 150,
-              child: DropdownMenu<int>(
-                initialSelection: _imageRetentionDays,
-                expandedInsets: EdgeInsets.zero,
-                onSelected: (v) =>
-                    setState(() => _imageRetentionDays = v ?? 30),
-                dropdownMenuEntries: const [
-                  DropdownMenuEntry(value: 7, label: '7 天'),
-                  DropdownMenuEntry(value: 30, label: '30 天（默认）'),
-                  DropdownMenuEntry(value: 0, label: '永久保留'),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // --- 数据备份状态 ---
-          _sectionHeader('数据备份'),
-          ListTile(
-            leading: const Icon(Icons.backup),
-            title: const Text('上次自动备份'),
-            trailing: Text(_lastBackupTime ?? '从未', style: TextStyle(color: colorScheme.onSurfaceVariant)),
-          ),
-          if (_backupOverdue)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                '⚠️ 已超过 14 天未备份，建议立即导出备份',
-                style: TextStyle(color: colorScheme.tertiary, fontSize: 12),
-              ),
-            ),
-          const SizedBox(height: 16),
-
-          // --- 隐私政策 ---
-          ListTile(
-            leading: const Icon(Icons.privacy_tip_outlined),
-            title: const Text('隐私政策'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _showPrivacyPolicy,
-          ),
-
-          // --- 关于 ---
-          _sectionHeader('关于'),
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('关于 EatWise'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _showAbout,
-          ),
-          const SizedBox(height: 16),
-
-          const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: _save,
-            icon: const Icon(Icons.save),
-            label: const Text('保存设置'),
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar.large(title: const Text('设置')),
+          SliverList(
+            delegate: SliverChildListDelegate([
+              _sectionTitle('AI 模型'),
+              _groupCard([
+                TextField(
+                  controller: _qwenKeyCtrl,
+                  decoration: const InputDecoration(
+                      labelText: 'Qwen API Key', border: InputBorder.none),
+                  obscureText: true,
+                ),
+                _divider(),
+                TextField(
+                  controller: _qwenUrlCtrl,
+                  decoration: InputDecoration(
+                      labelText: 'Qwen Base URL (留空用默认)',
+                      hintText: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+                      border: InputBorder.none),
+                ),
+                _divider(),
+                TextField(
+                  controller: _glmKeyCtrl,
+                  decoration: const InputDecoration(
+                      labelText: 'GLM API Key', border: InputBorder.none),
+                  obscureText: true,
+                ),
+                _divider(),
+                TextField(
+                  controller: _glmUrlCtrl,
+                  decoration: InputDecoration(
+                      labelText: 'GLM Base URL (留空用默认)',
+                      hintText: 'https://open.bigmodel.cn/api/paas/v4',
+                      border: InputBorder.none),
+                ),
+              ]),
+              _sectionTitle('监控与校准'),
+              _groupCard([
+                SwitchListTile(
+                  title: const Text('启用 Sentry 上报'),
+                  subtitle: const Text('崩溃和未处理异常自动上报（经脱敏）'),
+                  value: _sentryEnabled,
+                  onChanged: (v) => setState(() => _sentryEnabled = v),
+                ),
+                _divider(),
+                SwitchListTile(
+                  title: const Text('TDEE 自适应校准'),
+                  subtitle: const Text('连续 4 周体重偏差 > 0.3 kg/周时自动微调每日目标'),
+                  value: _tdeeAutoCalib,
+                  onChanged: (v) => setState(() => _tdeeAutoCalib = v),
+                ),
+                _divider(),
+                TextField(
+                  controller: _sentryDsnCtrl,
+                  decoration: const InputDecoration(
+                      labelText: 'Sentry DSN', border: InputBorder.none),
+                ),
+              ]),
+              _sectionTitle('图片管理'),
+              _groupCard([
+                ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                  title: const Text('原图保留期'),
+                  trailing: SizedBox(
+                    width: 150,
+                    child: DropdownMenu<int>(
+                      initialSelection: _imageRetentionDays,
+                      expandedInsets: EdgeInsets.zero,
+                      onSelected: (v) =>
+                          setState(() => _imageRetentionDays = v ?? 30),
+                      dropdownMenuEntries: const [
+                        DropdownMenuEntry(value: 7, label: '7 天'),
+                        DropdownMenuEntry(value: 30, label: '30 天（默认）'),
+                        DropdownMenuEntry(value: 0, label: '永久保留'),
+                      ],
+                    ),
+                  ),
+                ),
+              ]),
+              _sectionTitle('使用情况'),
+              _groupCard([
+                ListTile(
+                  leading: const Icon(Icons.analytics_outlined),
+                  title: const Text('本月识别次数'),
+                  trailing: Text('$_monthlyCount 次'),
+                ),
+                _divider(),
+                ListTile(
+                  leading: const Icon(Icons.payments_outlined),
+                  title: const Text('估算花费'),
+                  trailing: Text('${_estimatedCost!.toStringAsFixed(3)} 元'),
+                ),
+                if (_estimatedCost! >= _costWarningThreshold)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
+                      '⚠️ 本月花费已达 ${_estimatedCost!.toStringAsFixed(2)} 元，建议在厂商控制台设置月度费用上限',
+                      style: TextStyle(color: cs.tertiary, fontSize: 12),
+                    ),
+                  ),
+              ]),
+              _sectionTitle('备份状态'),
+              _groupCard([
+                ListTile(
+                  leading: const Icon(Icons.backup),
+                  title: const Text('上次自动备份'),
+                  trailing: Text(_lastBackupTime ?? '从未',
+                      style: TextStyle(color: cs.onSurfaceVariant)),
+                ),
+                if (_backupOverdue)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
+                      '⚠️ 已超过 14 天未备份，建议立即导出备份',
+                      style: TextStyle(color: cs.tertiary, fontSize: 12),
+                    ),
+                  ),
+              ]),
+              _sectionTitle('关于'),
+              _groupCard([
+                ListTile(
+                  leading: const Icon(Icons.info_outline_rounded),
+                  title: const Text('关于 EatWise'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _showAbout,
+                ),
+                _divider(),
+                ListTile(
+                  leading: const Icon(Icons.privacy_tip_outlined),
+                  title: const Text('隐私政策'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _showPrivacyPolicy,
+                ),
+              ]),
+              const SizedBox(height: 80),
+            ]),
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _save,
+        icon: const Icon(Icons.save),
+        label: const Text('保存设置'),
       ),
     );
   }
 
-  Widget _sectionHeader(String title) => Padding(
-        padding: const EdgeInsets.only(top: 8, bottom: 12),
-        child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+  Widget _sectionTitle(String text) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 20, 16, 8),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: Theme.of(context).colorScheme.primary,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+
+  Widget _groupCard(List<Widget> children) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(children: children),
+        ),
+      ),
+    );
+  }
+
+  Widget _divider() => Divider(
+        height: 1,
+        indent: 16,
+        endIndent: 16,
+        color: Theme.of(context).dividerColor,
       );
 
   Future<void> _save() async {
