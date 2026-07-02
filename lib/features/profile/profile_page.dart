@@ -20,6 +20,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   final _weightCtrl = TextEditingController();
   final _ageCtrl = TextEditingController();
   final _bodyFatCtrl = TextEditingController();
+  final _goalRateCtrl = TextEditingController(); // 目标速率 kg/周（减脂/增肌时显示）
   String _gender = 'male';
   double _activity = 1.375;
   String _goal = 'maintain';
@@ -39,6 +40,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     _weightCtrl.text = p.weightKg.toString();
     _ageCtrl.text = p.age.toString();
     _bodyFatCtrl.text = p.bodyFatPct?.toString() ?? '';
+    _goalRateCtrl.text =
+        p.goalRateKgPerWeek > 0 ? p.goalRateKgPerWeek.toString() : '';
     _gender = p.gender;
     _activity = p.activityLevel;
     _goal = p.goal;
@@ -51,6 +54,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     _weightCtrl.dispose();
     _ageCtrl.dispose();
     _bodyFatCtrl.dispose();
+    _goalRateCtrl.dispose();
     super.dispose();
   }
 
@@ -121,6 +125,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               ],
               onChanged: (v) => setState(() => _goal = v!),
             ),
+            if (_goal == 'cut' || _goal == 'bulk') ...[
+              const SizedBox(height: 16),
+              TextField(
+                controller: _goalRateCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: '目标速率（kg/周）',
+                  hintText: '减脂建议 0.3-0.7，增肌建议 0.18-0.45',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             FilledButton(
               onPressed: _save,
@@ -142,6 +159,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final age = int.parse(_ageCtrl.text);
     final bodyFat =
         _bodyFatCtrl.text.isEmpty ? null : double.parse(_bodyFatCtrl.text);
+    final goalRate = double.tryParse(_goalRateCtrl.text) ?? 0;
     // 枚举转换：String → Gender/Goal
     final genderEnum =
         _gender == 'male' ? Gender.male : Gender.female;
@@ -162,7 +180,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final target = NutritionCalculator.dailyCalorieTarget(
       tdee: tdee,
       goal: goalEnum,
-      tdeeAdjustmentKcal: 0,
+      tdeeAdjustmentKcal: 0, // 保持现有 _save 行为：不在目标计算中应用 TDEE 调整
+      goalRateKgPerWeek: goalRate, // 联动重算：goalRate 影响每日目标热量
       gender: genderEnum,
     );
     // 宏量目标密度（g/kg）：硬编码同 NutritionCalculator.macros 内部值
@@ -173,6 +192,36 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         goalEnum == Goal.cut ? 0.9 : goalEnum == Goal.bulk ? 1.0 : 0.9;
     final double? carbGPerKg = goalEnum == Goal.bulk ? 5.0 : null;
 
+    // 风险警告：goalRate 超阈值时弹窗，用户确认后继续保存
+    if (goalRate > 0) {
+      final warning = NutritionCalculator.validateGoalRate(
+        goalRateKgPerWeek: goalRate,
+        weightKg: weight,
+        goal: goalEnum,
+      );
+      if (warning != null) {
+        if (!mounted) return;
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('⚠ 风险警告'),
+            content: Text(warning),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('重新填写'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('我知道风险，继续'),
+              ),
+            ],
+          ),
+        );
+        if (confirmed != true) return; // 用户取消
+      }
+    }
+
     await repo.update(
       heightCm: height,
       weightKg: weight,
@@ -181,11 +230,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       gender: _gender, // String 写库
       activityLevel: _activity,
       goal: _goal, // String 写库
+      goalRateKgPerWeek: goalRate, // 新增：保存目标速率
       formula: 'mifflin',
-      dailyCalorieTarget: target,
+      dailyCalorieTarget: target, // 联动重算后的目标热量
       proteinGPerKg: proteinGPerKg,
       fatGPerKg: fatGPerKg,
       carbGPerKg: carbGPerKg,
+      // 不传 tdeeAdjustmentKcal：保留 DB 存储值，不被 goalRate 重算覆盖
     );
 
     if (mounted) {
