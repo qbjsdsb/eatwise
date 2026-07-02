@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../ai/vision_provider.dart';
 import '../../core/config/app_config.dart';
@@ -41,9 +44,11 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       glm,
       lookup,
       onOfflineEnqueue: (imagePath, mealType, date, promptVersion) async {
+        // 把图片从临时缓存目录复制到持久目录，避免系统清缓存后回补时图片丢失
+        final persistentPath = await _persistImage(imagePath);
         final repo = PendingRecognitionRepository(db);
         await repo.enqueue(
-          imagePath: imagePath,
+          imagePath: persistentPath,
           mealType: mealType,
           date: date,
           promptVersion: promptVersion,
@@ -60,6 +65,29 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       secureConfigStore: store, // T43：识别成功月度计数
     );
     return _controller!;
+  }
+
+  /// 把图片从临时缓存目录复制到 app 私有持久目录
+  /// （image_picker 相机照片存在 getTemporaryDirectory，系统可能清理）
+  /// 返回持久路径；若源文件不存在或复制失败，回退返回原路径（避免阻塞入队）
+  Future<String> _persistImage(String tempPath) async {
+    try {
+      final src = File(tempPath);
+      if (!await src.exists()) return tempPath;
+      final dir = await getApplicationDocumentsDirectory();
+      final persistDir = Directory('${dir.path}/pending_images');
+      if (!await persistDir.exists()) {
+        await persistDir.create(recursive: true);
+      }
+      final fileName =
+          'img_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final destPath = '${persistDir.path}/$fileName';
+      await src.copy(destPath);
+      return destPath;
+    } catch (e) {
+      // 复制失败回退原路径（回补时若文件不存在会 markFailed，至少入队不阻塞）
+      return tempPath;
+    }
   }
 
   @override

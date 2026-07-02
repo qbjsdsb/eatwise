@@ -27,21 +27,23 @@ class GlmFlashProvider {
   /// }
   Future<String> generateWeeklySummary(Map<String, dynamic> weeklyData) async {
     final prompt = _buildPrompt(weeklyData);
-    final res = await _client.chat.completions.create(
-      ChatCompletionCreateRequest(
-        model: 'glm-4-flash',
-        messages: [
-          ChatMessage.system(
-            '你是营养师助手。根据用户一周的饮食热量和体重数据，给出不超过300字的具体中文建议，'
-            '包含：1）热量摄入评估 2）体重趋势分析 3）下周可执行建议。直接给建议，不要寒暄。',
+    final res = await _client.chat.completions
+        .create(
+          ChatCompletionCreateRequest(
+            model: 'glm-4-flash',
+            messages: [
+              ChatMessage.system(
+                '你是营养师助手。根据用户一周的饮食热量和体重数据，给出不超过300字的具体中文建议，'
+                '包含：1）热量摄入评估 2）体重趋势分析 3）下周可执行建议。直接给建议，不要寒暄。',
+              ),
+              // openai_dart 7.0: UserMessageContent.text(...) 工厂构造器
+              ChatMessage.user(UserMessageContent.text(prompt)),
+            ],
+            maxCompletionTokens: 500,
+            temperature: 0.7,
           ),
-          // openai_dart 7.0: UserMessageContent.text(...) 工厂构造器
-          ChatMessage.user(UserMessageContent.text(prompt)),
-        ],
-        maxCompletionTokens: 500,
-        temperature: 0.7,
-      ),
-    );
+        )
+        .timeout(const Duration(seconds: 30));
     // openai_dart 7.0: res.text 是 String? 便捷访问器
     return res.text ?? '（无内容返回）';
   }
@@ -69,20 +71,22 @@ class GlmFlashProvider {
   /// }
   Future<String> generateMonthlySummary(Map<String, dynamic> monthlyData) async {
     final prompt = _buildMonthlyPrompt(monthlyData);
-    final res = await _client.chat.completions.create(
-      ChatCompletionCreateRequest(
-        model: 'glm-4-flash',
-        messages: [
-          ChatMessage.system(
-            '你是营养师助手。根据用户一个月的饮食热量和体重数据，给出不超过400字的具体中文建议，'
-            '包含：1）月度热量摄入评估 + 周环比趋势 2）体重变化分析 3）下月可执行建议。直接给建议，不要寒暄。',
+    final res = await _client.chat.completions
+        .create(
+          ChatCompletionCreateRequest(
+            model: 'glm-4-flash',
+            messages: [
+              ChatMessage.system(
+                '你是营养师助手。根据用户一个月的饮食热量和体重数据，给出不超过400字的具体中文建议，'
+                '包含：1）月度热量摄入评估 + 周环比趋势 2）体重变化分析 3）下月可执行建议。直接给建议，不要寒暄。',
+              ),
+              ChatMessage.user(UserMessageContent.text(prompt)),
+            ],
+            maxCompletionTokens: 600,
+            temperature: 0.7,
           ),
-          ChatMessage.user(UserMessageContent.text(prompt)),
-        ],
-        maxCompletionTokens: 600,
-        temperature: 0.7,
-      ),
-    );
+        )
+        .timeout(const Duration(seconds: 30));
     return res.text ?? '（无内容返回）';
   }
 

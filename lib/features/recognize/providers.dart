@@ -35,17 +35,25 @@ final glmBaseUrlProvider = Provider<String>((ref) {
 });
 
 final qwenVlProviderProvider = Provider<QwenVlProvider>((ref) {
+  final url = ref.watch(qwenBaseUrlProvider);
   return QwenVlProvider(
     apiKey: ref.watch(qwenApiKeyProvider),
-    baseUrl: ref.watch(qwenBaseUrlProvider),
+    // 留空用默认（与后台 background_dispatcher.dart 一致，兑现设置页 hintText 承诺）
+    baseUrl: url.isEmpty
+        ? 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+        : url,
   );
 });
 
 final glm4vProviderProvider = Provider<Glm4vProvider?>((ref) {
   final key = ref.watch(glmApiKeyProvider);
   final url = ref.watch(glmBaseUrlProvider);
-  if (key.isEmpty || url.isEmpty) return null;
-  return Glm4vProvider(apiKey: key, baseUrl: url);
+  if (key.isEmpty) return null;
+  // 留空用默认（与后台一致，避免 url 空导致无备援）
+  final baseUrl = url.isEmpty
+      ? 'https://open.bigmodel.cn/api/paas/v4'
+      : url;
+  return Glm4vProvider(apiKey: key, baseUrl: baseUrl);
 });
 
 final foodItemRepoProvider = FutureProvider<FoodItemRepository>((ref) async {

@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 网络权限：AI API 调用 + connectivity_plus 网络检测必需 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 网络状态：connectivity_plus 检测 wifi/移动网络必需 -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Android 13+ 用 READ_MEDIA_IMAGES（细粒度照片访问） -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.CAMERA" />

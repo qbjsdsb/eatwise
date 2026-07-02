@@ -247,9 +247,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     await store.setTdeeAutoCalib(_tdeeAutoCalib);
     await store.setImageRetentionDays(_imageRetentionDays);
 
-    // 重新加载 appConfig（让其他 Provider 感知新值）
-    final config = await ref.read(appConfigProvider.future);
-    await config.reload();
+    // 刷新 appConfigProvider：让依赖它的 qwenApiKeyProvider 等重新计算
+    // （reload() 只改实例字段，Riverpod 不感知 → 必须 invalidate）
+    ref.invalidate(appConfigProvider);
+    await ref.read(appConfigProvider.future);  // 触发重新 load
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('设置已保存')));
