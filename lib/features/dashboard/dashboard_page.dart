@@ -269,16 +269,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                       child: Text(rec.reason,
                           style: TextStyle(fontSize: 10, color: Colors.green.shade700)),
                     ),
-                    onTap: () async {
-                      // 点击推荐 → 跳手动录入页快速记录（预填菜名）
-                      // 返回后刷新主数据 + 推荐（用户记录后热量/宏量/推荐都应更新）
-                      await Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => ManualEntryPage(
-                          initialName: rec.food.name,
-                        ),
-                      ));
-                      _refresh();
-                    },
+                    onTap: () => _pushAndRefresh(
+                      ManualEntryPage(initialName: rec.food.name),
+                    ),
                   ),
               ],
             ),

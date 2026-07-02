@@ -118,12 +118,14 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
                   title: Text(f.name),
                   subtitle: Text(
                       '${f.caloriesPer100g.toStringAsFixed(0)} kcal/100g · ${_sourceLabel(f.source)}'),
-                  onTap: () {
+                  onTap: () async {
                     if (widget.pickForReuse) {
                       Navigator.of(context).pop(f); // 返回选中的 FoodItem 给手动录入页
                     } else {
-                      Navigator.of(context).push(
+                      await Navigator.of(context).push(
                           MaterialPageRoute(builder: (_) => FoodEditPage(foodItem: f)));
+                      // 编辑返回后刷新列表（营养素/份量可能已修改）
+                      if (mounted) _loadFrequent();
                     }
                   },
                 );
