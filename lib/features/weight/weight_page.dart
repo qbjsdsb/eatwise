@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
 import '../../data/database/database.dart';
+import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/weight_log_repository.dart';
 import '../../nutrition/tdee_calibrator.dart';
 import '../recognize/providers.dart' as recognize;
@@ -18,6 +19,8 @@ class WeightPage extends ConsumerStatefulWidget {
 class _WeightPageState extends ConsumerState<WeightPage> {
   final _weightCtrl = TextEditingController();
   List<WeightLog> _logs = [];
+  List<MealLog> _meals = []; // 30 天 meal_log（双轴图热量用）
+  Map<String, double> _dailyCalories = {}; // 日期 → 当日总热量
   bool _loading = true;
 
   @override
@@ -36,6 +39,20 @@ class _WeightPageState extends ConsumerState<WeightPage> {
     final db = await ref.read(recognize.databaseProvider.future);
     final repo = WeightLogRepository(db);
     _logs = await repo.getRecent(days: 30);
+    // 加载 30 天 meal_log 并按日聚合热量（双轴图用）
+    final mealRepo = MealLogRepository(db);
+    final now = DateTime.now();
+    final startDate = now.subtract(const Duration(days: 30));
+    final startStr =
+        '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
+    final endStr =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    _meals = await mealRepo.getRange(startStr, endStr);
+    _dailyCalories = {};
+    for (final m in _meals) {
+      _dailyCalories[m.date] =
+          (_dailyCalories[m.date] ?? 0) + m.actualCalories;
+    }
     if (mounted) setState(() => _loading = false);
   }
 
@@ -83,15 +100,35 @@ class _WeightPageState extends ConsumerState<WeightPage> {
   }
 
   Widget _buildChart() {
-    // fl_chart 0.70.2: LineChartBarData(color: Color?) 单色，无 colors 列表
-    final spots = <FlSpot>[];
+    if (_logs.length < 2) {
+      return const Center(child: Text('至少记录 2 次才能显示趋势图'));
+    }
+
+    // 体重数据（映射到主轴范围，topTitles 反向显示刻度）
+    final weightSpots = <FlSpot>[];
     for (var i = 0; i < _logs.length; i++) {
-      spots.add(FlSpot(i.toDouble(), _logs[i].weightKg));
+      weightSpots.add(FlSpot(i.toDouble(), _logs[i].weightKg));
     }
     final weights = _logs.map((l) => l.weightKg).toList();
     final minW = weights.reduce((a, b) => a < b ? a : b);
     final maxW = weights.reduce((a, b) => a > b ? a : b);
-    final padding = (maxW - minW) * 0.1 + 0.5;
+    final wPadding = (maxW - minW) * 0.1 + 0.5;
+
+    // 热量数据（主轴/左轴）：按体重记录日期对齐
+    final calSpots = <FlSpot>[];
+    for (var i = 0; i < _logs.length; i++) {
+      final cal = _dailyCalories[_logs[i].date] ?? 0;
+      calSpots.add(FlSpot(i.toDouble(), cal));
+    }
+    final cals = calSpots.map((s) => s.y).toList();
+    final maxCal = cals.reduce((a, b) => a > b ? a : b);
+    final calPadding = maxCal * 0.1 + 50;
+    // 双轴技巧：fl_chart 0.70 不原生支持双 Y 轴。热量用真实值（左轴），
+    // 体重按比例映射到热量轴范围；topTitles 用 getTitlesWidget 反向映射
+    // 显示体重刻度（社区常用双轴方案）。
+    final calRange = maxCal + calPadding;
+    final wMin = minW - wPadding;
+    final wMax = maxW + wPadding;
 
     return LineChart(LineChartData(
       gridData: const FlGridData(show: true),
@@ -101,34 +138,63 @@ class _WeightPageState extends ConsumerState<WeightPage> {
       ),
       minX: 0,
       maxX: (_logs.length - 1).toDouble(),
-      minY: minW - padding,
-      maxY: maxW + padding,
-      titlesData: const FlTitlesData(
-        bottomTitles:
-            AxisTitles(sideTitles: SideTitles(showTitles: false)),
+      minY: 0,
+      maxY: calRange,
+      titlesData: FlTitlesData(
+        bottomTitles: const AxisTitles(
+          sideTitles: SideTitles(showTitles: false),
+        ),
         leftTitles: AxisTitles(
-          sideTitles: SideTitles(
+          axisNameWidget: const Text('kcal', style: TextStyle(fontSize: 10)),
+          sideTitles: const SideTitles(
             showTitles: true,
             reservedSize: 40,
           ),
         ),
-        topTitles:
-            AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        rightTitles:
-            AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        topTitles: AxisTitles(
+          axisNameWidget: const Text('kg', style: TextStyle(fontSize: 10)),
+          sideTitles: SideTitles(
+            showTitles: true,
+            reservedSize: 40,
+            interval: ((maxW - minW) / 4).clamp(0.1, 10).toDouble(),
+            getTitlesWidget: (value, meta) {
+              // 将热量轴值反向映射回体重轴值
+              final ratio = value / calRange;
+              final w = wMin + (wMax - wMin) * ratio;
+              return Text(w.toStringAsFixed(1),
+                  style: const TextStyle(fontSize: 9));
+            },
+          ),
+        ),
+        rightTitles: const AxisTitles(
+          sideTitles: SideTitles(showTitles: false),
+        ),
       ),
       lineBarsData: [
+        // 热量（左轴，主）
         LineChartBarData(
-          spots: spots,
+          spots: calSpots,
+          isCurved: true,
+          color: Colors.orange,
+          barWidth: 2,
+          isStrokeCapRound: true,
+          dotData: const FlDotData(show: false),
+          belowBarData: BarAreaData(
+            show: true,
+            color: Colors.orange.withValues(alpha: 0.1),
+          ),
+        ),
+        // 体重（映射到主轴范围）
+        LineChartBarData(
+          spots: weightSpots
+              .map((s) => FlSpot(
+                  s.x, (s.y - wMin) / (wMax - wMin) * calRange))
+              .toList(),
           isCurved: true,
           color: Colors.green,
           barWidth: 3,
           isStrokeCapRound: true,
           dotData: const FlDotData(show: true),
-          belowBarData: BarAreaData(
-            show: true,
-            color: Colors.green.withValues(alpha: 0.1),
-          ),
         ),
       ],
     ));
