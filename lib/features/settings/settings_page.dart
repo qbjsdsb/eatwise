@@ -27,6 +27,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   static const _costPerRecognition = 0.001;  // 估算：单次约 0.001 元（500 token × 0.15/百万）
   static const _costWarningThreshold = 5.0;  // 5 元/月提示
   int _imageRetentionDays = 30;  // T48 保留期
+  bool _backupOverdue = false;  // T55：14 天未备份提示
 
   @override
   void initState() {
@@ -59,6 +60,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       _lastBackupTime = lastBackup != null
           ? '${lastBackup.year}-${lastBackup.month.toString().padLeft(2,'0')}-${lastBackup.day.toString().padLeft(2,'0')}'
           : null;
+
+      // T55：超过 14 天未备份提示（从未备份不提示，仅显示"从未"）
+      if (lastBackup != null) {
+        final daysSince = DateTime.now().difference(lastBackup).inDays;
+        _backupOverdue = daysSince > 14;
+      } else {
+        _backupOverdue = false;
+      }
 
       final store = ref.read(secureConfigStoreProvider);
       _monthlyCount = await store.getCurrentMonthCount();
@@ -183,6 +192,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             title: const Text('上次自动备份'),
             trailing: Text(_lastBackupTime ?? '从未', style: const TextStyle(color: Colors.grey)),
           ),
+          if (_backupOverdue)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                '⚠️ 已超过 14 天未备份，建议立即导出备份',
+                style: const TextStyle(color: Colors.orange, fontSize: 12),
+              ),
+            ),
           const SizedBox(height: 16),
 
           // --- 隐私政策 ---

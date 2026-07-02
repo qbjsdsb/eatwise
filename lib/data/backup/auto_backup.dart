@@ -61,11 +61,11 @@ class AutoBackup {
     try {
       final dir = await getApplicationDocumentsDirectory();
       final backupDir = Directory('${dir.path}/backups');
-      if (!await backupDir.exists()) return null;
-      final files = await backupDir
-          .list()
-          .where((e) => e is File && e.path.endsWith('.json'))
-          .cast<File>()
+      if (!backupDir.existsSync()) return null;
+      final files = backupDir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.json'))
           .toList();
       if (files.isEmpty) return null;
       files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
