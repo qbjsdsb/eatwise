@@ -168,8 +168,10 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       final foodItemRepo = await ref.read(foodItemRepoProvider.future);
       if (!mounted) return;
       // 智能份量校准：单品路径查历史中位数作滑块初值（B 功能）
+      // v1.3：多份场景跳过（CalibrationPage 会用 AI mid，查了也浪费 DB 调用）
       double? suggestedServingG;
-      if (state.singleNutrition != null) {
+      if (state.singleNutrition != null &&
+          !state.recognitionResult!.isMultiQuantity) {
         final mealRepo = await ref.read(mealLogRepoProvider.future);
         suggestedServingG = await mealRepo.getMedianServing(state.singleNutrition!.foodItemId);
       }
@@ -329,8 +331,11 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     final foodItemRepo = await ref.read(foodItemRepoProvider.future);
     if (!mounted) return;
     // 智能份量校准：查历史中位数作滑块初值（B 功能）
+    // v1.3：多份场景跳过（CalibrationPage 会用 AI mid）
     final mealRepoForSuggest = await ref.read(mealLogRepoProvider.future);
-    final suggestedServingG = await mealRepoForSuggest.getMedianServing(nutrition.foodItemId);
+    final suggestedServingG = result.isMultiQuantity
+        ? null
+        : await mealRepoForSuggest.getMedianServing(nutrition.foodItemId);
     if (!mounted) return;
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => CalibrationPage(

@@ -13,6 +13,12 @@ class VisionRecognitionResult {
   // v1.2：一桌多菜批量识别时，主菜之外的其余菜品。
   // 单菜时为空数组；多菜时每个元素是独立的识别结果（additionalDishes 强制为空，不嵌套）。
   final List<VisionRecognitionResult> additionalDishes;
+  // v1.3：同物多份（解决拍两罐可乐只识别一罐的问题）
+  // quantity 数量（默认 1），unit 单位（罐/瓶/个/份...），perUnitG 单份克数
+  // estimatedWeightGMid 应 = perUnitG * quantity（AI 总重量）
+  final int quantity;
+  final String unit;
+  final double perUnitG;
 
   const VisionRecognitionResult({
     required this.dishName,
@@ -26,10 +32,16 @@ class VisionRecognitionResult {
     required this.promptVersion,
     this.brand = '',
     this.additionalDishes = const [],
+    this.quantity = 1,
+    this.unit = '份',
+    this.perUnitG = 0,
   });
 
   /// 是否多菜（additionalDishes 非空）
   bool get isMultiDish => additionalDishes.isNotEmpty;
+
+  /// 是否多份（quantity > 1）
+  bool get isMultiQuantity => quantity > 1;
 
   factory VisionRecognitionResult.fromJson(Map<String, dynamic> json, String promptVersion) {
     final mid = (json['estimated_weight_g_mid'] as num).toDouble();
@@ -49,6 +61,16 @@ class VisionRecognitionResult {
               promptVersion,
             ))
         .toList();
+    // v1.3：解析 quantity/per_unit_g/unit（旧响应无此字段 → 默认值，向后兼容）
+    // quantity 清洗到 [1,20]：防 0/负致 mid/0=Infinity 或 NaN 崩溃，防 >20 步进器难用
+    final quantityRaw = (json['quantity'] as num?)?.toInt() ?? 1;
+    final quantity = quantityRaw < 1 ? 1 : (quantityRaw > 20 ? 20 : quantityRaw);
+    var perUnitG = (json['per_unit_g'] as num?)?.toDouble() ??
+        (quantity > 0 ? mid / quantity : 0); // 旧响应无 per_unit_g 时反推
+    // NaN/Infinity/负数兜底（mid/0 在 Dart 产生 Infinity/NaN，会致 Slider value 崩溃）
+    if (perUnitG.isNaN || perUnitG.isInfinite || perUnitG < 0) perUnitG = 0;
+    final unitStr = (json['unit'] as String?) ?? '';
+    final unit = unitStr.isNotEmpty ? unitStr : '份';
     return VisionRecognitionResult(
       dishName: json['dish_name'] as String,
       // brand 可选（v1.1+），旧模型/v1.0 响应无此字段 → 空串
@@ -64,6 +86,9 @@ class VisionRecognitionResult {
       confidence: (json['confidence'] as num).toDouble(),
       promptVersion: promptVersion,
       additionalDishes: additional,
+      quantity: quantity,
+      unit: unit,
+      perUnitG: perUnitG,
     );
   }
 }

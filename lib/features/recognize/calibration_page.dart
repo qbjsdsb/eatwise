@@ -43,20 +43,45 @@ class _CalibrationPageState extends State<CalibrationPage> {
   // 复合菜校准状态
   final Map<int, double> _componentServings = {}; // 组分索引 → 份量 g
   double _oilG = 0; // 用油量 g
+  // v1.3：同物多份数量步进器（解决拍两罐可乐只识别一罐的问题）
+  // _quantity 当前数量，_perUnitG 单份克数；仅单品路径 + perUnitG > 0 时显示步进器
+  // 份量联动：调数量 → _servingG = perUnitG × quantity；拖滑块 → 反推 _quantity
+  late int _quantity;
+  late double _perUnitG;
+
+  /// v1.3：动态滑块上限。多份场景 perUnitG×20 可能超 1000（如 5 碗米饭=1250g），
+  /// 静态 max=1000 会被 clamp 致静默少算。perUnitG>0 时按 perUnitG×20 扩到上限 5000，
+  /// 否则用默认 1000（复合菜/无 perUnitG 的单品）。
+  double get _sliderMax {
+    if (_perUnitG > 0) {
+      return (_perUnitG * 20).clamp(1000.0, 5000.0);
+    }
+    return 1000.0;
+  }
 
   @override
   void initState() {
     super.initState();
+    _quantity = widget.recognitionResult.quantity;
+    _perUnitG = widget.recognitionResult.perUnitG;
+    final isMulti = widget.recognitionResult.isMultiQuantity;
     // 智能份量校准：单品路径优先用历史中位数，无历史回退 AI 估算 mid
-    // 历史中位数需 >0（0 通常是数据质量问题）且 clamp 到滑块范围 [0,1000] 防崩溃
+    // 历史中位数需 >0（0 通常是数据质量问题）且 clamp 到滑块范围 [_sliderMax] 防崩溃
+    // 多份场景不用历史中位数（历史记录可能是单份的，会与 quantity 冲突），用 AI mid
     final suggested = widget.suggestedServingG;
-    if (widget.singleNutrition != null &&
+    if (!isMulti &&
+        widget.singleNutrition != null &&
         suggested != null &&
         suggested > 0) {
-      _servingG = suggested.clamp(1.0, 1000.0);
+      _servingG = suggested.clamp(1.0, _sliderMax);
       _usedHistoryServing = true;
+      // M1：历史中位数与步进器保持一致（perUnitG>0 时反推 quantity）
+      if (_perUnitG > 0) {
+        final q = (_servingG / _perUnitG).round();
+        if (q >= 1 && q <= 20) _quantity = q;
+      }
     } else {
-      _servingG = widget.recognitionResult.estimatedWeightGMid;
+      _servingG = widget.recognitionResult.estimatedWeightGMid.clamp(0.0, _sliderMax);
       _usedHistoryServing = false;
     }
     _canSkipCalibration =
@@ -103,7 +128,9 @@ class _CalibrationPageState extends State<CalibrationPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('识别结果：${widget.recognitionResult.dishName}',
+                    Text(
+                        '识别结果：${widget.recognitionResult.dishName}'
+                        '${_quantity > 1 ? " ×$_quantity" : ""}',
                         style: Theme.of(context).textTheme.headlineSmall),
                     Text('置信度：${(widget.recognitionResult.confidence * 100).toStringAsFixed(0)}%'),
                     if (isLowConfidence)
@@ -127,14 +154,23 @@ class _CalibrationPageState extends State<CalibrationPage> {
                     Slider(
                       value: _servingG,
                       min: 0,
-                      max: 1000,
-                      divisions: 100,
+                      max: _sliderMax,
+                      divisions: (_sliderMax / 10).round(),
                       label: '${_servingG.toStringAsFixed(0)} g',
                       onChanged: (v) => setState(() {
                         _servingG = v;
                         _usedHistoryServing = false; // 用户手动调整后不再提示
+                        // v1.3：拖滑块反推数量（perUnitG > 0 时，保持数量与份量一致）
+                        if (_perUnitG > 0) {
+                          final q = (v / _perUnitG).round();
+                          if (q >= 1 && q <= 20 && q != _quantity) {
+                            _quantity = q;
+                          }
+                        }
                       }),
                     ),
+                    // v1.3：数量步进器（同物多份场景，仅单品 + perUnitG > 0 显示）
+                    _buildQuantityStepper(),
                     const SizedBox(height: 24),
                     // 实时营养素预览（基于当前滑块值重算）
                     _buildNutritionPreview(),
@@ -262,6 +298,49 @@ class _CalibrationPageState extends State<CalibrationPage> {
         ),
       ],
     );
+  }
+
+  /// v1.3：数量步进器（同物多份场景，解决"拍两罐可乐只识别一罐"的问题）
+  /// 仅单品路径 + perUnitG > 0 时显示；复合菜份量按组分，不走数量步进器
+  /// − / 数量+单位 / + 三段式，范围 1-20；改数量时同步 _servingG = perUnitG × quantity
+  Widget _buildQuantityStepper() {
+    if (widget.singleNutrition == null) return const SizedBox.shrink();
+    if (_perUnitG <= 0) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline),
+            onPressed: _quantity > 1
+                ? () => _onQuantityChanged(_quantity - 1)
+                : null,
+          ),
+          Text('$_quantity ${widget.recognitionResult.unit}',
+              style: Theme.of(context).textTheme.titleMedium),
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline),
+            onPressed: _quantity < 20
+                ? () => _onQuantityChanged(_quantity + 1)
+                : null,
+          ),
+          const SizedBox(width: 8),
+          Text(
+              '（每${widget.recognitionResult.unit} ${_perUnitG.toStringAsFixed(0)}g）',
+              style: const TextStyle(fontSize: 12, color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+
+  /// v1.3：数量变更联动份量（perUnitG × quantity，clamp 到 _sliderMax 防滑块越界）
+  void _onQuantityChanged(int newQ) {
+    setState(() {
+      _quantity = newQ;
+      _servingG = (_perUnitG * newQ).clamp(1.0, _sliderMax);
+      _usedHistoryServing = false;
+    });
   }
 
   void _confirmOneClick() {

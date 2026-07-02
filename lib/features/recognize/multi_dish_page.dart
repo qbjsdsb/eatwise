@@ -37,6 +37,8 @@ class MultiDishPage extends ConsumerStatefulWidget {
 class _MultiDishPageState extends ConsumerState<MultiDishPage> {
   // 每菜的份量状态（索引 0=主菜，1..n=additionalDishes）
   late List<double> _servings;
+  // v1.3：每菜的数量状态（同物多份，索引与 _servings 对齐）
+  late List<int> _quantities;
   // 每菜是否命中库（未命中需标红提示转手动）
   late List<bool> _hitFlags;
   // 防重入：记录中禁止连点
@@ -50,10 +52,12 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
       widget.mainDish,
       ...widget.additionalItems.take(5).map((e) => e.dish),
     ];
-    // 份量初值 clamp 到滑块范围 [0,1000] 防 Slider 越界崩溃
+    // 份量初值 clamp 到滑块范围 [0, _sliderMaxFor] 防 Slider 越界崩溃
     _servings = allDishes
-        .map((d) => d.estimatedWeightGMid.clamp(0.0, 1000.0))
+        .map((d) => d.estimatedWeightGMid.clamp(0.0, _sliderMaxFor(d)))
         .toList();
+    // v1.3：数量初值取 AI 识别的 quantity（默认 1）
+    _quantities = allDishes.map((d) => d.quantity).toList();
     // 命中标志：主菜 single/composite 任一非空即命中；additionalDish 同理
     _hitFlags = [
       widget.mainSingle != null || widget.mainComposite != null,
@@ -141,7 +145,9 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
             Row(
               children: [
                 Expanded(
-                  child: Text(dish.dishName,
+                  // v1.3：多份时菜名后显示 ×数量（用 state _quantities，步进器改后同步）
+                  child: Text(
+                      '${dish.dishName}${_quantities[index] > 1 ? " ×${_quantities[index]}" : ""}',
                       style: Theme.of(context).textTheme.titleMedium),
                 ),
                 if (!hit)
@@ -163,11 +169,22 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
               Slider(
                 value: _servings[index],
                 min: 0,
-                max: 1000,
-                divisions: 100,
+                max: _sliderMaxFor(dish),
+                divisions: (_sliderMaxFor(dish) / 10).round(),
                 label: '${_servings[index].toStringAsFixed(0)} g',
-                onChanged: (v) => setState(() => _servings[index] = v),
+                onChanged: (v) => setState(() {
+                  _servings[index] = v;
+                  // v1.3：仅单品路径 + perUnitG > 0 时反推数量（复合菜无步进器，不写 _quantities）
+                  if (_getSingleNutrition(index) != null && dish.perUnitG > 0) {
+                    final q = (v / dish.perUnitG).round();
+                    if (q >= 1 && q <= 20 && q != _quantities[index]) {
+                      _quantities[index] = q;
+                    }
+                  }
+                }),
               ),
+              // v1.3：数量步进器（仅单品命中 + perUnitG > 0 显示）
+              _buildQuantityStepper(index, dish),
               Text(
                   '${cal.toStringAsFixed(0)} kcal · 蛋白 ${p.toStringAsFixed(1)}g · 脂肪 ${f.toStringAsFixed(0)}g · 碳水 ${c.toStringAsFixed(0)}g',
                   style: const TextStyle(fontSize: 12, color: Colors.grey)),
@@ -181,6 +198,60 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
         ),
       ),
     );
+  }
+
+  /// v1.3：动态滑块上限（每菜独立）。perUnitG>0 时按 perUnitG×20 扩到 5000 防多份 clamp 少算
+  double _sliderMaxFor(VisionRecognitionResult dish) {
+    if (dish.perUnitG > 0) {
+      return (dish.perUnitG * 20).clamp(1000.0, 5000.0);
+    }
+    return 1000.0;
+  }
+
+  /// v1.3：获取某菜的单品查库结果（判断是否单品路径用）
+  NutritionResult? _getSingleNutrition(int index) {
+    if (index == 0) return widget.mainSingle;
+    return widget.additionalItems[index - 1].singleNutrition;
+  }
+
+  /// v1.3：数量步进器（同物多份场景，仅单品命中 + perUnitG > 0 显示）
+  /// − / 数量+单位 / + 三段式，范围 1-20；改数量时同步 _servings[index] = perUnitG × quantity
+  Widget _buildQuantityStepper(int index, VisionRecognitionResult dish) {
+    if (_getSingleNutrition(index) == null) return const SizedBox.shrink();
+    if (dish.perUnitG <= 0) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline),
+            onPressed: _quantities[index] > 1
+                ? () => _onQuantityChanged(index, _quantities[index] - 1, dish)
+                : null,
+          ),
+          Text('${_quantities[index]} ${dish.unit}',
+              style: Theme.of(context).textTheme.bodyMedium),
+          IconButton(
+            icon: const Icon(Icons.add_circle_outline),
+            onPressed: _quantities[index] < 20
+                ? () => _onQuantityChanged(index, _quantities[index] + 1, dish)
+                : null,
+          ),
+          const SizedBox(width: 8),
+          Text('（每${dish.unit} ${dish.perUnitG.toStringAsFixed(0)}g）',
+              style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        ],
+      ),
+    );
+  }
+
+  /// v1.3：数量变更联动份量（perUnitG × quantity，clamp 到 _sliderMaxFor 防滑块越界）
+  void _onQuantityChanged(int index, int newQ, VisionRecognitionResult dish) {
+    setState(() {
+      _quantities[index] = newQ;
+      _servings[index] = (dish.perUnitG * newQ).clamp(0.0, _sliderMaxFor(dish));
+    });
   }
 
   /// 计算某菜当前份量的营养素（基于查库结果按比例缩放）

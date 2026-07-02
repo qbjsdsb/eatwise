@@ -272,4 +272,190 @@ void main() {
       expect(result.additionalDishes[0].brand, '乐事');
     });
   });
+
+  group('v1.3 同物多份解析（quantity/per_unit_g/unit）', () {
+    test('正常多份响应：两罐可乐 quantity=2 → isMultiQuantity=true', () {
+      final json = {
+        'dish_name': '可乐',
+        'estimated_weight_g_mid': 660,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'quantity': 2,
+        'unit': '罐',
+        'per_unit_g': 330,
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.3');
+
+      expect(result.quantity, 2);
+      expect(result.unit, '罐');
+      expect(result.perUnitG, 330);
+      expect(result.isMultiQuantity, true);
+      expect(result.estimatedWeightGMid, 660); // = perUnitG × quantity
+    });
+
+    test('旧响应无 quantity/per_unit_g/unit → 默认值 + 向后兼容', () {
+      final json = {
+        'dish_name': '苹果',
+        'estimated_weight_g_mid': 180,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        // quantity/per_unit_g/unit 均缺失（v1.0/v1.1/v1.2 旧响应）
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.3');
+
+      expect(result.quantity, 1);
+      expect(result.unit, '份');
+      expect(result.perUnitG, 180); // 反推 mid/quantity = 180/1
+      expect(result.isMultiQuantity, false);
+    });
+
+    test('quantity=1 → isMultiQuantity=false', () {
+      final json = {
+        'dish_name': '可乐',
+        'estimated_weight_g_mid': 330,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'quantity': 1,
+        'unit': '罐',
+        'per_unit_g': 330,
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.3');
+      expect(result.quantity, 1);
+      expect(result.isMultiQuantity, false);
+    });
+
+    test('quantity=0 越界 → 清洗为 1（防 mid/0=Infinity 崩溃）', () {
+      final json = {
+        'dish_name': '可乐',
+        'estimated_weight_g_mid': 330,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'quantity': 0, // 非法
+        'unit': '罐',
+        'per_unit_g': 330,
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.3');
+      expect(result.quantity, 1); // 清洗为 1
+      expect(result.perUnitG, 330);
+      expect(result.isMultiQuantity, false);
+    });
+
+    test('quantity=负数 越界 → 清洗为 1', () {
+      final json = {
+        'dish_name': '可乐',
+        'estimated_weight_g_mid': 330,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'quantity': -3, // 非法
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.3');
+      expect(result.quantity, 1);
+    });
+
+    test('quantity=100 超上限 → 清洗为 20（步进器上限）', () {
+      final json = {
+        'dish_name': '饺子',
+        'estimated_weight_g_mid': 2000,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'boil',
+        'confidence': 0.85,
+        'quantity': 100, // 超 20 上限
+        'per_unit_g': 20,
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.3');
+      expect(result.quantity, 20); // 清洗为上限
+      expect(result.isMultiQuantity, true);
+    });
+
+    test('per_unit_g 缺失时反推 mid/quantity', () {
+      final json = {
+        'dish_name': '可乐',
+        'estimated_weight_g_mid': 990,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'quantity': 3,
+        // per_unit_g 缺失 → 反推 990/3=330
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.3');
+      expect(result.quantity, 3);
+      expect(result.perUnitG, 330); // mid/quantity 反推
+    });
+
+    test('unit 为空串 → 默认"份"', () {
+      final json = {
+        'dish_name': '可乐',
+        'estimated_weight_g_mid': 330,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'quantity': 1,
+        'unit': '', // 空串
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.3');
+      expect(result.unit, '份');
+    });
+
+    test('unit 缺失 → 默认"份"', () {
+      final json = {
+        'dish_name': '可乐',
+        'estimated_weight_g_mid': 330,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        // unit 缺失
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.3');
+      expect(result.unit, '份');
+    });
+
+    test('多份 + 多菜组合：主菜多份 + additionalDishes 正常', () {
+      final json = {
+        'dish_name': '可乐',
+        'estimated_weight_g_mid': 660,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'quantity': 2,
+        'unit': '罐',
+        'per_unit_g': 330,
+        'additional_dishes': [
+          {
+            'dish_name': '薯片',
+            'estimated_weight_g_mid': 100,
+            'is_single_item': true,
+            'food_components': [],
+            'cooking_method': 'raw',
+            'confidence': 0.85,
+            'quantity': 2,
+            'unit': '包',
+            'per_unit_g': 50,
+          },
+        ],
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.3');
+
+      expect(result.quantity, 2);
+      expect(result.isMultiQuantity, true);
+      expect(result.isMultiDish, true);
+      expect(result.additionalDishes[0].quantity, 2);
+      expect(result.additionalDishes[0].perUnitG, 50);
+      expect(result.additionalDishes[0].isMultiQuantity, true);
+    });
+  });
 }
