@@ -154,6 +154,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final db = await ref.read(recognize.databaseProvider.future);
     final repo = ProfileRepository(db);
 
+    // 读取现有 profile，保留 tdeeAdjustmentKcal（校准累积值，不应被 goalRate 重算覆盖）
+    final existing = await repo.get();
+
     final height = double.parse(_heightCtrl.text);
     final weight = double.parse(_weightCtrl.text);
     final age = int.parse(_ageCtrl.text);
@@ -180,7 +183,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     final target = NutritionCalculator.dailyCalorieTarget(
       tdee: tdee,
       goal: goalEnum,
-      tdeeAdjustmentKcal: 0, // 保持现有 _save 行为：不在目标计算中应用 TDEE 调整
+      tdeeAdjustmentKcal: existing.tdeeAdjustmentKcal, // Sprint 7：传真实校准累积值，不再硬编码 0
       goalRateKgPerWeek: goalRate, // 联动重算：goalRate 影响每日目标热量
       gender: genderEnum,
     );

@@ -2,6 +2,7 @@
 import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/data/repositories/weight_log_repository.dart';
 import 'package:eatwise/data/repositories/profile_repository.dart';
+import 'package:eatwise/features/profile/nutrition_calculator.dart';
 
 /// TDEE 自适应校准
 /// 设计文档 5.5：
@@ -86,8 +87,13 @@ class TdeeCalibrator {
     );
   }
 
-  /// 执行校准并写入 profile.tdee_adjustment_kcal（累加）
+  /// 执行校准并写入 profile.tdee_adjustment_kcal（累加）+ 重算 dailyCalorieTarget
   /// 返回校准结果（用于 UI 提示）
+  ///
+  /// Sprint 7 修复：原实现只写 tdeeAdjustmentKcal 不重算 dailyCalorieTarget，
+  /// 导致校准值成为死数据（dashboard 读 dailyCalorieTarget 不含 adjustment）。
+  /// 现在：写 adjustment 后立即用新 adjustment 重算 dailyCalorieTarget，
+  /// 让 dailyCalorieTarget 永远是含 adjustment 的最终生效值。
   Future<TdeeCalibrationResult> runAndApply({bool enabled = true}) async {
     if (!enabled) {
       return TdeeCalibrationResult(adjustmentKcal: 0, reason: '自适应校准已关闭');
@@ -106,7 +112,35 @@ class TdeeCalibrator {
     if (result.adjustmentKcal != 0) {
       // 累加到现有 tdee_adjustment_kcal
       final newAdjustment = profile.tdeeAdjustmentKcal + result.adjustmentKcal;
-      await profileRepo.update(tdeeAdjustmentKcal: newAdjustment);
+
+      // 重算 dailyCalorieTarget（含新 adjustment），让校准值立即生效
+      final genderEnum =
+          profile.gender == 'male' ? Gender.male : Gender.female;
+      final goalEnum = profile.goal == 'cut'
+          ? Goal.cut
+          : profile.goal == 'bulk'
+              ? Goal.bulk
+              : Goal.maintain;
+      final bmr = NutritionCalculator.bmrMifflin(
+        weightKg: profile.weightKg,
+        heightCm: profile.heightCm,
+        age: profile.age,
+        gender: genderEnum,
+      );
+      final tdee = NutritionCalculator.tdee(
+          bmr: bmr, activityLevel: profile.activityLevel);
+      final newTarget = NutritionCalculator.dailyCalorieTarget(
+        tdee: tdee,
+        goal: goalEnum,
+        tdeeAdjustmentKcal: newAdjustment,
+        goalRateKgPerWeek: profile.goalRateKgPerWeek,
+        gender: genderEnum,
+      );
+
+      await profileRepo.update(
+        tdeeAdjustmentKcal: newAdjustment,
+        dailyCalorieTarget: newTarget,
+      );
     }
 
     return result;
