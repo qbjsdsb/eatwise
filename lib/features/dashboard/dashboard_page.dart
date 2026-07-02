@@ -24,7 +24,7 @@ class DashboardPage extends ConsumerStatefulWidget {
 
 class _DashboardPageState extends ConsumerState<DashboardPage> {
   // 缓存 future 避免每次 build 重建 Future 导致反复查询 + 闪烁
-  Future<({double cal, double protein, double fat, double carbs, int target, double proteinGoal, double fatGoal, double carbGoal})>?
+  Future<({double cal, double protein, double fat, double carbs, int target, double proteinGoal, double fatGoal, double carbGoal, double weightKg})>?
       _future;
 
   @override
@@ -33,7 +33,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     _future = _loadData();
   }
 
-  Future<({double cal, double protein, double fat, double carbs, int target, double proteinGoal, double fatGoal, double carbGoal})>
+  Future<({double cal, double protein, double fat, double carbs, int target, double proteinGoal, double fatGoal, double carbGoal, double weightKg})>
       _loadData() async {
     final db = await ref.read(recognize.databaseProvider.future);
     final mealRepo = MealLogRepository(db);
@@ -59,6 +59,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
       proteinGoal: proteinGoal,
       fatGoal: fatGoal,
       carbGoal: carbGoal,
+      weightKg: profile.weightKg,
     );
   }
 
@@ -95,7 +96,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
             int target,
             double proteinGoal,
             double fatGoal,
-            double carbGoal
+            double carbGoal,
+            double weightKg
           })>(
         future: _future,
         builder: (context, snapshot) {
@@ -167,9 +169,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               ),
               const SizedBox(height: 24),
               // 三宏量进度条
-              _macroBar('蛋白质', d.protein, d.proteinGoal, Colors.blue),
-              _macroBar('脂肪', d.fat, d.fatGoal, Colors.orange),
-              _macroBar('碳水', d.carbs, d.carbGoal, Colors.purple),
+              _macroBar('蛋白质', d.protein, d.proteinGoal, Colors.blue, d.weightKg),
+              _macroBar('脂肪', d.fat, d.fatGoal, Colors.orange, d.weightKg),
+              _macroBar('碳水', d.carbs, d.carbGoal, Colors.purple, d.weightKg),
             ],
           );
         },
@@ -210,8 +212,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     );
   }
 
-  Widget _macroBar(String label, double value, double goal, Color color) {
+  Widget _macroBar(String label, double value, double goal, Color color, double weightKg) {
     final pct = goal > 0 ? (value / goal).clamp(0.0, 1.0) : 0.0;
+    final gPerKg = weightKg > 0 ? (value / weightKg).toStringAsFixed(1) : '-';
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -221,7 +224,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(label),
-              Text('${value.toStringAsFixed(1)} / ${goal.toStringAsFixed(0)} g'),
+              Text('${value.toStringAsFixed(1)} / ${goal.toStringAsFixed(0)} g ($gPerKg g/kg)'),
             ],
           ),
           const SizedBox(height: 4),

@@ -4,8 +4,12 @@ import 'package:eatwise/ai/nutrition_lookup.dart';
 import 'package:eatwise/ai/vision_provider.dart';
 import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/data/repositories/food_item_repository.dart';
+import 'package:eatwise/data/repositories/meal_log_repository.dart';
+import 'package:eatwise/features/dashboard/dashboard_page.dart';
 import 'package:eatwise/features/recognize/calibration_page.dart';
+import 'package:eatwise/features/recognize/providers.dart' as recognize;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -45,5 +49,46 @@ void main() {
     // 验证显示区间（含 "90-110" 或 "估算" 文字）
     expect(find.textContaining('90'), findsWidgets);
     expect(find.textContaining('110'), findsWidgets);
+  });
+
+  testWidgets('看板宏量显示 g/kg 双展示', (tester) async {
+    final db = EatWiseDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    // 默认 profile weightKg=70（DB 首次创建时种子）
+    // 种子食物 + 今日 meal_log
+    final foodId = await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+          name: '鸡胸肉', defaultServingG: 100, caloriesPer100g: 165,
+          proteinPer100g: 31.0, fatPer100g: 3.6, carbsPer100g: 0.0,
+          source: 'manual', sourceVersion: 'test', createdAt: 1000));
+    final now = DateTime.now();
+    final today =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    await MealLogRepository(db).insertMealLog(
+      date: today,
+      mealType: 'lunch',
+      foodItemId: foodId,
+      actualServingG: 200,
+      actualCalories: 330,
+      actualProteinG: 62.0,
+      actualFatG: 7.2,
+      actualCarbsG: 0.0,
+    );
+
+    final container = ProviderContainer(overrides: [
+      recognize.databaseProvider.overrideWith((ref) async => db),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: DashboardPage()),
+      ),
+    );
+    await tester.pumpAndSettle(const Duration(seconds: 2));
+
+    // 验证宏量条同时展示 g 与 g/kg（蛋白质 62g / 70kg ≈ 0.9 g/kg）
+    expect(find.textContaining('g/kg'), findsNWidgets(3));
+    expect(find.textContaining('0.9 g/kg'), findsOneWidget);
   });
 }
