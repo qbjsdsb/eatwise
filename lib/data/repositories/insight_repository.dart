@@ -45,22 +45,25 @@ class InsightRepository {
   }
 
   /// 强制重新生成（删旧插新）
+  /// 事务包裹：delete + insert 原子化，中途失败回滚避免旧 summary 被删但新 summary 未写入
   Future<int> regenerate({
     required String periodType,
     required String periodStart,
     required String periodEnd,
     required String summaryText,
   }) async {
-    final old = await find(periodType, periodStart, periodEnd);
-    if (old != null) {
-      await (_db.insightSummaries.delete()..where((i) => i.id.equals(old.id)))
-          .go();
-    }
-    return insert(
-      periodType: periodType,
-      periodStart: periodStart,
-      periodEnd: periodEnd,
-      summaryText: summaryText,
-    );
+    return _db.transaction(() async {
+      final old = await find(periodType, periodStart, periodEnd);
+      if (old != null) {
+        await (_db.insightSummaries.delete()..where((i) => i.id.equals(old.id)))
+            .go();
+      }
+      return insert(
+        periodType: periodType,
+        periodStart: periodStart,
+        periodEnd: periodEnd,
+        summaryText: summaryText,
+      );
+    });
   }
 }

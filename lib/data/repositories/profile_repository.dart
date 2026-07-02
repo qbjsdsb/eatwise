@@ -7,8 +7,50 @@ class ProfileRepository {
   ProfileRepository(this._db);
 
   /// 读取唯一 profile 行（id=1）
-  Future<Profile> get() {
-    return (_db.profiles.select()..where((p) => p.id.equals(1))).getSingle();
+  /// 防御性兜底：正常路径 profile 行在 DB 首次创建时已 seed（database.dart beforeOpen），
+  /// 但若 DB 损坏/测试空库导致行缺失，getSingle() 会抛 StateError。
+  /// 改为 getSingleOrNull + 重建默认行，保证调用方永不崩溃。
+  Future<Profile> get() async {
+    final existing = await (_db.profiles.select()..where((p) => p.id.equals(1)))
+        .getSingleOrNull();
+    if (existing != null) return existing;
+
+    // 行缺失：重建默认 profile（与 database.dart beforeOpen seed 值一致）
+    await _db.into(_db.profiles).insert(ProfilesCompanion.insert(
+          id: const Value(1),
+          heightCm: 170,
+          weightKg: 70,
+          age: 30,
+          gender: 'male',
+          activityLevel: 1.375,
+          goal: 'maintain',
+          goalRateKgPerWeek: 0,
+          formula: 'mifflin',
+          dailyCalorieTarget: 2000,
+          proteinGPerKg: 1.4,
+          fatGPerKg: 0.9,
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+        ));
+    final reloaded = await (_db.profiles.select()..where((p) => p.id.equals(1)))
+        .getSingleOrNull();
+    // insert 成功后行必定存在；极端竞态下仍为 null 则返回内存默认值（永不抛 StateError）
+    return reloaded ??
+        Profile(
+          id: 1,
+          heightCm: 170,
+          weightKg: 70,
+          age: 30,
+          gender: 'male',
+          activityLevel: 1.375,
+          goal: 'maintain',
+          goalRateKgPerWeek: 0,
+          formula: 'mifflin',
+          dailyCalorieTarget: 2000,
+          proteinGPerKg: 1.4,
+          fatGPerKg: 0.9,
+          tdeeAdjustmentKcal: 0,
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+        );
   }
 
   /// 更新 profile（部分字段）

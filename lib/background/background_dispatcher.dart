@@ -23,10 +23,11 @@ import 'background_tasks.dart';
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     debugPrint('后台任务执行: $task');
+    EatWiseDatabase? db;
     try {
       // 重新初始化依赖（独立 isolate）
       final executor = await openEncryptedConnection();
-      final db = EatWiseDatabase(executor);
+      db = EatWiseDatabase(executor);
 
       switch (task) {
         case BackgroundTasks.offlineBackfill:
@@ -46,12 +47,14 @@ void callbackDispatcher() {
           debugPrint('未知后台任务: $task');
       }
 
-      await db.close();
       return true;
     } catch (e, st) {
       debugPrint('后台任务失败: $e\n$st');
       // 返回 false 让 WorkManager 重试（按指数退避）
       return false;
+    } finally {
+      // 无论成功/失败/异常都必须关闭 DB，否则连接 + isolate 泄漏
+      await db?.close();
     }
   });
 }

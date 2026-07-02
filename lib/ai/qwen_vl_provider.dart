@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -67,7 +68,7 @@ class QwenVlProvider implements VisionProvider {
             ),
           ],
         ),
-      );
+      ).timeout(const Duration(seconds: 30)); // 防服务端无响应挂死
 
       // response.text 为 String? 便捷访问器（openai_dart 7.0）
       final jsonStr = response.text;
@@ -93,6 +94,10 @@ class QwenVlProvider implements VisionProvider {
     } on FormatException catch (e) {
       // JSON 语法错误：malformed，不可盲目重试（设计文档 3.2 节）
       throw VisionRecognitionException('JSON 解析失败: ${e.message}', retryable: false);
+    } on TypeError catch (e) {
+      // AI 模型返回 JSON 缺字段/类型不符（as String/as bool 失败）→ 非重试
+      // （重试只会得到同样的 malformed 响应，浪费 token）
+      throw VisionRecognitionException('响应格式错误: $e', retryable: false);
     } on RateLimitException catch (e) {
       // 429：尊重 Retry-After 头（e.retryAfter 为 Duration?）
       final waitSec = e.retryAfter?.inSeconds;
@@ -110,6 +115,9 @@ class QwenVlProvider implements VisionProvider {
     } on RequestTimeoutException catch (e) {
       // 超时：retryable（L1 重试 → L2 切 GLM）
       throw VisionRecognitionException('请求超时: ${e.message}', retryable: true);
+    } on TimeoutException {
+      // dart:async TimeoutException（.timeout(30s) 触发）：retryable
+      throw VisionRecognitionException('请求超时（30s），请检查网络后重试', retryable: true);
     } on ConnectionException catch (e) {
       // 网络错误：retryable
       throw VisionRecognitionException('网络连接失败: ${e.message}', retryable: true);

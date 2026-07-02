@@ -45,7 +45,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     _gender = p.gender;
     _activity = p.activityLevel;
     _goal = p.goal;
-    setState(() => _loading = false);
+    if (mounted) setState(() => _loading = false);
   }
 
   @override
@@ -74,19 +74,31 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               controller: _heightCtrl,
               decoration: const InputDecoration(labelText: '身高 (cm)'),
               keyboardType: TextInputType.number,
-              validator: (v) => v == null || v.isEmpty ? '必填' : null,
+              validator: (v) {
+                if (v == null || v.isEmpty) return '必填';
+                if (double.tryParse(v) == null) return '请输入有效数字';
+                return null;
+              },
             ),
             TextFormField(
               controller: _weightCtrl,
               decoration: const InputDecoration(labelText: '体重 (kg)'),
               keyboardType: TextInputType.number,
-              validator: (v) => v == null || v.isEmpty ? '必填' : null,
+              validator: (v) {
+                if (v == null || v.isEmpty) return '必填';
+                if (double.tryParse(v) == null) return '请输入有效数字';
+                return null;
+              },
             ),
             TextFormField(
               controller: _ageCtrl,
               decoration: const InputDecoration(labelText: '年龄'),
               keyboardType: TextInputType.number,
-              validator: (v) => v == null || v.isEmpty ? '必填' : null,
+              validator: (v) {
+                if (v == null || v.isEmpty) return '必填';
+                if (int.tryParse(v) == null) return '请输入有效整数';
+                return null;
+              },
             ),
             DropdownButtonFormField<String>(
               initialValue: _gender,
@@ -102,6 +114,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               decoration:
                   const InputDecoration(labelText: '体脂率 % (可选，填了可用 Katch 公式)'),
               keyboardType: TextInputType.number,
+              validator: (v) {
+                if (v == null || v.isEmpty) return null; // 可选字段
+                if (double.tryParse(v) == null) return '请输入有效数字';
+                return null;
+              },
             ),
             DropdownButtonFormField<double>(
               initialValue: _activity,

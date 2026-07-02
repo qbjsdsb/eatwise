@@ -47,7 +47,12 @@ class AutoBackup {
     if (files.length <= maxBackups) return;
 
     // 按修改时间降序排序，删除多余的
-    files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+    // try-catch：文件可能被外部进程删除（TOCTOU 竞态），statSync 抛 FileSystemException
+    try {
+      files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+    } catch (_) {
+      return; // 排序失败则跳过清理（不影响新备份写入）
+    }
     for (var i = maxBackups; i < files.length; i++) {
       try {
         await files[i].delete();

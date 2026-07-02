@@ -151,6 +151,8 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
       );
       return;
     }
+    // 立即记录时间戳，防竞态：避免连点两次都通过检查（检查与原 L185 set 之间有多个 await）
+    _lastRecognizeTime = now;
 
     state = state.copyWith(
         state: RecognizeState.pickingImage, mealType: mealType, clearError: true);
@@ -159,6 +161,8 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
       final picker = ImagePicker();
       xFile = await picker.pickImage(source: source, maxWidth: 1024, maxHeight: 1024);
       if (xFile == null) {
+        // 用户取消选图：重置限流时间戳，不惩罚取消行为
+        _lastRecognizeTime = null;
         state = state.copyWith(state: RecognizeState.idle);
         return;
       }
@@ -182,7 +186,6 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
 
       // 调 Vision API（L1 重试 + L2 切备 + L3 转手动 容灾链路）
       state = state.copyWith(state: RecognizeState.recognizing);
-      _lastRecognizeTime = DateTime.now(); // T23 限流：记录本次识别时间
       // T37 断路器：open 状态直接走离线入队，不调 API 不烧 token
       if (_circuitBreaker != null && !await _circuitBreaker.allowCall) {
         state = state.copyWith(
@@ -250,7 +253,14 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
       }
 
       // T37 断路器：识别成功（无论主/L1重试/L2切备）记录成功（halfOpen → closed）
-      if (_circuitBreaker != null) await _circuitBreaker.recordSuccess();
+      // best-effort：断路器持久化失败不应覆盖成功识别结果
+      if (_circuitBreaker != null) {
+        try {
+          await _circuitBreaker.recordSuccess();
+        } catch (_) {
+          // best-effort：持久化失败不影响识别结果展示
+        }
+      }
 
       // 查库回填营养素
       state = state.copyWith(
@@ -294,9 +304,14 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
       }
 
       // T43：识别成功 + 查库回填完成，月度计数 +1（state=done 之前；离线入队/L3 转手动不计数）
+      // best-effort：计数失败不覆盖识别结果
       if (_secureConfigStore != null) {
-        final now = DateTime.now();
-        await _secureConfigStore.incrementMonthlyCount(now.year, now.month);
+        try {
+          final now = DateTime.now();
+          await _secureConfigStore.incrementMonthlyCount(now.year, now.month);
+        } catch (_) {
+          // best-effort：月度计数失败不影响识别结果
+        }
       }
       state = state.copyWith(
         state: RecognizeState.done,
@@ -306,14 +321,19 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
       );
     } catch (e) {
       // T37 断路器：retryable 失败记录（连续 3 次 → open）
+      // best-effort：断路器操作本身异常不可逃逸 catch 块（否则吞掉原始错误，用户看到的是断路器异常）
       if (_circuitBreaker != null &&
           e is VisionRecognitionException &&
           e.retryable) {
-        final breakerState = await _circuitBreaker.state;
-        if (breakerState == CircuitBreakerState.halfOpen) {
-          await _circuitBreaker.recordHalfOpenFailure();
-        } else {
-          await _circuitBreaker.recordFailure();
+        try {
+          final breakerState = await _circuitBreaker.state;
+          if (breakerState == CircuitBreakerState.halfOpen) {
+            await _circuitBreaker.recordHalfOpenFailure();
+          } else {
+            await _circuitBreaker.recordFailure();
+          }
+        } catch (_) {
+          // best-effort：断路器持久化失败不逃逸
         }
       }
       // Sprint 2 T14：网络类异常 + 配置了离线回调 → 入队

@@ -73,7 +73,8 @@ class PendingRecognitionRepository {
     }
     final current = await (_db.pendingRecognitions.select()
           ..where((p) => p.id.equals(id)))
-        .getSingle();
+        .getSingleOrNull();
+    if (current == null) return; // 记录已被删除（并发场景），无需标记失败
     await (_db.pendingRecognitions.update()..where((p) => p.id.equals(id)))
         .write(
       PendingRecognitionsCompanion(

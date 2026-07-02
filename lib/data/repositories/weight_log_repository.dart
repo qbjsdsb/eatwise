@@ -44,7 +44,10 @@ class WeightLogRepository {
 
     final all = await (_db.weightLogs.select()
           ..where((w) => w.date.isBetweenValues(startDate, endDate))
-          ..orderBy([(w) => OrderingTerm.asc(w.date)]))
+          ..orderBy([
+            (w) => OrderingTerm.asc(w.date),
+            (w) => OrderingTerm.asc(w.id), // 同日多条按插入顺序，保证 byDate 覆盖取最新
+          ]))
         .get();
 
     // 同一天多条取最后一条（按 id 降序即插入顺序，同日最后插入的最新）

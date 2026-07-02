@@ -38,7 +38,13 @@ class CircuitBreaker {
   Future<CircuitBreakerState> get state async {
     final openUntilStr = await _read(_keyOpenUntil);
     if (openUntilStr != null) {
-      final openUntil = DateTime.fromMillisecondsSinceEpoch(int.parse(openUntilStr));
+      final openUntilMs = int.tryParse(openUntilStr);
+      if (openUntilMs == null) {
+        // 存储损坏，清理并视为 closed
+        await _delete(_keyOpenUntil);
+        return CircuitBreakerState.closed;
+      }
+      final openUntil = DateTime.fromMillisecondsSinceEpoch(openUntilMs);
       if (_now().isBefore(openUntil)) return CircuitBreakerState.open;
       // 已过 open 截止 → halfOpen（未持久化，仅内存判断）
       return CircuitBreakerState.halfOpen;

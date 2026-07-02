@@ -118,6 +118,7 @@ class FoodItemRepository {
   }
 
   /// 插入或更新（去重键 name + source）
+  /// 事务包裹：select-then-insert 原子化，防并发产生重复记录
   Future<int> upsertAiRecognized({
     required String name,
     required double caloriesPer100g,
@@ -127,36 +128,38 @@ class FoodItemRepository {
     double? confidence,
     String? componentsJson,
   }) async {
-    final existing = await (_db.foodItems.select()
-          ..where((f) => f.name.equals(name) & f.source.equals('ai_recognized')))
-        .getSingleOrNull();
+    return _db.transaction(() async {
+      final existing = await (_db.foodItems.select()
+            ..where((f) => f.name.equals(name) & f.source.equals('ai_recognized')))
+          .getSingleOrNull();
 
-    if (existing != null) {
-      await (_db.foodItems.update()..where((f) => f.id.equals(existing.id))).write(
-        FoodItemsCompanion(
-          caloriesPer100g: Value(caloriesPer100g),
-          proteinPer100g: Value(proteinPer100g),
-          fatPer100g: Value(fatPer100g),
-          carbsPer100g: Value(carbsPer100g),
-          confidence: Value(confidence),
-        ),
-      );
-      return existing.id;
-    }
+      if (existing != null) {
+        await (_db.foodItems.update()..where((f) => f.id.equals(existing.id))).write(
+          FoodItemsCompanion(
+            caloriesPer100g: Value(caloriesPer100g),
+            proteinPer100g: Value(proteinPer100g),
+            fatPer100g: Value(fatPer100g),
+            carbsPer100g: Value(carbsPer100g),
+            confidence: Value(confidence),
+          ),
+        );
+        return existing.id;
+      }
 
-    return _db.into(_db.foodItems).insert(FoodItemsCompanion.insert(
-          name: name,
-          defaultServingG: 100,
-          caloriesPer100g: caloriesPer100g,
-          proteinPer100g: proteinPer100g,
-          fatPer100g: fatPer100g,
-          carbsPer100g: carbsPer100g,
-          source: 'ai_recognized',
-          sourceVersion: 'ai',
-          confidence: Value(confidence),
-          componentsJson: Value(componentsJson),
-          createdAt: DateTime.now().millisecondsSinceEpoch,
-        ));
+      return _db.into(_db.foodItems).insert(FoodItemsCompanion.insert(
+            name: name,
+            defaultServingG: 100,
+            caloriesPer100g: caloriesPer100g,
+            proteinPer100g: proteinPer100g,
+            fatPer100g: fatPer100g,
+            carbsPer100g: carbsPer100g,
+            source: 'ai_recognized',
+            sourceVersion: 'ai',
+            confidence: Value(confidence),
+            componentsJson: Value(componentsJson),
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          ));
+    });
   }
 
   /// 模糊搜索食物（名称 LIKE，MVP 够用，数据量 ≤3000 条）

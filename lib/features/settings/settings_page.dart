@@ -76,6 +76,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     } catch (_) {
       // 防御性兜底：沙箱/真机异常均不传播（真机正常路径不进此分支）
       _lastBackupTime = null;
+      _monthlyCount = 0;
+      _estimatedCost = 0.0;
     } finally {
       if (mounted) setState(() => _loading = false);
     }

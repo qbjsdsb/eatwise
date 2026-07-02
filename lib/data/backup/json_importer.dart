@@ -136,19 +136,19 @@ class JsonImporter {
   ProfilesCompanion _profileFromJson(Map<String, dynamic> j) =>
       ProfilesCompanion.insert(
         id: Value(j['id'] as int),
-        heightCm: j['heightCm'] as double,
-        weightKg: j['weightKg'] as double,
-        bodyFatPct: Value(j['bodyFatPct'] as double?),
+        heightCm: _asDouble(j['heightCm']),
+        weightKg: _asDouble(j['weightKg']),
+        bodyFatPct: Value(_asDoubleOrNull(j['bodyFatPct'])),
         age: j['age'] as int,
         gender: j['gender'] as String,
-        activityLevel: j['activityLevel'] as double,
+        activityLevel: _asDouble(j['activityLevel']),
         goal: j['goal'] as String,
-        goalRateKgPerWeek: j['goalRateKgPerWeek'] as double,
+        goalRateKgPerWeek: _asDouble(j['goalRateKgPerWeek']),
         formula: j['formula'] as String,
         dailyCalorieTarget: j['dailyCalorieTarget'] as int,
-        proteinGPerKg: j['proteinGPerKg'] as double,
-        fatGPerKg: j['fatGPerKg'] as double,
-        carbGPerKg: Value(j['carbGPerKg'] as double?),
+        proteinGPerKg: _asDouble(j['proteinGPerKg']),
+        fatGPerKg: _asDouble(j['fatGPerKg']),
+        carbGPerKg: Value(_asDoubleOrNull(j['carbGPerKg'])),
         tdeeAdjustmentKcal: Value(j['tdeeAdjustmentKcal'] as int),
         updatedAt: j['updatedAt'] as int,
       );
@@ -157,16 +157,16 @@ class JsonImporter {
       FoodItemsCompanion.insert(
         id: Value(j['id'] as int), // 保留原 ID（外键依赖）
         name: j['name'] as String,
-        defaultServingG: j['defaultServingG'] as double,
-        caloriesPer100g: j['caloriesPer100g'] as double,
-        proteinPer100g: j['proteinPer100g'] as double,
-        fatPer100g: j['fatPer100g'] as double,
-        carbsPer100g: j['carbsPer100g'] as double,
+        defaultServingG: _asDouble(j['defaultServingG']),
+        caloriesPer100g: _asDouble(j['caloriesPer100g']),
+        proteinPer100g: _asDouble(j['proteinPer100g']),
+        fatPer100g: _asDouble(j['fatPer100g']),
+        carbsPer100g: _asDouble(j['carbsPer100g']),
         aliasesJson: Value(j['aliasesJson'] as String?),
-        ediblePercent: Value(j['ediblePercent'] as double?),
+        ediblePercent: Value(_asDoubleOrNull(j['ediblePercent'])),
         source: j['source'] as String,
         sourceVersion: j['sourceVersion'] as String,
-        confidence: Value(j['confidence'] as double?),
+        confidence: Value(_asDoubleOrNull(j['confidence'])),
         componentsJson: Value(j['componentsJson'] as String?),
         thumbnailPath: Value(j['thumbnailPath'] as String?),
         createdAt: j['createdAt'] as int,
@@ -178,13 +178,13 @@ class JsonImporter {
         date: j['date'] as String,
         mealType: j['mealType'] as String,
         foodItemId: j['foodItemId'] as int,
-        actualServingG: j['actualServingG'] as double,
-        actualCalories: j['actualCalories'] as double,
-        actualProteinG: j['actualProteinG'] as double,
-        actualFatG: j['actualFatG'] as double,
-        actualCarbsG: j['actualCarbsG'] as double,
+        actualServingG: _asDouble(j['actualServingG']),
+        actualCalories: _asDouble(j['actualCalories']),
+        actualProteinG: _asDouble(j['actualProteinG']),
+        actualFatG: _asDouble(j['actualFatG']),
+        actualCarbsG: _asDouble(j['actualCarbsG']),
         originalImagePath: Value(j['originalImagePath'] as String?),
-        recognitionConfidence: Value(j['recognitionConfidence'] as double?),
+        recognitionConfidence: Value(_asDoubleOrNull(j['recognitionConfidence'])),
         componentsSnapshotJson: Value(j['componentsSnapshotJson'] as String?),
         loggedAt: j['loggedAt'] as int,
       );
@@ -193,7 +193,7 @@ class JsonImporter {
       WeightLogsCompanion.insert(
         id: Value(j['id'] as int),
         date: j['date'] as String,
-        weightKg: j['weightKg'] as double,
+        weightKg: _asDouble(j['weightKg']),
       );
 
   InsightSummariesCompanion _insightFromJson(Map<String, dynamic> j) =>
@@ -213,10 +213,16 @@ class JsonImporter {
         mealLogId: j['mealLogId'] as int,
         isCorrect: j['isCorrect'] as int,
         correctedDishName: Value(j['correctedDishName'] as String?),
-        correctedServingG: Value(j['correctedServingG'] as double?),
+        correctedServingG: Value(_asDoubleOrNull(j['correctedServingG'])),
         promptVersion: j['promptVersion'] as String,
         createdAt: j['createdAt'] as int,
       );
+
+  /// JSON 数值类型安全转换：JSON 数字可能是 int 或 double，直接 `as double` 会在 int 时抛 _TypeError
+  double _asDouble(dynamic v) => (v as num).toDouble();
+
+  /// 可空版本
+  double? _asDoubleOrNull(dynamic v) => v == null ? null : (v as num).toDouble();
 }
 
 /// 图片失效检测结果（换机场景：图片未随 JSON 迁移）

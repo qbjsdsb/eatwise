@@ -175,31 +175,39 @@ class OfflineQueueController {
                 .fold<double>(0, (s, c) => s + c.estimatedG);
           }
 
-          // 写 meal_log（复合菜不再静默丢弃）
-          await mealRepo.insertMealLog(
-            date: p.date,
-            mealType: p.mealType,
-            foodItemId: foodItemId,
-            actualServingG: actualServingG,
-            actualCalories: actualCalories,
-            actualProteinG: actualProteinG,
-            actualFatG: actualFatG,
-            actualCarbsG: actualCarbsG,
-            originalImagePath: p.imagePath,
-            recognitionConfidence: result.confidence,
-            componentsSnapshotJson: componentsJson,
-          );
-          await pendingRepo.markDone(p.id, foodItemId);
+          // 写 meal_log + 标记 done（事务包裹：原子化，防 insertMealLog 成功但 markDone
+          // 失败导致下次重试产生重复 meal_log 记录）
+          await _db.transaction(() async {
+            await mealRepo.insertMealLog(
+              date: p.date,
+              mealType: p.mealType,
+              foodItemId: foodItemId,
+              actualServingG: actualServingG,
+              actualCalories: actualCalories,
+              actualProteinG: actualProteinG,
+              actualFatG: actualFatG,
+              actualCarbsG: actualCarbsG,
+              originalImagePath: p.imagePath,
+              recognitionConfidence: result.confidence,
+              componentsSnapshotJson: componentsJson,
+            );
+            await pendingRepo.markDone(p.id, foodItemId);
+          });
         } catch (e) {
           // T37 断路器：retryable 视觉调用失败记录（halfOpen 失败 → 重新 open）
+          // best-effort：断路器操作本身异常不可逃逸 catch 块
           if (_circuitBreaker != null &&
               e is VisionRecognitionException &&
               e.retryable) {
-            final breakerState = await _circuitBreaker.state;
-            if (breakerState == CircuitBreakerState.halfOpen) {
-              await _circuitBreaker.recordHalfOpenFailure();
-            } else {
-              await _circuitBreaker.recordFailure();
+            try {
+              final breakerState = await _circuitBreaker.state;
+              if (breakerState == CircuitBreakerState.halfOpen) {
+                await _circuitBreaker.recordHalfOpenFailure();
+              } else {
+                await _circuitBreaker.recordFailure();
+              }
+            } catch (_) {
+              // best-effort：断路器持久化失败不逃逸
             }
           }
           await pendingRepo.markFailed(p.id, e.toString());

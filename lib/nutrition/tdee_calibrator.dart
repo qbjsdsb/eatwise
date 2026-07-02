@@ -34,10 +34,11 @@ class TdeeCalibrator {
       );
     }
 
-    // 排除异常点：单次与前次差 > 2 kg
+    // 排除异常点：单次与上一个有效点差 > 2 kg
+    // 必须与 filtered.last 比较（而非 weights[i-1]），否则异常点会连锁滤除正常数据
     final filtered = <WeightLog>[weights.first];
     for (var i = 1; i < weights.length; i++) {
-      final delta = (weights[i].weightKg - weights[i - 1].weightKg).abs();
+      final delta = (weights[i].weightKg - filtered.last.weightKg).abs();
       if (delta <= abnormalDeltaKg) {
         filtered.add(weights[i]);
       }
