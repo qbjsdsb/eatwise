@@ -136,10 +136,12 @@ class _CalibrationPageState extends State<CalibrationPage> {
                         style: Theme.of(context).textTheme.headlineSmall),
                     Text('置信度：${(widget.recognitionResult.confidence * 100).toStringAsFixed(0)}%'),
                     if (isLowConfidence)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
                         child: Text('⚠️ 待确认（置信度低，请仔细校准）',
-                            style: TextStyle(color: Colors.red)),
+                            style: TextStyle(
+                                color:
+                                    Theme.of(context).colorScheme.error)),
                       ),
                     const SizedBox(height: 24),
                     Text('份量：${_servingG.toStringAsFixed(0)} g'
@@ -150,7 +152,10 @@ class _CalibrationPageState extends State<CalibrationPage> {
                         child: Text(
                           '📊 已按你历史记录的中位数预填份量',
                           style: TextStyle(
-                              fontSize: 12, color: Colors.green[700]),
+                              fontSize: 12,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .primary),
                         ),
                       ),
                     Slider(
@@ -266,13 +271,17 @@ class _CalibrationPageState extends State<CalibrationPage> {
           _buildComponentSlider(i, composite.componentHits[i]),
         if (composite.componentMisses.isNotEmpty) ...[
           const SizedBox(height: 8),
-          const Text('⚠ 待确认组分（未在食物库找到）：',
-              style: TextStyle(color: Colors.orange)),
+          Text('⚠ 待确认组分（未在食物库找到）：',
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.tertiary)),
           for (final miss in composite.componentMisses)
             Padding(
               padding: const EdgeInsets.only(left: 16),
               child: Text('• $miss（请转手动录入或补充食物库）',
-                  style: const TextStyle(color: Colors.grey)),
+                  style: TextStyle(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant)),
             ),
         ],
         const SizedBox(height: 16),
@@ -336,7 +345,11 @@ class _CalibrationPageState extends State<CalibrationPage> {
           const SizedBox(width: 8),
           Text(
               '（每${widget.recognitionResult.unit} ${_perUnitG.toStringAsFixed(0)}g）',
-              style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurfaceVariant)),
         ],
       ),
     );

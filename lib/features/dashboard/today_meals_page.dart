@@ -94,9 +94,10 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       key: ValueKey(m.id),
       direction: DismissDirection.endToStart,
       background: Container(
-          color: Colors.red,
+          color: Theme.of(context).colorScheme.errorContainer,
           alignment: Alignment.centerRight,
-          child: const Icon(Icons.delete, color: Colors.white)),
+          child: Icon(Icons.delete,
+              color: Theme.of(context).colorScheme.onErrorContainer)),
       onDismissed: (_) async {
         try {
           final repo = await ref.read(recognize.mealLogRepoProvider.future);
@@ -118,10 +119,11 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
                 width: 48,
                 height: 48,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(
+                errorBuilder: (_, __, ___) => Icon(
                     Icons.broken_image_outlined,
-                    color: Colors.grey))
-            : const Icon(Icons.restaurant_outlined, color: Colors.grey),
+                    color: Theme.of(context).colorScheme.onSurfaceVariant))
+            : Icon(Icons.restaurant_outlined,
+                color: Theme.of(context).colorScheme.onSurfaceVariant),
         title: Text(_foodNames[m.foodItemId] ?? '食物 #${m.foodItemId}'),
         subtitle: Text(
             '${m.actualServingG.toStringAsFixed(0)}g · ${m.actualCalories.toStringAsFixed(0)} kcal'),

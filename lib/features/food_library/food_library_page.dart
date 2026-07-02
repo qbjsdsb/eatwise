@@ -84,13 +84,10 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
         children: [
           Padding(
             padding: const EdgeInsets.all(16),
-            child: TextField(
+            child: SearchBar(
               controller: _searchCtrl,
-              decoration: const InputDecoration(
-                labelText: '搜索食物',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-              ),
+              hintText: '搜索食物',
+              leading: const Icon(Icons.search),
               onChanged: _search,
             ),
           ),
@@ -103,11 +100,12 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
                       style: TextStyle(fontWeight: FontWeight.bold))),
             ),
           if (!_searching && _frequent.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(16),
+            Padding(
+              padding: const EdgeInsets.all(16),
               child: Center(
                   child: Text('暂无常用食物，去拍照识别或手动录入后会出现在这里',
-                      style: TextStyle(color: Colors.grey))),
+                      style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant))),
             ),
           Expanded(
             child: ListView.builder(

@@ -104,6 +104,7 @@ class _WeightPageState extends ConsumerState<WeightPage> {
       return const Center(child: Text('至少记录 2 次才能显示趋势图'));
     }
 
+    final colorScheme = Theme.of(context).colorScheme;
     // 体重数据（映射到主轴范围，topTitles 反向显示刻度）
     final weightSpots = <FlSpot>[];
     for (var i = 0; i < _logs.length; i++) {
@@ -134,7 +135,7 @@ class _WeightPageState extends ConsumerState<WeightPage> {
       gridData: const FlGridData(show: true),
       borderData: FlBorderData(
         show: true,
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       minX: 0,
       maxX: (_logs.length - 1).toDouble(),
@@ -175,13 +176,13 @@ class _WeightPageState extends ConsumerState<WeightPage> {
         LineChartBarData(
           spots: calSpots,
           isCurved: true,
-          color: Colors.orange,
+          color: colorScheme.tertiary,
           barWidth: 2,
           isStrokeCapRound: true,
           dotData: const FlDotData(show: false),
           belowBarData: BarAreaData(
             show: true,
-            color: Colors.orange.withValues(alpha: 0.1),
+            color: colorScheme.tertiary.withValues(alpha: 0.1),
           ),
         ),
         // 体重（映射到主轴范围）
@@ -191,7 +192,7 @@ class _WeightPageState extends ConsumerState<WeightPage> {
                   s.x, (s.y - wMin) / (wMax - wMin) * calRange))
               .toList(),
           isCurved: true,
-          color: Colors.green,
+          color: colorScheme.primary,
           barWidth: 3,
           isStrokeCapRound: true,
           dotData: const FlDotData(show: true),

@@ -137,7 +137,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                 padding: const EdgeInsets.all(24),
                 child: Text('数据加载失败：${snapshot.error}',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.red)),
+                    style: TextStyle(color: Theme.of(context).colorScheme.error)),
               ),
             );
           }
@@ -147,6 +147,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           final d = snapshot.data!;
           final remain = d.target - d.cal;
           final overflow = remain < 0;
+          final colorScheme = Theme.of(context).colorScheme;
           return ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -164,14 +165,14 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                           value: d.cal > d.target
                               ? d.target.toDouble()
                               : d.cal,
-                          color: overflow ? Colors.red : Colors.green,
+                          color: overflow ? colorScheme.error : colorScheme.primary,
                           radius: 16,
                           showTitle: false,
                         ),
                         if (d.cal < d.target)
                           PieChartSectionData(
                             value: (d.target - d.cal).toDouble(),
-                            color: Colors.grey.shade200,
+                            color: colorScheme.surfaceContainerHighest,
                             radius: 16,
                             showTitle: false,
                           ),
@@ -186,12 +187,12 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                             style: Theme.of(context).textTheme.bodySmall),
                         if (overflow)
                           Text('超 ${(-remain).toStringAsFixed(0)} kcal',
-                              style: const TextStyle(
-                                  color: Colors.red,
+                              style: TextStyle(
+                                  color: colorScheme.error,
                                   fontWeight: FontWeight.bold)),
                         if (!overflow)
                           Text('余 ${remain.toStringAsFixed(0)} kcal',
-                              style: TextStyle(color: Colors.grey.shade600)),
+                              style: TextStyle(color: colorScheme.onSurfaceVariant)),
                       ],
                     ),
                   ],
@@ -199,9 +200,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               ),
               const SizedBox(height: 24),
               // 三宏量进度条
-              _macroBar('蛋白质', d.protein, d.proteinGoal, Colors.blue, d.weightKg),
-              _macroBar('脂肪', d.fat, d.fatGoal, Colors.orange, d.weightKg),
-              _macroBar('碳水', d.carbs, d.carbGoal, Colors.purple, d.weightKg),
+              _macroBar('蛋白质', d.protein, d.proteinGoal, colorScheme.primary, d.weightKg),
+              _macroBar('脂肪', d.fat, d.fatGoal, colorScheme.tertiary, d.weightKg),
+              _macroBar('碳水', d.carbs, d.carbGoal, colorScheme.secondary, d.weightKg),
               // C 智能推荐卡片
               const SizedBox(height: 16),
               _buildRecommendationCard(d),
@@ -228,6 +229,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
         final recs = snap.data!;
         final remain = d.target - d.cal;
         final proteinRemain = d.proteinGoal - d.protein;
+        final colorScheme = Theme.of(context).colorScheme;
         return Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -236,7 +238,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.lightbulb_outline, size: 20, color: Colors.amber),
+                    Icon(Icons.lightbulb_outline, size: 20, color: colorScheme.primary),
                     const SizedBox(width: 8),
                     Text('智能推荐',
                         style: Theme.of(context).textTheme.titleMedium),
@@ -249,7 +251,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                       : remain > 0
                           ? '今日还可摄入 ${remain.toStringAsFixed(0)} kcal，推荐：'
                           : '今日热量已达标，推荐低卡食物：',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 12),
                 for (final rec in recs)
@@ -263,11 +265,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                     trailing: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.green.shade50,
+                        color: colorScheme.secondaryContainer,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(rec.reason,
-                          style: TextStyle(fontSize: 10, color: Colors.green.shade700)),
+                          style: TextStyle(fontSize: 10, color: colorScheme.onSecondaryContainer)),
                     ),
                     onTap: () => _pushAndRefresh(
                       ManualEntryPage(initialName: rec.food.name),
@@ -282,14 +284,15 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   }
 
   Widget _buildDrawer(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Drawer(
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          const DrawerHeader(
-            decoration: BoxDecoration(color: Colors.green),
+          DrawerHeader(
+            decoration: BoxDecoration(color: colorScheme.primaryContainer),
             child: Text('EatWise',
-                style: TextStyle(color: Colors.white, fontSize: 24)),
+                style: TextStyle(color: colorScheme.onPrimaryContainer, fontSize: 24)),
           ),
           _drawerItem(Icons.person_outline, '个人档案', () => const ProfilePage()),
           _drawerItem(Icons.monitor_weight_outlined, '体重记录', () => const WeightPage()),

@@ -32,13 +32,15 @@ class BackupPage extends ConsumerWidget {
             label: const Text('从 JSON 导入'),
           ),
           const SizedBox(height: 24),
-          const Card(
+          Card(
             child: Padding(
-              padding: EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
               child: Text(
                 '说明：导出生成 JSON 文件到 App 文档目录；导入粘贴 JSON 文本后还原。'
                 '导入会清空当前数据后批量写入，请谨慎操作。',
-                style: TextStyle(fontSize: 13, color: Colors.grey),
+                style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
           ),

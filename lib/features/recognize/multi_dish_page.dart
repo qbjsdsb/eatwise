@@ -100,7 +100,11 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              border: Border(top: BorderSide(color: Colors.grey.shade300)),
+              border: Border(
+                  top: BorderSide(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outlineVariant)),
             ),
             child: Column(
               children: [
@@ -108,7 +112,10 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
                     style: Theme.of(context).textTheme.titleMedium),
                 Text(
                     '蛋白质 ${totalProtein.toStringAsFixed(1)}g · 脂肪 ${totalFat.toStringAsFixed(0)}g · 碳水 ${totalCarbs.toStringAsFixed(0)}g',
-                    style: const TextStyle(color: Colors.grey)),
+                    style: TextStyle(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurfaceVariant)),
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
@@ -116,11 +123,14 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
                     // 防重入：记录中禁用按钮
                     onPressed: _isRecording ? null : _recordAll,
                     child: _isRecording
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white))
+                                strokeWidth: 2,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onPrimary))
                         : const Text('全部记录'),
                   ),
                 ),
@@ -155,11 +165,17 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(
-                      color: Colors.orange.shade100,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .tertiaryContainer,
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: const Text('未命中',
-                        style: TextStyle(fontSize: 11, color: Colors.orange)),
+                    child: Text('未命中',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .tertiary)),
                   ),
               ],
             ),
@@ -187,12 +203,20 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
               _buildQuantityStepper(index, dish),
               Text(
                   '${cal.toStringAsFixed(0)} kcal · 蛋白 ${p.toStringAsFixed(1)}g · 脂肪 ${f.toStringAsFixed(0)}g · 碳水 ${c.toStringAsFixed(0)}g',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurfaceVariant)),
             ] else
               Padding(
                 padding: const EdgeInsets.only(top: 4),
                 child: Text('库中未找到「${dish.dishName}」，记录时将跳过此菜',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurfaceVariant)),
               ),
           ],
         ),
@@ -240,7 +264,11 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
           ),
           const SizedBox(width: 8),
           Text('（每${dish.unit} ${dish.perUnitG.toStringAsFixed(0)}g）',
-              style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context)
+                      .colorScheme
+                      .onSurfaceVariant)),
         ],
       ),
     );

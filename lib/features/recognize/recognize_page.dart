@@ -100,19 +100,19 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Sprint 2 T0：餐次选择器
+            // Sprint 2 T0：餐次选择器（M3：DropdownButton → SegmentedButton）
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: DropdownButton<String>(
-                value: _mealType,
-                isExpanded: true,
-                items: const [
-                  DropdownMenuItem(value: 'breakfast', child: Text('早餐')),
-                  DropdownMenuItem(value: 'lunch', child: Text('午餐')),
-                  DropdownMenuItem(value: 'dinner', child: Text('晚餐')),
-                  DropdownMenuItem(value: 'snack', child: Text('加餐')),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'breakfast', label: Text('早餐')),
+                  ButtonSegment(value: 'lunch', label: Text('午餐')),
+                  ButtonSegment(value: 'dinner', label: Text('晚餐')),
+                  ButtonSegment(value: 'snack', label: Text('加餐')),
                 ],
-                onChanged: (v) => setState(() => _mealType = v ?? _mealType),
+                selected: {_mealType},
+                onSelectionChanged: (v) =>
+                    setState(() => _mealType = v.first),
               ),
             ),
             const SizedBox(height: 24),

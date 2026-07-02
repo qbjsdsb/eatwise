@@ -56,16 +56,16 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          DropdownButton<String>(
-            value: _mealType,
-            isExpanded: true,
-            items: const [
-              DropdownMenuItem(value: 'breakfast', child: Text('早餐')),
-              DropdownMenuItem(value: 'lunch', child: Text('午餐')),
-              DropdownMenuItem(value: 'dinner', child: Text('晚餐')),
-              DropdownMenuItem(value: 'snack', child: Text('加餐')),
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(value: 'breakfast', label: Text('早餐')),
+              ButtonSegment(value: 'lunch', label: Text('午餐')),
+              ButtonSegment(value: 'dinner', label: Text('晚餐')),
+              ButtonSegment(value: 'snack', label: Text('加餐')),
             ],
-            onChanged: (v) => setState(() => _mealType = v ?? _mealType),
+            selected: {_mealType},
+            onSelectionChanged: (v) =>
+                setState(() => _mealType = v.first),
           ),
           const SizedBox(height: 16),
           if (!_customMode) ...[

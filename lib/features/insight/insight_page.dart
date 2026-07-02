@@ -310,6 +310,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   /// 热量折线图：每日摄入 + 目标热量参考线 + 均值参考线
   /// 周视图 X 轴 '一二三四五六日'，月视图按日期每 5 天一个标签。
   Widget _buildCaloriesChart() {
+    final colorScheme = Theme.of(context).colorScheme;
     final spots = <FlSpot>[];
     for (var i = 0; i < _dailyCal.length; i++) {
       spots.add(FlSpot(i.toDouble(), _dailyCal[i]));
@@ -322,7 +323,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       gridData: const FlGridData(show: true),
       borderData: FlBorderData(
         show: true,
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       minX: 0,
       maxX: (_dailyCal.length - 1).toDouble(),
@@ -363,26 +364,26 @@ class _InsightPageState extends ConsumerState<InsightPage> {
           // 目标热量参考线
           HorizontalLine(
             y: _targetCal.toDouble(),
-            color: Colors.green,
+            color: colorScheme.primary,
             strokeWidth: 1,
             dashArray: [5, 5],
             label: HorizontalLineLabel(
               show: true,
               alignment: Alignment.topRight,
-              style: const TextStyle(fontSize: 9, color: Colors.green),
+              style: TextStyle(fontSize: 9, color: colorScheme.primary),
               labelResolver: (_) => '目标 $_targetCal',
             ),
           ),
           // 平均线
           HorizontalLine(
             y: avgCal,
-            color: Colors.orange,
+            color: colorScheme.tertiary,
             strokeWidth: 1,
             dashArray: [5, 5],
             label: HorizontalLineLabel(
               show: true,
               alignment: Alignment.bottomRight,
-              style: const TextStyle(fontSize: 9, color: Colors.orange),
+              style: TextStyle(fontSize: 9, color: colorScheme.tertiary),
               labelResolver: (_) => '均值 ${avgCal.round()}',
             ),
           ),
@@ -392,12 +393,12 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         LineChartBarData(
           spots: spots,
           isCurved: true,
-          color: Colors.blue,
+          color: colorScheme.primary,
           barWidth: 3,
           dotData: const FlDotData(show: true),
           belowBarData: BarAreaData(
             show: true,
-            color: Colors.blue.withValues(alpha: 0.1),
+            color: colorScheme.primary.withValues(alpha: 0.1),
           ),
         ),
       ],
@@ -406,6 +407,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
 
   /// 体重趋势折线图
   Widget _buildWeightChart() {
+    final colorScheme = Theme.of(context).colorScheme;
     final spots = <FlSpot>[];
     for (var i = 0; i < _dailyWeight.length; i++) {
       spots.add(FlSpot(i.toDouble(), _dailyWeight[i]));
@@ -418,7 +420,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       gridData: const FlGridData(show: false),
       borderData: FlBorderData(
         show: true,
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       minX: 0,
       maxX: (_dailyWeight.length - 1).toDouble(),
@@ -436,7 +438,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         LineChartBarData(
           spots: spots,
           isCurved: true,
-          color: Colors.purple,
+          color: colorScheme.secondary,
           barWidth: 2,
           dotData: const FlDotData(show: true),
         ),

@@ -84,6 +84,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
       body: ListView(
@@ -163,7 +164,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(
                 '⚠️ 本月花费已达 ${_estimatedCost!.toStringAsFixed(2)} 元，建议在厂商控制台设置月度费用上限',
-                style: const TextStyle(color: Colors.orange, fontSize: 12),
+                style: TextStyle(color: colorScheme.tertiary, fontSize: 12),
               ),
             ),
           const SizedBox(height: 16),
@@ -173,14 +174,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ListTile(
             leading: const Icon(Icons.image_outlined),
             title: const Text('原图保留期'),
-            trailing: DropdownButton<int>(
-              value: _imageRetentionDays,
-              items: const [
-                DropdownMenuItem(value: 7, child: Text('7 天')),
-                DropdownMenuItem(value: 30, child: Text('30 天（默认）')),
-                DropdownMenuItem(value: 0, child: Text('永久保留')),
-              ],
-              onChanged: (v) => setState(() => _imageRetentionDays = v ?? 30),
+            trailing: SizedBox(
+              width: 150,
+              child: DropdownMenu<int>(
+                initialSelection: _imageRetentionDays,
+                expandedInsets: EdgeInsets.zero,
+                onSelected: (v) =>
+                    setState(() => _imageRetentionDays = v ?? 30),
+                dropdownMenuEntries: const [
+                  DropdownMenuEntry(value: 7, label: '7 天'),
+                  DropdownMenuEntry(value: 30, label: '30 天（默认）'),
+                  DropdownMenuEntry(value: 0, label: '永久保留'),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -190,14 +196,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ListTile(
             leading: const Icon(Icons.backup),
             title: const Text('上次自动备份'),
-            trailing: Text(_lastBackupTime ?? '从未', style: const TextStyle(color: Colors.grey)),
+            trailing: Text(_lastBackupTime ?? '从未', style: TextStyle(color: colorScheme.onSurfaceVariant)),
           ),
           if (_backupOverdue)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Text(
                 '⚠️ 已超过 14 天未备份，建议立即导出备份',
-                style: const TextStyle(color: Colors.orange, fontSize: 12),
+                style: TextStyle(color: colorScheme.tertiary, fontSize: 12),
               ),
             ),
           const SizedBox(height: 16),
@@ -278,19 +284,20 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Future<void> _showAbout() async {
     if (!mounted) return;
+    final colorScheme = Theme.of(context).colorScheme;
     await showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('关于 EatWise'),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('EatWise v1.0.0'),
-            SizedBox(height: 8),
-            Text('拍照识别食物热量 + 营养记录 + AI 汇总建议'),
-            SizedBox(height: 8),
-            Text('营养目标依据 ACSM/ISSN/NIH/WHO 标准', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const Text('EatWise v1.0.0'),
+            const SizedBox(height: 8),
+            const Text('拍照识别食物热量 + 营养记录 + AI 汇总建议'),
+            const SizedBox(height: 8),
+            Text('营养目标依据 ACSM/ISSN/NIH/WHO 标准', style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
           ],
         ),
         actions: [
