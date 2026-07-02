@@ -1,3 +1,4 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ai/glm_4v_provider.dart';
@@ -75,3 +76,11 @@ final circuitBreakerProvider = Provider<CircuitBreaker>((ref) {
 // RecognizeController 不用 Provider 管理（依赖 FutureProvider 异步初始化，
 // 与 StateNotifierProvider 同步初始化存在时序冲突）
 // 在 RecognizePage 中用 ref.read 按需创建实例，见 recognize_page.dart
+
+/// 网络可用性 Provider（AI 汇总离线守卫用，Sprint 7 T54）
+/// 生产：调 connectivity_plus 检查网络
+/// 测试：overrideWith 返回 false 模拟离线
+final networkAvailableProvider = FutureProvider<bool>((ref) async {
+  final results = await Connectivity().checkConnectivity();
+  return results.any((r) => r != ConnectivityResult.none);
+});

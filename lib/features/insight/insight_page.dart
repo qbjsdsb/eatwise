@@ -124,6 +124,14 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         setState(() => _summary = '未配置 GLM API Key，请到设置页填写');
         return;
       }
+      // Sprint 7 T54：离线守卫——无网络直接提示，不调 GLM API
+      // 置于 apiKey 检查之后：key 未配置时直接提示设置页，避免在无网络/测试沙箱触发 connectivity 平台通道
+      final online = await ref.refresh(recognize.networkAvailableProvider.future);
+      if (!online) {
+        if (!mounted) return;
+        setState(() => _summary = '当前无网络，请联网后重试');
+        return;
+      }
       final provider = GlmFlashProvider(
         apiKey: apiKey,
         baseUrl: baseUrl.isEmpty
