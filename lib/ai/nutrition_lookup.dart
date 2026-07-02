@@ -95,6 +95,36 @@ class NutritionLookup {
       componentMisses: misses,
     );
   }
+
+  /// 单品区间计算（Low/Mid/High 三档份量）
+  /// 设计 5.6：估算区间 ±10%（MVP 统一，单品实际 ±3-5% 但 UI 简化展示）
+  Future<NutritionRange?> lookupSingleItemWithRange({
+    required String dishName,
+    required double servingGLow,
+    required double servingGMid,
+    required double servingGHigh,
+  }) async {
+    final low = await lookupSingleItem(dishName: dishName, servingG: servingGLow);
+    final mid = await lookupSingleItem(dishName: dishName, servingG: servingGMid);
+    final high = await lookupSingleItem(dishName: dishName, servingG: servingGHigh);
+    if (low == null || mid == null || high == null) return null;
+    return NutritionRange(low: low, mid: mid, high: high);
+  }
+
+  /// 复合菜区间计算（Low/Mid/High 三档份量，按比例缩放）
+  /// 复合菜组分 estimatedG 是单值，区间按 Mid 份量 ±10% 缩放
+  Future<CompositeNutritionRange> lookupCompositeDishWithRange({
+    required List<FoodComponent> components,
+    required String cookingMethod,
+  }) async {
+    final mid = await lookupCompositeDish(components: components, cookingMethod: cookingMethod);
+    // Low/High 按份量 ±10% 缩放（组分份量按比例）
+    final lowComponents = components.map((c) => FoodComponent(name: c.name, estimatedG: c.estimatedG * 0.9)).toList();
+    final highComponents = components.map((c) => FoodComponent(name: c.name, estimatedG: c.estimatedG * 1.1)).toList();
+    final low = await lookupCompositeDish(components: lowComponents, cookingMethod: cookingMethod);
+    final high = await lookupCompositeDish(components: highComponents, cookingMethod: cookingMethod);
+    return CompositeNutritionRange(low: low, mid: mid, high: high);
+  }
 }
 
 class NutritionResult {
@@ -113,6 +143,24 @@ class NutritionResult {
     required this.carbsG,
     required this.oilG,
   });
+}
+
+/// 营养素区间（Low/Mid/High 三档，设计 5.6 估算区间）
+class NutritionRange {
+  final NutritionResult low;
+  final NutritionResult mid;
+  final NutritionResult high;
+
+  const NutritionRange({required this.low, required this.mid, required this.high});
+}
+
+/// 复合菜营养素区间
+class CompositeNutritionRange {
+  final CompositeNutritionResult low;
+  final CompositeNutritionResult mid;
+  final CompositeNutritionResult high;
+
+  const CompositeNutritionRange({required this.low, required this.mid, required this.high});
 }
 
 class CompositeNutritionResult {

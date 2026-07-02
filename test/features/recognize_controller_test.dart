@@ -54,6 +54,46 @@ class _FakeNutritionLookup implements NutritionLookup {
         componentHits: const [],
         componentMisses: const [],
       );
+
+  @override
+  Future<NutritionRange?> lookupSingleItemWithRange({
+    required String dishName,
+    required double servingGLow,
+    required double servingGMid,
+    required double servingGHigh,
+  }) async => null; // fake 不实际查库
+
+  @override
+  Future<CompositeNutritionRange> lookupCompositeDishWithRange({
+    required List<FoodComponent> components,
+    required String cookingMethod,
+  }) async =>
+      CompositeNutritionRange(
+        low: CompositeNutritionResult(
+            calories: 0,
+            proteinG: 0,
+            fatG: 0,
+            carbsG: 0,
+            oilG: 0,
+            componentHits: const [],
+            componentMisses: const []),
+        mid: CompositeNutritionResult(
+            calories: 0,
+            proteinG: 0,
+            fatG: 0,
+            carbsG: 0,
+            oilG: 0,
+            componentHits: const [],
+            componentMisses: const []),
+        high: CompositeNutritionResult(
+            calories: 0,
+            proteinG: 0,
+            fatG: 0,
+            carbsG: 0,
+            oilG: 0,
+            componentHits: const [],
+            componentMisses: const []),
+      );
 }
 
 void main() {
