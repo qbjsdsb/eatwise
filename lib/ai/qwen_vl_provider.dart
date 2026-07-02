@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:openai_dart/openai_dart.dart';
 
 import 'prompts.dart';
@@ -70,6 +71,19 @@ class QwenVlProvider implements VisionProvider {
 
       // response.text 为 String? 便捷访问器（openai_dart 7.0）
       final jsonStr = response.text;
+
+      // T39：检测 refusal（内容安全过滤）
+      // 1. 优先检查 OpenAI 标准 refusal 字段（openai_dart 7.0 response.choices[].message.refusal）
+      //    但 Qwen-VL 兼容模式可能不填，需文本兜底
+      // 2. 文本兜底：refusal 关键词检测（"我无法"/"不能识别"/"内容违反"/"I cannot"/"I can't"）
+      if (isRefusalForTest(jsonStr, response)) {
+        throw VisionRecognitionException(
+          '内容被安全过滤（模型拒绝识别），请换一张照片或手动录入',
+          retryable: false,
+          isRefusal: true,
+        );
+      }
+
       if (jsonStr == null || jsonStr.isEmpty) {
         throw VisionRecognitionException('空响应', retryable: false);
       }
@@ -113,5 +127,40 @@ class QwenVlProvider implements VisionProvider {
       if (e is VisionRecognitionException) rethrow;
       throw VisionRecognitionException('未知错误: $e', retryable: true);
     }
+  }
+
+  /// 检测模型 refusal（内容安全过滤）— T39
+  /// 1. OpenAI 标准 refusal 字段非空 → refusal
+  /// 2. 文本兜底：含 refusal 关键词且非合法 JSON（避免误判正常菜名含"无法"等）
+  @visibleForTesting
+  static bool isRefusalForTest(String? text, dynamic response) {
+    // 1. 标准 refusal 字段（openai_dart 7.0：response.choices[].message.refusal）
+    try {
+      final choices = response.choices;
+      if (choices != null && choices.isNotEmpty) {
+        final refusal = choices.first.message.refusal;
+        if (refusal != null && refusal.isNotEmpty) return true;
+      }
+    } catch (_) {
+      // 字段访问失败（SDK 版本差异 / response 为 null）→ 走文本兜底
+    }
+    // 2. 文本兜底：空文本或含 refusal 关键词
+    if (text == null || text.isEmpty) return false; // 空文本走"空响应"分支
+    final lower = text.toLowerCase();
+    const refusalKeywords = [
+      '我无法', '我不能', '无法识别', '不能识别', '内容违反', '违反政策',
+      'i cannot', "i can't", 'i am unable', 'content policy', 'safety',
+    ];
+    // 仅当文本含关键词且【不是合法 JSON】时判定为 refusal
+    // （正常菜名"我无法想象"等极罕见，且正常响应是 JSON 对象不会含这些短语）
+    if (refusalKeywords.any((k) => lower.contains(k.toLowerCase()))) {
+      try {
+        jsonDecode(text); // 是合法 JSON → 不是 refusal（可能是菜名含关键词）
+        return false;
+      } catch (_) {
+        return true; // 非 JSON + 含关键词 → refusal
+      }
+    }
+    return false;
   }
 }

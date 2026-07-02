@@ -208,7 +208,7 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
           }
         } else if (!e.retryable) {
           // 非 retryable（malformed JSON / 401 / 403）→ L3 转手动（重试或入队都无法解决）
-          _triggerL3Fallback();
+          _triggerL3Fallback(error: e);
           return;
         } else {
           // retryable 非 429（网络/超时/5xx）→ L2 切备，失败 rethrow 走外层离线入队
@@ -288,17 +288,19 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   /// T36：L3 转手动录入触发器
   /// 非 retryable 错误（malformed JSON / 401 / 403）调用：重试或入队都无法解决，
   /// 引导用户转手动录入。onL3Fallback 为 null 时仅置 error 状态（向后兼容）。
-  void _triggerL3Fallback() {
+  /// T39：error 携带 isRefusal 标记时，提示文案区分"内容被安全过滤"。
+  void _triggerL3Fallback({VisionRecognitionException? error}) {
+    final isRefusal = error?.isRefusal ?? false;
     if (_onL3Fallback != null) {
       state = state.copyWith(
         state: RecognizeState.error,
-        errorMessage: '识别失败，已转手动录入',
+        errorMessage: isRefusal ? '内容被安全过滤，已转手动录入' : '识别失败，已转手动录入',
       );
       _onL3Fallback();
     } else {
       state = state.copyWith(
         state: RecognizeState.error,
-        errorMessage: '识别失败',
+        errorMessage: isRefusal ? '内容被安全过滤' : '识别失败',
       );
     }
   }

@@ -68,8 +68,14 @@ class VisionRecognitionException implements Exception {
   final String reason;
   final bool retryable; // malformed=false(带错误信息重发), timeout=true, rate_limit=true
   final Duration? retryAfter; // 429 的 Retry-After 等待时长
+  final bool isRefusal; // T39 内容安全过滤标记
 
-  VisionRecognitionException(this.reason, {this.retryable = false, this.retryAfter});
+  VisionRecognitionException(
+    this.reason, {
+    this.retryable = false,
+    this.retryAfter,
+    this.isRefusal = false,
+  });
 
   @override
   String toString() => 'VisionRecognitionException: $reason';
