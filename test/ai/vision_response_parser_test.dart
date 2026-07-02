@@ -76,5 +76,65 @@ void main() {
       expect(result.confidence, 1.0);
       expect(result.estimatedWeightGMid, 150.0);
     });
+
+    test('字段缺失：estimated_weight_g_low 缺失时回退 Mid（设计 5.6）', () {
+      final json = {
+        'dish_name': '米饭',
+        'estimated_weight_g_mid': 100,
+        'is_single_item': true,
+        'cooking_method': 'boil',
+        'confidence': 0.9,
+        // estimated_weight_g_low 缺失
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.0');
+      expect(result.estimatedWeightGMid, 100);
+      expect(result.estimatedWeightGLow, 100);  // 回退 Mid
+    });
+
+    test('字段缺失：estimated_weight_g_high 缺失时回退 Mid', () {
+      final json = {
+        'dish_name': '米饭',
+        'estimated_weight_g_mid': 100,
+        'is_single_item': true,
+        'cooking_method': 'boil',
+        'confidence': 0.9,
+        // estimated_weight_g_high 缺失
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.0');
+      expect(result.estimatedWeightGHigh, 100);  // 回退 Mid
+    });
+
+    test('必填字段缺失（dishName）抛异常（malformed）', () {
+      final json = {
+        'estimated_weight_g_mid': 100,
+        'is_single_item': true,
+        'cooking_method': 'boil',
+        'confidence': 0.9,
+        // dish_name 缺失
+      };
+      expect(() => VisionRecognitionResult.fromJson(json, 'v1.0'), throwsA(anything));
+    });
+
+    test('必填字段缺失（confidence）抛异常（malformed）', () {
+      final json = {
+        'dish_name': '米饭',
+        'estimated_weight_g_mid': 100,
+        'is_single_item': true,
+        'cooking_method': 'boil',
+        // confidence 缺失
+      };
+      expect(() => VisionRecognitionResult.fromJson(json, 'v1.0'), throwsA(anything));
+    });
+
+    test('字段类型错误：estimated_weight_g_mid 为字符串抛异常（as num 失败）', () {
+      final json = {
+        'dish_name': '米饭',
+        'estimated_weight_g_mid': '100',  // 字符串，as num 失败
+        'is_single_item': true,
+        'cooking_method': 'boil',
+        'confidence': 0.9,
+      };
+      expect(() => VisionRecognitionResult.fromJson(json, 'v1.0'), throwsA(anything));
+    });
   });
 }

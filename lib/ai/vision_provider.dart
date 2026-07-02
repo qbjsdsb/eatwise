@@ -23,11 +23,19 @@ class VisionRecognitionResult {
   });
 
   factory VisionRecognitionResult.fromJson(Map<String, dynamic> json, String promptVersion) {
+    final mid = (json['estimated_weight_g_mid'] as num).toDouble();
+    // Low/High 缺失时回退 Mid（设计 5.6，避免区间显示异常）
+    final low = json['estimated_weight_g_low'] != null
+        ? (json['estimated_weight_g_low'] as num).toDouble()
+        : mid;
+    final high = json['estimated_weight_g_high'] != null
+        ? (json['estimated_weight_g_high'] as num).toDouble()
+        : mid;
     return VisionRecognitionResult(
       dishName: json['dish_name'] as String,
-      estimatedWeightGLow: (json['estimated_weight_g_low'] as num).toDouble(),
-      estimatedWeightGMid: (json['estimated_weight_g_mid'] as num).toDouble(),
-      estimatedWeightGHigh: (json['estimated_weight_g_high'] as num).toDouble(),
+      estimatedWeightGLow: low,
+      estimatedWeightGMid: mid,
+      estimatedWeightGHigh: high,
       foodComponents: ((json['food_components'] as List?) ?? [])
           .map((e) => FoodComponent.fromJson(e as Map<String, dynamic>))
           .toList(),
