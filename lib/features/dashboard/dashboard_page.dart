@@ -4,9 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/profile_repository.dart';
+import '../backup/backup_page.dart';
+import '../food_library/food_library_page.dart';
+import '../insight/insight_page.dart';
+import '../manual_entry/manual_entry_page.dart';
+import '../profile/profile_page.dart';
 import '../recognize/providers.dart' as recognize;
 import '../recognize/recognize_page.dart';
 import '../settings/settings_page.dart';
+import '../weight/weight_page.dart';
 import 'today_meals_page.dart';
 
 /// 看板：环形进度（热量）+ 三宏量进度条 + 余额预警
@@ -74,6 +80,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           ),
         ],
       ),
+      drawer: _buildDrawer(context),
       floatingActionButton: FloatingActionButton(
         onPressed: () => Navigator.of(context)
             .push(MaterialPageRoute(builder: (_) => const RecognizePage())),
@@ -167,6 +174,39 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           );
         },
       ),
+    );
+  }
+
+  Widget _buildDrawer(BuildContext context) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          const DrawerHeader(
+            decoration: BoxDecoration(color: Colors.green),
+            child: Text('EatWise',
+                style: TextStyle(color: Colors.white, fontSize: 24)),
+          ),
+          _drawerItem(Icons.person_outline, '个人档案', () => const ProfilePage()),
+          _drawerItem(Icons.monitor_weight_outlined, '体重记录', () => const WeightPage()),
+          _drawerItem(Icons.insights_outlined, 'AI 周报', () => const InsightPage()),
+          _drawerItem(Icons.restaurant_menu_outlined, '食物库', () => const FoodLibraryPage()),
+          _drawerItem(Icons.edit_note_outlined, '手动录入', () => const ManualEntryPage()),
+          _drawerItem(Icons.backup_outlined, '数据备份', () => const BackupPage()),
+          _drawerItem(Icons.settings_outlined, '设置', () => const SettingsPage()),
+        ],
+      ),
+    );
+  }
+
+  Widget _drawerItem(IconData icon, String title, Widget Function() pageBuilder) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      onTap: () {
+        Navigator.of(context).pop(); // 先关 Drawer
+        Navigator.of(context).push(MaterialPageRoute(builder: (_) => pageBuilder()));
+      },
     );
   }
 
