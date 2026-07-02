@@ -31,6 +31,7 @@ class EatWiseApp extends StatelessWidget {
     colorScheme: ColorScheme.fromSeed(
       seedColor: Colors.green,
       brightness: Brightness.light,
+      dynamicSchemeVariant: DynamicSchemeVariant.expressive,
     ),
     cardTheme: CardThemeData(
       shape: RoundedRectangleBorder(
@@ -74,6 +75,7 @@ class EatWiseApp extends StatelessWidget {
     colorScheme: ColorScheme.fromSeed(
       seedColor: Colors.green,
       brightness: Brightness.dark,
+      dynamicSchemeVariant: DynamicSchemeVariant.expressive,
     ),
     cardTheme: CardThemeData(
       shape: RoundedRectangleBorder(
