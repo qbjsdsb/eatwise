@@ -26,6 +26,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   double? _estimatedCost;
   static const _costPerRecognition = 0.001;  // 估算：单次约 0.001 元（500 token × 0.15/百万）
   static const _costWarningThreshold = 5.0;  // 5 元/月提示
+  int _imageRetentionDays = 30;  // T48 保留期
 
   @override
   void initState() {
@@ -62,6 +63,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       final store = ref.read(secureConfigStoreProvider);
       _monthlyCount = await store.getCurrentMonthCount();
       _estimatedCost = _monthlyCount! * _costPerRecognition;
+      _imageRetentionDays = await store.getImageRetentionDays();
     } catch (_) {
       // 防御性兜底：沙箱/真机异常均不传播（真机正常路径不进此分支）
       _lastBackupTime = null;
@@ -157,6 +159,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             ),
           const SizedBox(height: 16),
 
+          // --- 图片管理 ---
+          _sectionHeader('图片管理'),
+          ListTile(
+            leading: const Icon(Icons.image_outlined),
+            title: const Text('原图保留期'),
+            trailing: DropdownButton<int>(
+              value: _imageRetentionDays,
+              items: const [
+                DropdownMenuItem(value: 7, child: Text('7 天')),
+                DropdownMenuItem(value: 30, child: Text('30 天（默认）')),
+                DropdownMenuItem(value: 0, child: Text('永久保留')),
+              ],
+              onChanged: (v) => setState(() => _imageRetentionDays = v ?? 30),
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // --- 数据备份状态 ---
           _sectionHeader('数据备份'),
           ListTile(
@@ -173,6 +192,16 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             trailing: const Icon(Icons.chevron_right),
             onTap: _showPrivacyPolicy,
           ),
+
+          // --- 关于 ---
+          _sectionHeader('关于'),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('关于 EatWise'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _showAbout,
+          ),
+          const SizedBox(height: 16),
 
           const SizedBox(height: 24),
           FilledButton.icon(
@@ -199,6 +228,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     await store.setSentryDsn(_sentryDsnCtrl.text.trim().isEmpty ? null : _sentryDsnCtrl.text.trim());
     await store.setSentryEnabled(_sentryEnabled);
     await store.setTdeeAutoCalib(_tdeeAutoCalib);
+    await store.setImageRetentionDays(_imageRetentionDays);
 
     // 重新加载 appConfig（让其他 Provider 感知新值）
     final config = await ref.read(appConfigProvider.future);
@@ -220,6 +250,30 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         content: SizedBox(
           width: double.maxFinite,
           child: SingleChildScrollView(child: Text(text)),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showAbout() async {
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('关于 EatWise'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('EatWise v1.0.0'),
+            SizedBox(height: 8),
+            Text('拍照识别食物热量 + 营养记录 + AI 汇总建议'),
+            SizedBox(height: 8),
+            Text('营养目标依据 ACSM/ISSN/NIH/WHO 标准', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
