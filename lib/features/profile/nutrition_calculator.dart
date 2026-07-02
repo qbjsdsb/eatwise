@@ -33,21 +33,31 @@ class NutritionCalculator {
   }
 
   /// 每日目标热量（受硬下限约束）
-  /// 减脂：TDEE - 500；增肌：TDEE + 250；维持：TDEE
+  /// 减脂：TDEE - goalRate×7700/7（可调 300-750 kcal/天，对应 0.3-0.7 kg/周）
+  /// 增肌：TDEE + goalRate×7700/7（可调 200-500 kcal/天，对应 0.18-0.45 kg/周）
+  /// 维持：TDEE
+  /// goalRateKgPerWeek=0 时回退旧逻辑（-500/+250）保持兼容
   /// 硬下限：女性 ≥ 1200，男性 ≥ 1500
   static int dailyCalorieTarget({
     required double tdee,
     required Goal goal,
     required int tdeeAdjustmentKcal,
+    double goalRateKgPerWeek = 0,
     Gender? gender,
   }) {
     int raw;
     switch (goal) {
       case Goal.cut:
-        raw = (tdee - 500 + tdeeAdjustmentKcal).round();
+        final deficit = goalRateKgPerWeek > 0
+            ? (goalRateKgPerWeek * 7700 / 7).round()
+            : 500;
+        raw = (tdee - deficit + tdeeAdjustmentKcal).round();
         break;
       case Goal.bulk:
-        raw = (tdee + 250 + tdeeAdjustmentKcal).round();
+        final surplus = goalRateKgPerWeek > 0
+            ? (goalRateKgPerWeek * 7700 / 7).round()
+            : 250;
+        raw = (tdee + surplus + tdeeAdjustmentKcal).round();
         break;
       case Goal.maintain:
         raw = (tdee + tdeeAdjustmentKcal).round();
@@ -57,6 +67,38 @@ class NutritionCalculator {
     if (gender == Gender.female && raw < 1200) raw = 1200;
     if (gender == Gender.male && raw < 1500) raw = 1500;
     return raw;
+  }
+
+  /// 校验目标速率是否安全
+  /// 返回 null=安全，非 null=警告文案
+  /// 减脂：每周减重 > 1% 体重 → 警告（设计 5.3）
+  /// 增肌：盈余 > 500 kcal/天 → 警告（设计 5.3）
+  /// 减脂速率建议 0.3-0.7 kg/周，增肌建议 0.18-0.45 kg/周
+  static String? validateGoalRate({
+    required double goalRateKgPerWeek,
+    required double weightKg,
+    required Goal goal,
+  }) {
+    if (goalRateKgPerWeek <= 0) return null;
+    switch (goal) {
+      case Goal.cut:
+        // 每周减重 > 1% 体重 → 警告
+        if (goalRateKgPerWeek > weightKg * 0.01) {
+          return '减脂速率 ${(goalRateKgPerWeek * 1000).round()} g/周超过体重 1%（${(weightKg * 10).round()} g/周），'
+              '可能流失肌肉，建议降至 0.3-0.7 kg/周';
+        }
+        return null;
+      case Goal.bulk:
+        // 盈余 > 500 kcal/天 → 警告
+        final surplusKcal = goalRateKgPerWeek * 7700 / 7;
+        if (surplusKcal > 500) {
+          return '增肌盈余 ${surplusKcal.round()} kcal/天超过 500，'
+              '易囤积脂肪，建议降至 200-500 kcal/天（0.18-0.45 kg/周）';
+        }
+        return null;
+      case Goal.maintain:
+        return null;
+    }
   }
 
   /// 宏量营养素分配

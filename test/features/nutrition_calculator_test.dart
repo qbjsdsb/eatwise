@@ -131,4 +131,78 @@ void main() {
       expect(macros.carbG, closeTo(350, 0.1)); // 增肌碳水 5.0 g/kg * 70 = 350
     });
   });
+
+  group('目标热量 goalRate 联动', () {
+    test('dailyCalorieTarget 减脂接受 goalRate 联动', () {
+      // goalRate=0.5 kg/周 → 赤字 0.5×7700/7=550 kcal → 2000-550=1450
+      // 1450 < 男性硬下限 1500 → clamp 1500
+      final result = NutritionCalculator.dailyCalorieTarget(
+        tdee: 2000,
+        goal: Goal.cut,
+        tdeeAdjustmentKcal: 0,
+        goalRateKgPerWeek: 0.5,
+        gender: Gender.male,
+      );
+      expect(result, 1500);
+    });
+
+    test('dailyCalorieTarget 增肌接受 goalRate 联动', () {
+      // goalRate=0.3 kg/周 → 盈余 0.3×7700/7=330 kcal
+      final result = NutritionCalculator.dailyCalorieTarget(
+        tdee: 2000,
+        goal: Goal.bulk,
+        tdeeAdjustmentKcal: 0,
+        goalRateKgPerWeek: 0.3,
+        gender: Gender.male,
+      );
+      expect(result, 2000 + 330); // 2330
+    });
+
+    test('dailyCalorieTarget goalRate=0 回退旧逻辑（兼容）', () {
+      final result = NutritionCalculator.dailyCalorieTarget(
+        tdee: 2000,
+        goal: Goal.cut,
+        tdeeAdjustmentKcal: 0,
+        goalRateKgPerWeek: 0,
+        gender: Gender.male,
+      );
+      expect(result, 2000 - 500); // 1500（旧逻辑 -500）
+    });
+  });
+
+  group('validateGoalRate 风险警告', () {
+    test('减脂超 1% 体重警告', () {
+      final warning = NutritionCalculator.validateGoalRate(
+        goalRateKgPerWeek: 1.0, // 1.0 kg/周
+        weightKg: 70, // 1% = 0.7 kg，1.0 > 0.7 → 警告
+        goal: Goal.cut,
+      );
+      expect(warning, isNotNull);
+      expect(warning, contains('1%'));
+    });
+
+    test('增肌盈余超 500 警告', () {
+      // 0.5 kg/周 → 0.5×7700/7=550 kcal > 500 → 警告
+      final warning = NutritionCalculator.validateGoalRate(
+        goalRateKgPerWeek: 0.5,
+        weightKg: 70,
+        goal: Goal.bulk,
+      );
+      expect(warning, isNotNull);
+      expect(warning, contains('500'));
+    });
+
+    test('安全速率无警告', () {
+      expect(
+        NutritionCalculator.validateGoalRate(
+          goalRateKgPerWeek: 0.5, weightKg: 70, goal: Goal.cut), // 0.5 < 0.7
+        isNull,
+      );
+      expect(
+        NutritionCalculator.validateGoalRate(
+          goalRateKgPerWeek: 0.3, weightKg: 70, goal: Goal.bulk), // 330 < 500
+        isNull,
+      );
+    });
+  });
 }
