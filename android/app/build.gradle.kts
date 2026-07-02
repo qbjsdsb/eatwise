@@ -30,6 +30,11 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // 禁用 R8 代码压缩：sentry_flutter/workmanager 等插件依赖反射注册，
+            // R8 默认规则会剥掉关键类导致 native 启动崩溃（Dart try-catch 抓不住）。
+            // 个人自用 app 体积稍大可接受，稳定性优先。
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }

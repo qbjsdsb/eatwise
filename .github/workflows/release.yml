@@ -74,6 +74,18 @@ jobs:
           ls -lh build/app/outputs/flutter-apk/app-release.apk
           file build/app/outputs/flutter-apk/app-release.apk
 
+      - name: Diagnose APK contents (native libs + CPU arch)
+        # 打印 apk 内的 native 库和支持的 CPU 架构，用于排查闪退根因
+        run: |
+          echo "=== APK 内 native 库(.so)与 CPU 架构 ==="
+          unzip -l build/app/outputs/flutter-apk/app-release.apk | grep -E '\.so$' | awk '{print $4}' | sort
+          echo ""
+          echo "=== 支持的 CPU 架构(目录名) ==="
+          unzip -l build/app/outputs/flutter-apk/app-release.apk | grep -oE 'lib/[^/]+/' | sort -u
+          echo ""
+          echo "=== APK 总大小 ==="
+          ls -lh build/app/outputs/flutter-apk/app-release.apk | awk '{print $5}'
+
       - name: Upload APK artifact (90 天保留)
         uses: actions/upload-artifact@v4
         with:
