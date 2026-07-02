@@ -22,6 +22,9 @@ class RecognizeUiState {
   final CompositeNutritionResult? compositeNutrition;
   final String? imagePath;
   final String mealType; // Sprint 2 T0：餐次（breakfast/lunch/dinner/snack），默认加餐
+  // v1.2 一桌多菜：主菜之外的菜品查库结果（与 additionalDishes 一一对应）
+  // 每项 (dish, singleNutrition, compositeNutrition) 对应一个 additionalDish 的查库回填
+  final List<MultiDishItem> additionalItems;
 
   RecognizeUiState({
     this.state = RecognizeState.idle,
@@ -31,6 +34,7 @@ class RecognizeUiState {
     this.compositeNutrition,
     this.imagePath,
     this.mealType = 'snack',
+    this.additionalItems = const [],
   });
 
   RecognizeUiState copyWith({
@@ -42,6 +46,7 @@ class RecognizeUiState {
     CompositeNutritionResult? compositeNutrition,
     String? imagePath,
     String? mealType,
+    List<MultiDishItem>? additionalItems,
   }) {
     return RecognizeUiState(
       state: state ?? this.state,
@@ -52,8 +57,22 @@ class RecognizeUiState {
       compositeNutrition: compositeNutrition ?? this.compositeNutrition,
       imagePath: imagePath ?? this.imagePath,
       mealType: mealType ?? this.mealType,
+      additionalItems: additionalItems ?? this.additionalItems,
     );
   }
+}
+
+/// 一桌多菜时，单个菜品的查库结果（v1.2）
+class MultiDishItem {
+  final VisionRecognitionResult dish;
+  final NutritionResult? singleNutrition;
+  final CompositeNutritionResult? compositeNutrition;
+
+  const MultiDishItem({
+    required this.dish,
+    this.singleNutrition,
+    this.compositeNutrition,
+  });
 }
 
 class RecognizeController extends StateNotifier<RecognizeUiState> {
@@ -240,29 +259,51 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         imagePath: xFile.path,
       );
 
+      // 主菜查库回填
+      NutritionResult? mainSingle;
+      CompositeNutritionResult? mainComposite;
       if (result.isSingleItem) {
-        final nutrition = await _nutritionLookup.lookupSingleItem(
+        mainSingle = await _nutritionLookup.lookupSingleItem(
           dishName: result.dishName,
           servingG: result.estimatedWeightGMid,
         );
-        // T43：识别成功 + 查库回填完成，月度计数 +1（state=done 之前；离线入队/L3 转手动不计数）
-        if (_secureConfigStore != null) {
-          final now = DateTime.now();
-          await _secureConfigStore.incrementMonthlyCount(now.year, now.month);
-        }
-        state = state.copyWith(state: RecognizeState.done, singleNutrition: nutrition);
       } else {
-        final nutrition = await _nutritionLookup.lookupCompositeDish(
+        mainComposite = await _nutritionLookup.lookupCompositeDish(
           components: result.foodComponents,
           cookingMethod: result.cookingMethod,
         );
-        // T43：识别成功 + 查库回填完成，月度计数 +1（state=done 之前；离线入队/L3 转手动不计数）
-        if (_secureConfigStore != null) {
-          final now = DateTime.now();
-          await _secureConfigStore.incrementMonthlyCount(now.year, now.month);
-        }
-        state = state.copyWith(state: RecognizeState.done, compositeNutrition: nutrition);
       }
+
+      // v1.2 一桌多菜：对每个 additionalDish 也查库回填
+      // 单菜时 additionalDishes 为空，循环跳过，行为同原逻辑
+      final additionalItems = <MultiDishItem>[];
+      for (final dish in result.additionalDishes) {
+        if (dish.isSingleItem) {
+          final n = await _nutritionLookup.lookupSingleItem(
+            dishName: dish.dishName,
+            servingG: dish.estimatedWeightGMid,
+          );
+          additionalItems.add(MultiDishItem(dish: dish, singleNutrition: n));
+        } else {
+          final n = await _nutritionLookup.lookupCompositeDish(
+            components: dish.foodComponents,
+            cookingMethod: dish.cookingMethod,
+          );
+          additionalItems.add(MultiDishItem(dish: dish, compositeNutrition: n));
+        }
+      }
+
+      // T43：识别成功 + 查库回填完成，月度计数 +1（state=done 之前；离线入队/L3 转手动不计数）
+      if (_secureConfigStore != null) {
+        final now = DateTime.now();
+        await _secureConfigStore.incrementMonthlyCount(now.year, now.month);
+      }
+      state = state.copyWith(
+        state: RecognizeState.done,
+        singleNutrition: mainSingle,
+        compositeNutrition: mainComposite,
+        additionalItems: additionalItems,
+      );
     } catch (e) {
       // T37 断路器：retryable 失败记录（连续 3 次 → open）
       if (_circuitBreaker != null &&

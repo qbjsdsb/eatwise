@@ -1,3 +1,4 @@
+import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/data/repositories/meal_log_repository.dart';
@@ -135,5 +136,119 @@ void main() {
     // 按日期升序
     expect(meals.first.date, '2026-07-01');
     expect(meals.last.date, '2026-07-02');
+  });
+
+  group('getMedianServing 历史份量中位数（B 智能份量校准）', () {
+    test('无历史记录 → 返回 null', () async {
+      final foodId = await seedFoodAndMeal(); // 插了 1 条，但下面查另一个 foodId
+      final otherFoodId = foodId + 999; // 不存在的 foodItemId
+      expect(await repo.getMedianServing(otherFoodId), isNull);
+    });
+
+    test('单条记录 → 返回该条份量', () async {
+      await seedFoodAndMeal(serving: 150);
+      // seedFoodAndMeal 每次插新食物，取最后插入的 foodId
+      final foods = await db.foodItems.select().get();
+      final lastFoodId = foods.last.id;
+      expect(await repo.getMedianServing(lastFoodId), 150);
+    });
+
+    test('同 foodId 多条记录 → 返回中位数（奇数）', () async {
+      // 直接插一个食物，再插多条 meal_log 关联同 foodId
+      final foodId = await db.into(db.foodItems).insert(
+            FoodItemsCompanion.insert(
+              name: '测试食物X',
+              defaultServingG: 100,
+              caloriesPer100g: 50,
+              proteinPer100g: 1,
+              fatPer100g: 0.2,
+              carbsPer100g: 13.5,
+              source: 'test',
+              sourceVersion: 'v1',
+              createdAt: DateTime.now().millisecondsSinceEpoch,
+            ),
+          );
+      // 插 3 条 meal_log，份量 100/300/200 → 中位数 200
+      for (final s in [100.0, 300.0, 200.0]) {
+        await repo.insertMealLog(
+          date: '2026-07-02',
+          mealType: 'breakfast',
+          foodItemId: foodId,
+          actualServingG: s,
+          actualCalories: 50 * s / 100,
+          actualProteinG: 1 * s / 100,
+          actualFatG: 0.2 * s / 100,
+          actualCarbsG: 13.5 * s / 100,
+        );
+      }
+      expect(await repo.getMedianServing(foodId), 200);
+    });
+
+    test('同 foodId 多条记录 → 返回中位数（偶数取中间两值平均）', () async {
+      final foodId = await db.into(db.foodItems).insert(
+            FoodItemsCompanion.insert(
+              name: '测试食物Y',
+              defaultServingG: 100,
+              caloriesPer100g: 50,
+              proteinPer100g: 1,
+              fatPer100g: 0.2,
+              carbsPer100g: 13.5,
+              source: 'test',
+              sourceVersion: 'v1',
+              createdAt: DateTime.now().millisecondsSinceEpoch,
+            ),
+          );
+      // 插 4 条：100/200/300/400 → 中位数 (200+300)/2 = 250
+      for (final s in [100.0, 400.0, 200.0, 300.0]) {
+        await repo.insertMealLog(
+          date: '2026-07-02',
+          mealType: 'breakfast',
+          foodItemId: foodId,
+          actualServingG: s,
+          actualCalories: 50 * s / 100,
+          actualProteinG: 1 * s / 100,
+          actualFatG: 0.2 * s / 100,
+          actualCarbsG: 13.5 * s / 100,
+        );
+      }
+      expect(await repo.getMedianServing(foodId), 250);
+    });
+
+    test('超过 20 条 → 只取最近 20 条（按时间倒序）', () async {
+      final foodId = await db.into(db.foodItems).insert(
+            FoodItemsCompanion.insert(
+              name: '测试食物Z',
+              defaultServingG: 100,
+              caloriesPer100g: 50,
+              proteinPer100g: 1,
+              fatPer100g: 0.2,
+              carbsPer100g: 13.5,
+              source: 'test',
+              sourceVersion: 'v1',
+              createdAt: DateTime.now().millisecondsSinceEpoch,
+            ),
+          );
+      // 插 25 条，份量递增 100,200,...,2500
+      // 最近 20 条是 600,700,...,2500（按 loggedAt 倒序取前 20）
+      // loggedAt 用 DateTime.now().millisecondsSinceEpoch，同毫秒可能乱序，
+      // 加 sleep 保证 loggedAt 递增（每条 +1ms）
+      for (var i = 1; i <= 25; i++) {
+        await repo.insertMealLog(
+          date: '2026-07-02',
+          mealType: 'breakfast',
+          foodItemId: foodId,
+          actualServingG: (i * 100).toDouble(),
+          actualCalories: 50.0,
+          actualProteinG: 1.0,
+          actualFatG: 0.2,
+          actualCarbsG: 13.5,
+        );
+        await Future.delayed(const Duration(milliseconds: 2));
+      }
+      // 最近 20 条份量：600,700,...,2500（共 20 个），中位数 = (600+2500)/2 到 (1500+1600)/2
+      // 实际：第 6 到第 25 条（索引 5..24），份量 600..2500，中位数 = (600+2500)/2 到 (1500+1600)/2
+      // 偶数 20 条，中位数 = (第10+第11)/2 = (1500+1600)/2 = 1550
+      expect(await repo.getMedianServing(foodId), 1550);
+    });
   });
 }

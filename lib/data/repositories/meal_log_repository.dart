@@ -120,4 +120,22 @@ class MealLogRepository {
           ]))
         .get();
   }
+
+  /// 查询某食物的历史实际份量中位数（智能份量校准用）
+  /// 取最近 20 次记录的 actualServingG，返回中位数；无历史返回 null。
+  /// 用中位数而非均值：抗异常值（如偶尔记录 500g 大份，均值被拉偏，中位数稳定）。
+  Future<double?> getMedianServing(int foodItemId) async {
+    final rows = await (_db.mealLogs.select()
+          ..where((m) => m.foodItemId.equals(foodItemId))
+          ..orderBy([(m) => OrderingTerm.desc(m.loggedAt)])
+          ..limit(20))
+        .get();
+    if (rows.isEmpty) return null;
+    final servings = rows.map((m) => m.actualServingG).toList()..sort();
+    final n = servings.length;
+    if (n % 2 == 1) {
+      return servings[n ~/ 2];
+    }
+    return (servings[n ~/ 2 - 1] + servings[n ~/ 2]) / 2;
+  }
 }

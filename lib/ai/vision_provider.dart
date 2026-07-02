@@ -10,6 +10,9 @@ class VisionRecognitionResult {
   final bool isSingleItem;
   final double confidence;
   final String promptVersion;
+  // v1.2：一桌多菜批量识别时，主菜之外的其余菜品。
+  // 单菜时为空数组；多菜时每个元素是独立的识别结果（additionalDishes 强制为空，不嵌套）。
+  final List<VisionRecognitionResult> additionalDishes;
 
   const VisionRecognitionResult({
     required this.dishName,
@@ -22,7 +25,11 @@ class VisionRecognitionResult {
     required this.confidence,
     required this.promptVersion,
     this.brand = '',
+    this.additionalDishes = const [],
   });
+
+  /// 是否多菜（additionalDishes 非空）
+  bool get isMultiDish => additionalDishes.isNotEmpty;
 
   factory VisionRecognitionResult.fromJson(Map<String, dynamic> json, String promptVersion) {
     final mid = (json['estimated_weight_g_mid'] as num).toDouble();
@@ -33,6 +40,14 @@ class VisionRecognitionResult {
     final high = json['estimated_weight_g_high'] != null
         ? (json['estimated_weight_g_high'] as num).toDouble()
         : mid;
+    // v1.2：解析 additional_dishes（单菜/旧响应无此字段 → 空数组）
+    // 递归但只一层：子菜的 additionalDishes 强制为空（fromJson 传空 json 自然为空）
+    final additional = ((json['additional_dishes'] as List?) ?? const [])
+        .map((e) => VisionRecognitionResult.fromJson(
+              e as Map<String, dynamic>,
+              promptVersion,
+            ))
+        .toList();
     return VisionRecognitionResult(
       dishName: json['dish_name'] as String,
       // brand 可选（v1.1+），旧模型/v1.0 响应无此字段 → 空串
@@ -47,6 +62,7 @@ class VisionRecognitionResult {
       isSingleItem: json['is_single_item'] as bool,
       confidence: (json['confidence'] as num).toDouble(),
       promptVersion: promptVersion,
+      additionalDishes: additional,
     );
   }
 }

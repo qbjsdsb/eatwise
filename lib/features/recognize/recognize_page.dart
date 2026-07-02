@@ -11,6 +11,7 @@ import '../../core/config/app_config.dart';
 import '../../data/repositories/pending_recognition_repository.dart';
 import '../manual_entry/manual_entry_page.dart';
 import 'calibration_page.dart';
+import 'multi_dish_page.dart';
 import 'providers.dart';
 import 'recognize_controller.dart';
 
@@ -140,6 +141,23 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     final state = controller.current;
     if (state.state == RecognizeState.done && state.recognitionResult != null) {
       if (!mounted) return;
+      // v1.2 一桌多菜：additionalItems 非空 → 跳多菜列表页（每菜可校准+合并记录）
+      if (state.additionalItems.isNotEmpty) {
+        final foodItemRepo = await ref.read(foodItemRepoProvider.future);
+        if (!mounted) return;
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => MultiDishPage(
+            mainDish: state.recognitionResult!,
+            mainSingle: state.singleNutrition,
+            mainComposite: state.compositeNutrition,
+            additionalItems: state.additionalItems,
+            mealType: state.mealType,
+            imagePath: state.imagePath,
+            foodItemRepo: foodItemRepo,
+          ),
+        ));
+        return;
+      }
       // Sprint 4 T29：单品 + 复合菜均未命中 → 弹窗（改菜名重试 / 转手动录入）
       if (state.singleNutrition == null && state.compositeNutrition == null) {
         await _showNotFoundDialog(
@@ -151,12 +169,20 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       }
       final foodItemRepo = await ref.read(foodItemRepoProvider.future);
       if (!mounted) return;
+      // 智能份量校准：单品路径查历史中位数作滑块初值（B 功能）
+      double? suggestedServingG;
+      if (state.singleNutrition != null) {
+        final mealRepo = await ref.read(mealLogRepoProvider.future);
+        suggestedServingG = await mealRepo.getMedianServing(state.singleNutrition!.foodItemId);
+      }
+      if (!mounted) return;
       Navigator.of(context).push(MaterialPageRoute(
         builder: (_) => CalibrationPage(
           recognitionResult: state.recognitionResult!,
           singleNutrition: state.singleNutrition,
           compositeNutrition: state.compositeNutrition,
           foodItemRepo: foodItemRepo,
+          suggestedServingG: suggestedServingG,
           onConfirm: (servingG, calories, protein, fat, carbs, {componentsSnapshot}) async {
             final mealRepo = await ref.read(mealLogRepoProvider.future);
             final foodRepo = await ref.read(foodItemRepoProvider.future);
@@ -304,11 +330,16 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     if (!mounted) return;
     final foodItemRepo = await ref.read(foodItemRepoProvider.future);
     if (!mounted) return;
+    // 智能份量校准：查历史中位数作滑块初值（B 功能）
+    final mealRepoForSuggest = await ref.read(mealLogRepoProvider.future);
+    final suggestedServingG = await mealRepoForSuggest.getMedianServing(nutrition.foodItemId);
+    if (!mounted) return;
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => CalibrationPage(
         recognitionResult: result,
         singleNutrition: nutrition,
         foodItemRepo: foodItemRepo,
+        suggestedServingG: suggestedServingG,
         onConfirm: (servingG, calories, protein, fat, carbs, {componentsSnapshot}) async {
           final mealRepo = await ref.read(mealLogRepoProvider.future);
           await mealRepo.insertMealLog(

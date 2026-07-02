@@ -16,6 +16,10 @@ class CalibrationPage extends StatefulWidget {
   final CompositeNutritionResult? compositeNutrition;
   final FoodItemRepository foodItemRepo;
   final void Function(double servingG, double calories, double protein, double fat, double carbs, {String? componentsSnapshot}) onConfirm;
+  // 智能份量校准：基于历史记录的中位数（B 功能）。
+  // 非空时滑块初值用它（而非 AI 估算 mid），减少手动拖滑块。
+  // 仅单品路径生效；复合菜份量按组分，不走此参数。
+  final double? suggestedServingG;
 
   const CalibrationPage({
     super.key,
@@ -24,6 +28,7 @@ class CalibrationPage extends StatefulWidget {
     this.compositeNutrition,
     required this.foodItemRepo,
     required this.onConfirm,
+    this.suggestedServingG,
   });
 
   @override
@@ -33,6 +38,8 @@ class CalibrationPage extends StatefulWidget {
 class _CalibrationPageState extends State<CalibrationPage> {
   late double _servingG;
   late bool _canSkipCalibration;
+  // 是否用了历史中位数作初值（UI 提示用）
+  late bool _usedHistoryServing;
   // 复合菜校准状态
   final Map<int, double> _componentServings = {}; // 组分索引 → 份量 g
   double _oilG = 0; // 用油量 g
@@ -40,7 +47,14 @@ class _CalibrationPageState extends State<CalibrationPage> {
   @override
   void initState() {
     super.initState();
-    _servingG = widget.recognitionResult.estimatedWeightGMid;
+    // 智能份量校准：单品路径优先用历史中位数，无历史回退 AI 估算 mid
+    if (widget.singleNutrition != null && widget.suggestedServingG != null) {
+      _servingG = widget.suggestedServingG!;
+      _usedHistoryServing = true;
+    } else {
+      _servingG = widget.recognitionResult.estimatedWeightGMid;
+      _usedHistoryServing = false;
+    }
     _canSkipCalibration =
         widget.recognitionResult.confidence >= 0.85 && widget.recognitionResult.isSingleItem;
     // 复合菜初始化组分份量 + 用油量
@@ -97,13 +111,25 @@ class _CalibrationPageState extends State<CalibrationPage> {
                     const SizedBox(height: 24),
                     Text('份量：${_servingG.toStringAsFixed(0)} g'
                         '${widget.singleNutrition != null ? " (估算 ${widget.recognitionResult.estimatedWeightGLow.toStringAsFixed(0)}-${widget.recognitionResult.estimatedWeightGHigh.toStringAsFixed(0)} g)" : ""}'),
+                    if (_usedHistoryServing)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          '📊 已按你历史记录的中位数预填份量',
+                          style: TextStyle(
+                              fontSize: 12, color: Colors.green[700]),
+                        ),
+                      ),
                     Slider(
                       value: _servingG,
                       min: 0,
                       max: 1000,
                       divisions: 100,
                       label: '${_servingG.toStringAsFixed(0)} g',
-                      onChanged: (v) => setState(() => _servingG = v),
+                      onChanged: (v) => setState(() {
+                        _servingG = v;
+                        _usedHistoryServing = false; // 用户手动调整后不再提示
+                      }),
                     ),
                     const SizedBox(height: 24),
                     // 实时营养素预览（基于当前滑块值重算）
