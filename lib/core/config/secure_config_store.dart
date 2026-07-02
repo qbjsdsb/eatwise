@@ -70,6 +70,29 @@ class SecureConfigStore {
   Future<String?> readRaw(String key) => _storage.read(key: key);
   Future<void> deleteRaw(String key) => _storage.delete(key: key);
 
+  // --- T43 月度识别计数（按月归档，key: monthly_count_YYYYMM）---
+  static const _monthlyCountPrefix = 'monthly_count_';
+
+  /// 读取某月识别次数（key: monthly_count_YYYYMM）
+  Future<int> getMonthlyCount(int year, int month) async {
+    final key = '$_monthlyCountPrefix$year${month.toString().padLeft(2, '0')}';
+    final v = await readRaw(key);
+    return int.tryParse(v ?? '0') ?? 0;
+  }
+
+  /// 增加某月识别次数（+1）
+  Future<void> incrementMonthlyCount(int year, int month) async {
+    final key = '$_monthlyCountPrefix$year${month.toString().padLeft(2, '0')}';
+    final current = await getMonthlyCount(year, month);
+    await writeRaw(key, (current + 1).toString());
+  }
+
+  /// 读取本月识别次数
+  Future<int> getCurrentMonthCount() async {
+    final now = DateTime.now();
+    return getMonthlyCount(now.year, now.month);
+  }
+
   // --- 辅助 ---
   Future<void> _writeOrDelete(String key, String? value) async {
     if (value == null || value.isEmpty) {

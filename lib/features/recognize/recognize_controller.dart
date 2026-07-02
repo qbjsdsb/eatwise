@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../ai/nutrition_lookup.dart';
 import '../../ai/prompts.dart';
 import '../../ai/vision_provider.dart';
+import '../../core/config/secure_config_store.dart';
 import 'circuit_breaker.dart';
 
 /// 拍照识别状态
@@ -73,6 +74,9 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   // T37 断路器（可选，向后兼容 Sprint 3/5 测试）
   final CircuitBreaker? _circuitBreaker;
 
+  // T43 月度识别计数（可选，向后兼容；识别成功后 +1，按月归档）
+  final SecureConfigStore? _secureConfigStore;
+
   // T23：本地限流（每分钟最多 2 次，间隔 30s，防误触连点烧 token）
   DateTime? _lastRecognizeTime;
   static const _minInterval = Duration(seconds: 30);
@@ -86,9 +90,11 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         onOfflineEnqueue,
     void Function()? onL3Fallback,
     CircuitBreaker? circuitBreaker,  // T37：可选命名参数（与 T36 onL3Fallback 模式一致）
+    SecureConfigStore? secureConfigStore,  // T43：可选命名参数（月度计数）
   })  : _onOfflineEnqueue = onOfflineEnqueue,
         _onL3Fallback = onL3Fallback,
         _circuitBreaker = circuitBreaker,
+        _secureConfigStore = secureConfigStore,
         super(RecognizeUiState());
 
   /// 当前状态（供外部一次性读取，避免直接访问 StateNotifier 的 protected state）
@@ -106,6 +112,9 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
 
   @visibleForTesting
   CircuitBreaker? get circuitBreakerForTest => _circuitBreaker;
+
+  @visibleForTesting
+  SecureConfigStore? get secureConfigStoreForTest => _secureConfigStore;
 
   /// 拍照入口
   /// Sprint 2 T0：新增 mealType 参数（breakfast/lunch/dinner/snack）
@@ -236,12 +245,22 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
           dishName: result.dishName,
           servingG: result.estimatedWeightGMid,
         );
+        // T43：识别成功 + 查库回填完成，月度计数 +1（state=done 之前；离线入队/L3 转手动不计数）
+        if (_secureConfigStore != null) {
+          final now = DateTime.now();
+          await _secureConfigStore.incrementMonthlyCount(now.year, now.month);
+        }
         state = state.copyWith(state: RecognizeState.done, singleNutrition: nutrition);
       } else {
         final nutrition = await _nutritionLookup.lookupCompositeDish(
           components: result.foodComponents,
           cookingMethod: result.cookingMethod,
         );
+        // T43：识别成功 + 查库回填完成，月度计数 +1（state=done 之前；离线入队/L3 转手动不计数）
+        if (_secureConfigStore != null) {
+          final now = DateTime.now();
+          await _secureConfigStore.incrementMonthlyCount(now.year, now.month);
+        }
         state = state.copyWith(state: RecognizeState.done, compositeNutrition: nutrition);
       }
     } catch (e) {

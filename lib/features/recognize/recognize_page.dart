@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../ai/vision_provider.dart';
+import '../../core/config/app_config.dart';
 import '../../data/repositories/pending_recognition_repository.dart';
 import '../manual_entry/manual_entry_page.dart';
 import 'calibration_page.dart';
@@ -33,6 +34,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     final lookup = await ref.read(nutritionLookupProvider.future);
     final db = await ref.read(databaseProvider.future);
     final breaker = ref.read(circuitBreakerProvider); // T37：注入断路器
+    final store = ref.read(secureConfigStoreProvider); // T43：月度计数
     // Sprint 2 T14：注入离线入队回调（网络异常时入 pending_recognition 队列）
     _controller = RecognizeController(
       qwen,
@@ -55,6 +57,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
         ));
       },
       circuitBreaker: breaker, // T37：断路器（open 时不调 API 直接入队）
+      secureConfigStore: store, // T43：识别成功月度计数
     );
     return _controller!;
   }
