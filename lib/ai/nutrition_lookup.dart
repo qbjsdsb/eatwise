@@ -67,7 +67,15 @@ class NutritionLookup {
       totalProtein += food.proteinPer100g * g / 100;
       totalFat += food.fatPer100g * g / 100;
       totalCarbs += food.carbsPer100g * g / 100;
-      hits.add(ComponentHit(name: comp.name, foodItemId: food.id, estimatedG: g));
+      hits.add(ComponentHit(
+        name: comp.name,
+        foodItemId: food.id,
+        estimatedG: g,
+        caloriesPer100g: food.caloriesPer100g,
+        proteinPer100g: food.proteinPer100g,
+        fatPer100g: food.fatPer100g,
+        carbsPer100g: food.carbsPer100g,
+      ));
     }
 
     // 加烹饪用油
@@ -131,10 +139,19 @@ class ComponentHit {
   final String name;
   final int foodItemId;
   final double estimatedG;
+  // per100g 营养素（校准页重算用，lookup 时一次性填充）
+  final double caloriesPer100g;
+  final double proteinPer100g;
+  final double fatPer100g;
+  final double carbsPer100g;
 
   const ComponentHit({
     required this.name,
     required this.foodItemId,
     required this.estimatedG,
+    required this.caloriesPer100g,
+    required this.proteinPer100g,
+    required this.fatPer100g,
+    required this.carbsPer100g,
   });
 }

@@ -33,6 +33,9 @@ class CalibrationPage extends StatefulWidget {
 class _CalibrationPageState extends State<CalibrationPage> {
   late double _servingG;
   late bool _canSkipCalibration;
+  // 复合菜校准状态
+  final Map<int, double> _componentServings = {}; // 组分索引 → 份量 g
+  double _oilG = 0; // 用油量 g
 
   @override
   void initState() {
@@ -40,6 +43,14 @@ class _CalibrationPageState extends State<CalibrationPage> {
     _servingG = widget.recognitionResult.estimatedWeightGMid;
     _canSkipCalibration =
         widget.recognitionResult.confidence >= 0.85 && widget.recognitionResult.isSingleItem;
+    // 复合菜初始化组分份量 + 用油量
+    if (widget.compositeNutrition != null) {
+      final hits = widget.compositeNutrition!.componentHits;
+      for (var i = 0; i < hits.length; i++) {
+        _componentServings[i] = hits[i].estimatedG;
+      }
+      _oilG = widget.compositeNutrition!.oilG;
+    }
   }
 
   @override
@@ -69,29 +80,42 @@ class _CalibrationPageState extends State<CalibrationPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('识别结果：${widget.recognitionResult.dishName}',
-                style: Theme.of(context).textTheme.headlineSmall),
-            Text('置信度：${(widget.recognitionResult.confidence * 100).toStringAsFixed(0)}%'),
-            if (isLowConfidence)
-              const Padding(
-                padding: EdgeInsets.only(top: 8),
-                child: Text('⚠️ 待确认（置信度低，请仔细校准）',
-                    style: TextStyle(color: Colors.red)),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('识别结果：${widget.recognitionResult.dishName}',
+                        style: Theme.of(context).textTheme.headlineSmall),
+                    Text('置信度：${(widget.recognitionResult.confidence * 100).toStringAsFixed(0)}%'),
+                    if (isLowConfidence)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 8),
+                        child: Text('⚠️ 待确认（置信度低，请仔细校准）',
+                            style: TextStyle(color: Colors.red)),
+                      ),
+                    const SizedBox(height: 24),
+                    Text('份量：${_servingG.toStringAsFixed(0)} g'),
+                    Slider(
+                      value: _servingG,
+                      min: 0,
+                      max: 1000,
+                      divisions: 100,
+                      label: '${_servingG.toStringAsFixed(0)} g',
+                      onChanged: (v) => setState(() => _servingG = v),
+                    ),
+                    const SizedBox(height: 24),
+                    // 实时营养素预览（基于当前滑块值重算）
+                    _buildNutritionPreview(),
+                    if (widget.compositeNutrition != null) ...[
+                      const SizedBox(height: 16),
+                      _buildCompositeControls(),
+                    ],
+                  ],
+                ),
               ),
-            const SizedBox(height: 24),
-            Text('份量：${_servingG.toStringAsFixed(0)} g'),
-            Slider(
-              value: _servingG,
-              min: 0,
-              max: 1000,
-              divisions: 100,
-              label: '${_servingG.toStringAsFixed(0)} g',
-              onChanged: (v) => setState(() => _servingG = v),
             ),
-            const SizedBox(height: 24),
-            // 实时营养素预览（基于当前滑块值重算）
-            _buildNutritionPreview(),
-            const Spacer(),
+            const SizedBox(height: 8),
             SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -106,12 +130,35 @@ class _CalibrationPageState extends State<CalibrationPage> {
   }
 
   Widget _buildNutritionPreview() {
-    if (widget.singleNutrition == null) return const SizedBox.shrink();
-    final ratio = _servingG / widget.recognitionResult.estimatedWeightGMid;
-    final cal = widget.singleNutrition!.calories * ratio;
-    final protein = widget.singleNutrition!.proteinG * ratio;
-    final fat = widget.singleNutrition!.fatG * ratio;
-    final carbs = widget.singleNutrition!.carbsG * ratio;
+    if (widget.singleNutrition != null) {
+      // 单品路径：按总份量滑块比例重算
+      final ratio = _servingG / widget.recognitionResult.estimatedWeightGMid;
+      final cal = widget.singleNutrition!.calories * ratio;
+      final protein = widget.singleNutrition!.proteinG * ratio;
+      final fat = widget.singleNutrition!.fatG * ratio;
+      final carbs = widget.singleNutrition!.carbsG * ratio;
+      return _nutritionCard(cal, protein, fat, carbs);
+    }
+    if (widget.compositeNutrition != null) {
+      // 复合菜路径：按各组分滑块 + 用油量实时重算
+      final composite = widget.compositeNutrition!;
+      double cal = 0, protein = 0, fat = 0, carbs = 0;
+      for (var i = 0; i < composite.componentHits.length; i++) {
+        final hit = composite.componentHits[i];
+        final g = _componentServings[i] ?? hit.estimatedG;
+        cal += hit.caloriesPer100g * g / 100;
+        protein += hit.proteinPer100g * g / 100;
+        fat += hit.fatPer100g * g / 100;
+        carbs += hit.carbsPer100g * g / 100;
+      }
+      cal += oilCaloriesPer100g * _oilG / 100;
+      fat += oilFatPer100g * _oilG / 100;
+      return _nutritionCard(cal, protein, fat, carbs);
+    }
+    return const SizedBox.shrink();
+  }
+
+  Widget _nutritionCard(double cal, double protein, double fat, double carbs) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -124,6 +171,59 @@ class _CalibrationPageState extends State<CalibrationPage> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildCompositeControls() {
+    final composite = widget.compositeNutrition!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('组分份量调整', style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 8),
+        for (var i = 0; i < composite.componentHits.length; i++)
+          _buildComponentSlider(i, composite.componentHits[i]),
+        if (composite.componentMisses.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          const Text('⚠ 待确认组分（未在食物库找到）：',
+              style: TextStyle(color: Colors.orange)),
+          for (final miss in composite.componentMisses)
+            Padding(
+              padding: const EdgeInsets.only(left: 16),
+              child: Text('• $miss（请转手动录入或补充食物库）',
+                  style: const TextStyle(color: Colors.grey)),
+            ),
+        ],
+        const SizedBox(height: 16),
+        Text('用油量：${_oilG.toStringAsFixed(0)} g',
+            style: Theme.of(context).textTheme.titleSmall),
+        Slider(
+          value: _oilG,
+          min: 0,
+          max: 50,
+          divisions: 50,
+          label: '${_oilG.toStringAsFixed(0)} g',
+          onChanged: (v) => setState(() => _oilG = v),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildComponentSlider(int index, ComponentHit hit) {
+    final serving = _componentServings[index] ?? hit.estimatedG;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('${hit.name}：${serving.toStringAsFixed(0)} g'),
+        Slider(
+          value: serving,
+          min: 0,
+          max: (hit.estimatedG * 2).clamp(50, 1000),
+          divisions: 50,
+          label: '${serving.toStringAsFixed(0)} g',
+          onChanged: (v) => setState(() => _componentServings[index] = v),
+        ),
+      ],
     );
   }
 
@@ -151,12 +251,27 @@ class _CalibrationPageState extends State<CalibrationPage> {
         widget.singleNutrition!.carbsG * ratio,
       );
     } else if (widget.compositeNutrition != null) {
+      // 按调整后份量重算
+      final composite = widget.compositeNutrition!;
+      double cal = 0, protein = 0, fat = 0, carbs = 0;
+      for (var i = 0; i < composite.componentHits.length; i++) {
+        final hit = composite.componentHits[i];
+        final g = _componentServings[i] ?? hit.estimatedG;
+        cal += hit.caloriesPer100g * g / 100;
+        protein += hit.proteinPer100g * g / 100;
+        fat += hit.fatPer100g * g / 100;
+        carbs += hit.carbsPer100g * g / 100;
+      }
+      cal += oilCaloriesPer100g * _oilG / 100;
+      fat += oilFatPer100g * _oilG / 100;
+      // 复合菜用总组分份量之和
+      final totalG = _componentServings.values.fold<double>(0, (s, g) => s + g);
       widget.onConfirm(
-        servingG,
-        widget.compositeNutrition!.calories,
-        widget.compositeNutrition!.proteinG,
-        widget.compositeNutrition!.fatG,
-        widget.compositeNutrition!.carbsG,
+        totalG,
+        cal,
+        protein,
+        fat,
+        carbs,
         componentsSnapshot: _buildSnapshotJson(),
       );
     }
@@ -164,13 +279,19 @@ class _CalibrationPageState extends State<CalibrationPage> {
   }
 
   String _buildSnapshotJson() {
-    // 复合菜组分快照（设计文档 4.2.3 components_snapshot_json）
-    final components = widget.recognitionResult.foodComponents
-        .map((c) => {'name': c.name, 'actual_g': c.estimatedG})
-        .toList();
+    if (widget.compositeNutrition == null) return '{}';
+    final composite = widget.compositeNutrition!;
+    final components = <Map<String, dynamic>>[];
+    for (var i = 0; i < composite.componentHits.length; i++) {
+      final hit = composite.componentHits[i];
+      components.add({
+        'name': hit.name,
+        'actual_g': _componentServings[i] ?? hit.estimatedG,
+      });
+    }
     return jsonEncode({
       'components': components,
-      'oil_g': widget.compositeNutrition?.oilG ?? 0,
+      'oil_g': _oilG,
     });
   }
 }
