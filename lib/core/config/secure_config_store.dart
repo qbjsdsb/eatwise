@@ -65,6 +65,11 @@ class SecureConfigStore {
   Future<void> setTdeeAutoCalib(bool v) =>
       _storage.write(key: _tdeeAutoCalib, value: v ? '1' : '0');
 
+  // --- 通用 raw 读写（断路器/月度计数/保留期等用，key 自定义）---
+  Future<void> writeRaw(String key, String value) => _storage.write(key: key, value: value);
+  Future<String?> readRaw(String key) => _storage.read(key: key);
+  Future<void> deleteRaw(String key) => _storage.delete(key: key);
+
   // --- 辅助 ---
   Future<void> _writeOrDelete(String key, String? value) async {
     if (value == null || value.isEmpty) {

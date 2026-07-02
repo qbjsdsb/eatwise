@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../ai/nutrition_lookup.dart';
 import '../../ai/prompts.dart';
 import '../../ai/vision_provider.dart';
+import 'circuit_breaker.dart';
 
 /// 拍照识别状态
 enum RecognizeState { idle, pickingImage, preprocessing, recognizing, lookupNutrition, done, error, queued }
@@ -69,6 +70,9 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   // 为 null 时仅置 error 状态，向后兼容
   final void Function()? _onL3Fallback;
 
+  // T37 断路器（可选，向后兼容 Sprint 3/5 测试）
+  final CircuitBreaker? _circuitBreaker;
+
   // T23：本地限流（每分钟最多 2 次，间隔 30s，防误触连点烧 token）
   DateTime? _lastRecognizeTime;
   static const _minInterval = Duration(seconds: 30);
@@ -81,8 +85,10 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
             String imagePath, String mealType, String date, String promptVersion)?
         onOfflineEnqueue,
     void Function()? onL3Fallback,
+    CircuitBreaker? circuitBreaker,  // T37：可选命名参数（与 T36 onL3Fallback 模式一致）
   })  : _onOfflineEnqueue = onOfflineEnqueue,
         _onL3Fallback = onL3Fallback,
+        _circuitBreaker = circuitBreaker,
         super(RecognizeUiState());
 
   /// 当前状态（供外部一次性读取，避免直接访问 StateNotifier 的 protected state）
@@ -97,6 +103,9 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
 
   @visibleForTesting
   void Function()? get onL3FallbackForTest => _onL3Fallback;
+
+  @visibleForTesting
+  CircuitBreaker? get circuitBreakerForTest => _circuitBreaker;
 
   /// 拍照入口
   /// Sprint 2 T0：新增 mealType 参数（breakfast/lunch/dinner/snack）
@@ -146,6 +155,33 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
       // 调 Vision API（L1 重试 + L2 切备 + L3 转手动 容灾链路）
       state = state.copyWith(state: RecognizeState.recognizing);
       _lastRecognizeTime = DateTime.now(); // T23 限流：记录本次识别时间
+      // T37 断路器：open 状态直接走离线入队，不调 API 不烧 token
+      if (_circuitBreaker != null && !await _circuitBreaker.allowCall) {
+        state = state.copyWith(
+          state: RecognizeState.error,
+          errorMessage: '识别服务暂时不可用（断路器保护中），已加入离线队列',
+        );
+        // 直接走离线入队（与外层 catch 一致的入队逻辑）
+        // xFile 经上文 if (xFile == null) return 已保证非空，无需重复判空
+        if (_onOfflineEnqueue != null) {
+          final now = DateTime.now();
+          final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+          try {
+            await _onOfflineEnqueue(xFile.path, mealType, today, Prompts.version);
+            state = state.copyWith(
+              state: RecognizeState.queued,
+              errorMessage: '识别服务暂时不可用，已加入队列，稍后自动重试',
+              imagePath: xFile.path,
+            );
+          } catch (e) {
+            state = state.copyWith(
+              state: RecognizeState.error,
+              errorMessage: '离线入队失败：$e',
+            );
+          }
+        }
+        return;
+      }
       VisionRecognitionResult result;
       try {
         result = await _primaryProvider.recognize(imageBase64);
@@ -185,6 +221,9 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         }
       }
 
+      // T37 断路器：识别成功（无论主/L1重试/L2切备）记录成功（halfOpen → closed）
+      if (_circuitBreaker != null) await _circuitBreaker.recordSuccess();
+
       // 查库回填营养素
       state = state.copyWith(
         state: RecognizeState.lookupNutrition,
@@ -206,6 +245,17 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         state = state.copyWith(state: RecognizeState.done, compositeNutrition: nutrition);
       }
     } catch (e) {
+      // T37 断路器：retryable 失败记录（连续 3 次 → open）
+      if (_circuitBreaker != null &&
+          e is VisionRecognitionException &&
+          e.retryable) {
+        final breakerState = await _circuitBreaker.state;
+        if (breakerState == CircuitBreakerState.halfOpen) {
+          await _circuitBreaker.recordHalfOpenFailure();
+        } else {
+          await _circuitBreaker.recordFailure();
+        }
+      }
       // Sprint 2 T14：网络类异常 + 配置了离线回调 → 入队
       if (_onOfflineEnqueue != null &&
           xFile != null &&

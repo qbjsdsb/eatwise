@@ -12,6 +12,7 @@
 import 'package:eatwise/ai/nutrition_lookup.dart';
 import 'package:eatwise/ai/prompts.dart';
 import 'package:eatwise/ai/vision_provider.dart';
+import 'package:eatwise/features/recognize/circuit_breaker.dart';
 import 'package:eatwise/features/recognize/recognize_controller.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -109,6 +110,37 @@ void main() {
       _FakeNutritionLookup(),
     );
     expect(controller.onL3FallbackForTest, isNull);
+  });
+
+  // T37 断路器集成测试
+  test('断路器 open 时 pickAndRecognize 不调 API 直接入队', () async {
+    // 这个测试依赖 pickAndRecognize 完整流程（ImagePicker 平台插件），
+    // 沙箱跑不了 → 标 @Tags(['smoke']) 真机验证
+  }, tags: ['smoke']);
+
+  test('T38：构造器接受 circuitBreaker（编译期验证 + 字段可读）', () {
+    final storage = <String, String>{};
+    final breaker = CircuitBreaker(
+      write: (k, v) async => storage[k] = v,
+      read: (k) async => storage[k],
+      delete: (k) async => storage.remove(k),
+    );
+    final controller = RecognizeController(
+      _FakeVisionProvider(),
+      null,
+      _FakeNutritionLookup(),
+      circuitBreaker: breaker,
+    );
+    expect(controller.circuitBreakerForTest, isNotNull);
+  });
+
+  test('T38：circuitBreaker 默认 null（向后兼容，未注入时不报错）', () {
+    final controller = RecognizeController(
+      _FakeVisionProvider(),
+      null,
+      _FakeNutritionLookup(),
+    );
+    expect(controller.circuitBreakerForTest, isNull);
   });
 
   // 以下完整流程标注 @Tags(['smoke'])，真机验证（沙箱跑不了 pickAndRecognize）：

@@ -7,6 +7,7 @@ import '../../core/config/app_config.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
+import 'circuit_breaker.dart';
 
 // export database.dart：让用 `import 'providers.dart' as recognize;` 的页面
 // 能访问 recognize.databaseProvider（databaseProvider 在 database.dart 中定义）
@@ -59,6 +60,16 @@ final mealLogRepoProvider = FutureProvider<MealLogRepository>((ref) async {
 final nutritionLookupProvider = FutureProvider<NutritionLookup>((ref) async {
   final repo = await ref.watch(foodItemRepoProvider.future);
   return NutritionLookup(repo);
+});
+
+// T37 断路器 Provider（用 SecureConfigStore 作存储后端，跨 session + 后台回补感知）
+final circuitBreakerProvider = Provider<CircuitBreaker>((ref) {
+  final store = ref.read(secureConfigStoreProvider);
+  return CircuitBreaker(
+    write: (k, v) => store.writeRaw(k, v),
+    read: (k) => store.readRaw(k),
+    delete: (k) => store.deleteRaw(k),
+  );
 });
 
 // RecognizeController 不用 Provider 管理（依赖 FutureProvider 异步初始化，
