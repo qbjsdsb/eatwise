@@ -48,6 +48,8 @@ class _CalibrationPageState extends State<CalibrationPage> {
   // 份量联动：调数量 → _servingG = perUnitG × quantity；拖滑块 → 反推 _quantity
   late int _quantity;
   late double _perUnitG;
+  // 防重入：写入 meal_log 期间禁用按钮，避免双击重复记录
+  bool _isRecording = false;
 
   /// v1.3：动态滑块上限。多份场景 perUnitG×20 可能超 1000（如 5 碗米饭=1250g），
   /// 静态 max=1000 会被 clamp 致静默少算。perUnitG>0 时按 perUnitG×20 扩到上限 5000，
@@ -108,12 +110,12 @@ class _CalibrationPageState extends State<CalibrationPage> {
         actions: [
           if (_canSkipCalibration)
             TextButton(
-              onPressed: _confirmOneClick,
+              onPressed: _isRecording ? null : _confirmOneClick,
               child: const Text('一键记录'),
             ),
           if (isMidConfidence)
             TextButton(
-              onPressed: _trustAi,
+              onPressed: _isRecording ? null : _trustAi,
               child: const Text('信任 AI'),
             ),
         ],
@@ -186,8 +188,14 @@ class _CalibrationPageState extends State<CalibrationPage> {
             SizedBox(
               width: double.infinity,
               child: FilledButton(
-                onPressed: _confirmManual,
-                child: const Text('确认记录'),
+                onPressed: _isRecording ? null : _confirmManual,
+                child: _isRecording
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('确认记录'),
               ),
             ),
           ],
@@ -358,11 +366,13 @@ class _CalibrationPageState extends State<CalibrationPage> {
   }
 
   Future<void> _confirmWithServing(double servingG) async {
-    if (widget.singleNutrition != null) {
-      // 防除零：AI 返回 estimatedWeightGMid <= 0 时 ratio=1
-      final mid = widget.recognitionResult.estimatedWeightGMid;
-      final ratio = mid > 0 ? servingG / mid : 1.0;
-      try {
+    if (_isRecording) return; // 防重入
+    setState(() => _isRecording = true);
+    try {
+      if (widget.singleNutrition != null) {
+        // 防除零：AI 返回 estimatedWeightGMid <= 0 时 ratio=1
+        final mid = widget.recognitionResult.estimatedWeightGMid;
+        final ratio = mid > 0 ? servingG / mid : 1.0;
         await widget.onConfirm(
           servingG,
           widget.singleNutrition!.calories * ratio,
@@ -370,30 +380,22 @@ class _CalibrationPageState extends State<CalibrationPage> {
           widget.singleNutrition!.fatG * ratio,
           widget.singleNutrition!.carbsG * ratio,
         );
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('记录失败：$e')));
+      } else if (widget.compositeNutrition != null) {
+        // 按调整后份量重算
+        final composite = widget.compositeNutrition!;
+        double cal = 0, protein = 0, fat = 0, carbs = 0;
+        for (var i = 0; i < composite.componentHits.length; i++) {
+          final hit = composite.componentHits[i];
+          final g = _componentServings[i] ?? hit.estimatedG;
+          cal += hit.caloriesPer100g * g / 100;
+          protein += hit.proteinPer100g * g / 100;
+          fat += hit.fatPer100g * g / 100;
+          carbs += hit.carbsPer100g * g / 100;
         }
-        return; // 写入失败不 pop
-      }
-    } else if (widget.compositeNutrition != null) {
-      // 按调整后份量重算
-      final composite = widget.compositeNutrition!;
-      double cal = 0, protein = 0, fat = 0, carbs = 0;
-      for (var i = 0; i < composite.componentHits.length; i++) {
-        final hit = composite.componentHits[i];
-        final g = _componentServings[i] ?? hit.estimatedG;
-        cal += hit.caloriesPer100g * g / 100;
-        protein += hit.proteinPer100g * g / 100;
-        fat += hit.fatPer100g * g / 100;
-        carbs += hit.carbsPer100g * g / 100;
-      }
-      cal += oilCaloriesPer100g * _oilG / 100;
-      fat += oilFatPer100g * _oilG / 100;
-      // 复合菜用总组分份量之和
-      final totalG = _componentServings.values.fold<double>(0, (s, g) => s + g);
-      try {
+        cal += oilCaloriesPer100g * _oilG / 100;
+        fat += oilFatPer100g * _oilG / 100;
+        // 复合菜用总组分份量之和
+        final totalG = _componentServings.values.fold<double>(0, (s, g) => s + g);
         await widget.onConfirm(
           totalG,
           cal,
@@ -402,15 +404,16 @@ class _CalibrationPageState extends State<CalibrationPage> {
           carbs,
           componentsSnapshot: _buildSnapshotJson(),
         );
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('记录失败：$e')));
-        }
-        return; // 写入失败不 pop
       }
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('记录失败：$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isRecording = false);
     }
-    if (mounted) Navigator.of(context).pop();
   }
 
   String _buildSnapshotJson() {
