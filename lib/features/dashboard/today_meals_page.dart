@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../ai/prompts.dart';
-import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/pending_recognition_repository.dart';
@@ -92,11 +91,13 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       body: _meals.isEmpty
           ? _buildEmptyState()
           : ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               children: [
                 for (final type in order)
                   if (groups.containsKey(type)) ...[
-                    _buildSectionHeader(labels[type]!),
-                    for (final m in groups[type]!) _buildMealTile(m),
+                    _buildSectionHeader(labels[type]!, groups[type]!),
+                    for (final m in groups[type]!) _buildMealCard(m),
+                    const SizedBox(height: 8),
                   ],
               ],
             ),
@@ -130,20 +131,47 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     );
   }
 
-  Widget _buildSectionHeader(String label) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: Text(label, style: Theme.of(context).textTheme.titleMedium),
-      );
+  /// 餐次分组标题：带餐次小计热量，让用户一眼看到每餐总摄入
+  Widget _buildSectionHeader(String label, List<MealLog> meals) {
+    final cs = Theme.of(context).colorScheme;
+    final sum = meals.fold(0.0, (s, m) => s + m.actualCalories);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 18,
+            decoration: BoxDecoration(
+              color: cs.primary,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(label, style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          )),
+          const SizedBox(width: 8),
+          Text('${sum.toStringAsFixed(0)} kcal',
+              style: TextStyle(
+                fontSize: 12,
+                color: cs.onSurfaceVariant,
+              )),
+        ],
+      ),
+    );
+  }
 
-  Widget _buildMealTile(MealLog m) {
+  Widget _buildMealCard(MealLog m) {
+    final cs = Theme.of(context).colorScheme;
     return Dismissible(
       key: ValueKey(m.id),
       direction: DismissDirection.endToStart,
       background: Container(
-          color: Theme.of(context).colorScheme.errorContainer,
+          color: cs.errorContainer,
           alignment: Alignment.centerRight,
-          child: Icon(Icons.delete,
-              color: Theme.of(context).colorScheme.onErrorContainer)),
+          padding: const EdgeInsets.only(right: 20),
+          child: Icon(Icons.delete, color: cs.onErrorContainer)),
       onDismissed: (_) async {
         try {
           final repo = await ref.read(recognize.mealLogRepoProvider.future);
@@ -159,29 +187,149 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
           );
         }
       },
-      child: ListTile(
-        leading: m.originalImagePath != null
-            ? ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.file(File(m.originalImagePath!),
-                    width: 40,
-                    height: 40,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) =>
-                        const LeadingIconContainer(Icons.broken_image_outlined)),
-              )
-            : const LeadingIconContainer(Icons.restaurant_rounded),
-        title: Text(_foodNames[m.foodItemId] ?? '食物 #${m.foodItemId}'),
-        subtitle: Text(
-            '${m.actualServingG.toStringAsFixed(0)}g · ${m.actualCalories.toStringAsFixed(0)} kcal'),
-        trailing: m.recognitionConfidence != null
-            ? IconButton(
-                icon: const Icon(Icons.feedback_outlined),
-                onPressed: () => _showFeedbackDialog(m),
-              )
-            : null,
-        onTap: () => _showEditDialog(m),
+      child: Card(
+        margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: cs.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: () => _showEditDialog(m),
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 缩略图
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: m.originalImagePath != null
+                      ? Image.file(File(m.originalImagePath!),
+                          width: 56,
+                          height: 56,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            width: 56,
+                            height: 56,
+                            color: cs.primaryContainer,
+                            child: Icon(Icons.broken_image_outlined,
+                                color: cs.onPrimaryContainer, size: 24),
+                          ))
+                      : Container(
+                          width: 56,
+                          height: 56,
+                          color: cs.primaryContainer,
+                          child: Icon(Icons.restaurant_rounded,
+                              color: cs.onPrimaryContainer, size: 24),
+                        ),
+                ),
+                const SizedBox(width: 12),
+                // 名称 + 份量 + 营养素
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _foodNames[m.foodItemId] ?? '食物 #${m.foodItemId}',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleSmall
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      // 份量 + 热量
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        children: [
+                          _chip(Icons.scale_outlined,
+                              '${m.actualServingG.toStringAsFixed(0)} g',
+                              cs.secondaryContainer,
+                              cs.onSecondaryContainer),
+                          _chip(Icons.local_fire_department_outlined,
+                              '${m.actualCalories.toStringAsFixed(0)} kcal',
+                              cs.tertiaryContainer,
+                              cs.onTertiaryContainer),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      // 三大宏量营养素
+                      Row(
+                        children: [
+                          _macroDot('蛋白',
+                              m.actualProteinG, const Color(0xFF4CAF50)),
+                          const SizedBox(width: 10),
+                          _macroDot('脂肪',
+                              m.actualFatG, const Color(0xFFFF9800)),
+                          const SizedBox(width: 10),
+                          _macroDot('碳水',
+                              m.actualCarbsG, const Color(0xFF2196F3)),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                // 反馈按钮
+                if (m.recognitionConfidence != null)
+                  IconButton(
+                    icon: const Icon(Icons.feedback_outlined, size: 20),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () => _showFeedbackDialog(m),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
+    );
+  }
+
+  /// 小标签 chip：图标 + 文字
+  Widget _chip(
+      IconData icon, String text, Color bg, Color fg) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: fg),
+          const SizedBox(width: 3),
+          Text(text,
+              style: TextStyle(
+                  fontSize: 11,
+                  color: fg,
+                  fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+
+  /// 宏量营养素小圆点 + 数值
+  Widget _macroDot(String label, double g, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 3),
+        Text('$label ${g.toStringAsFixed(1)}g',
+            style: TextStyle(
+                fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+      ],
     );
   }
 
