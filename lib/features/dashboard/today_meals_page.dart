@@ -170,9 +170,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         } catch (_) {
           // 获取 repo 失败，回滚 UI
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('删除失败：数据库不可用')),
-            );
+            showAppToast(context, '删除失败：数据库不可用');
           }
           return;
         }
@@ -208,9 +206,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
           if (!mounted) return;
           await _load();
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('删除失败：$e')),
-          );
+          showAppToast(context, '删除失败：$e');
         }
       },
       // 用 MD3 Card.outlined 变体（替代手写 elevation:0 + outline），

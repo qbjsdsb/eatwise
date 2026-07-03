@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/widgets/m3_widgets.dart';
 import '../../data/backup/json_exporter.dart';
 import '../../data/backup/json_importer.dart';
 import '../recognize/providers.dart' as recognize;
@@ -102,18 +103,12 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           'eatwise_backup_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}.json';
       final file = await File('${dir.path}/$fileName').writeAsString(jsonStr);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('已导出到 ${file.path}'),
-            duration: const Duration(seconds: 5)),
-      );
+      showAppToast(context, '已导出到 ${file.path}',
+          duration: const Duration(seconds: 5));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('导出失败：$e'),
-            duration: const Duration(seconds: 5)),
-      );
+      showAppToast(context, '导出失败：$e',
+          duration: const Duration(seconds: 5));
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -151,22 +146,12 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     if (!mounted) return;
 
     // 二次确认：导入会先清空当前所有数据（DELETE FROM 6 张表），破坏性操作需用户明确确认
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        icon: Icon(Icons.warning_amber_rounded,
-            color: Theme.of(ctx).colorScheme.error),
-        title: const Text('确认导入'),
-        content: const Text('导入将清空当前所有数据（档案、食物库、餐次记录、体重、汇总、反馈），此操作不可撤销。\n\n确定继续？'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('取消')),
-          FilledButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('确定导入')),
-        ],
-      ),
+    final confirmed = await confirmAction(
+      context,
+      title: '确认导入',
+      content: '导入将清空当前所有数据（档案、食物库、餐次记录、体重、汇总、反馈），此操作不可撤销。\n\n确定继续？',
+      confirmLabel: '确定导入',
+      icon: Icons.warning_amber_rounded,
     );
     if (confirmed != true || !mounted) return;
 
@@ -176,18 +161,14 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       final importer = JsonImporter(db);
       final stats = await importer.importFromString(jsonStr);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              '导入成功：${stats.profiles}档案 + ${stats.foodItems}食物 + ${stats.mealLogs}餐次 + ${stats.weightLogs}体重 + ${stats.insights}汇总 + ${stats.feedbacks}反馈${stats.imageCheckResult.totalMissing > 0 ? '\n注意：${stats.imageCheckResult.totalMissing} 张图片未迁移（原图未保留）' : ''}'),
-          duration: const Duration(seconds: 5),
-        ),
-      );
+      showAppToast(
+          context,
+          '导入成功：${stats.profiles}档案 + ${stats.foodItems}食物 + ${stats.mealLogs}餐次 + ${stats.weightLogs}体重 + ${stats.insights}汇总 + ${stats.feedbacks}反馈${stats.imageCheckResult.totalMissing > 0 ? '\n注意：${stats.imageCheckResult.totalMissing} 张图片未迁移（原图未保留）' : ''}',
+          duration: const Duration(seconds: 5));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('导入失败：$e'), duration: const Duration(seconds: 5)),
-      );
+      showAppToast(context, '导入失败：$e',
+          duration: const Duration(seconds: 5));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

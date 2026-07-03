@@ -507,24 +507,17 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
       if (!mounted) return;
       if (recordedCount == 0) {
         // 全未命中兜底：引导转手动录入
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('所有菜品均未命中库，请转手动录入')),
-        );
+        showAppToast(context, '所有菜品均未命中库，请转手动录入');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(
-                  '已记录 $recordedCount 道菜，合计 ${totalCal.toStringAsFixed(0)} kcal')),
-        );
+        showAppToast(
+            context, '已记录 $recordedCount 道菜，合计 ${totalCal.toStringAsFixed(0)} kcal');
         _dirty = false; // 记录成功，允许返回不弹确认
         Navigator.of(context).pop();
       }
     } catch (e) {
       // 异常处理：提示用户，事务已回滚无部分记录
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('记录失败：$e')),
-        );
+        showAppToast(context, '记录失败：$e');
       }
     } finally {
       if (mounted) setState(() => _isRecording = false);

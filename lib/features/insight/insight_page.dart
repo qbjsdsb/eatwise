@@ -237,22 +237,11 @@ class _InsightPageState extends ConsumerState<InsightPage> {
 
   /// 重新生成二次确认（避免覆盖用户编辑过的汇总）
   Future<void> _confirmRegenerate() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('重新生成'),
-        content: const Text('重新生成会覆盖当前汇总，是否继续？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('继续'),
-          ),
-        ],
-      ),
+    final confirmed = await confirmAction(
+      context,
+      title: '重新生成',
+      content: '重新生成会覆盖当前汇总，是否继续？',
+      confirmLabel: '继续',
     );
     if (confirmed == true) {
       await _generate();

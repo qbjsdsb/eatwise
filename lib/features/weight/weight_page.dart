@@ -372,9 +372,7 @@ class WeightPageState extends ConsumerState<WeightPage> {
     final weight = double.tryParse(_weightCtrl.text);
     if (weight == null || weight <= 0) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入有效的体重数字')),
-      );
+      showAppToast(context, '请输入有效的体重数字');
       return;
     }
     setState(() => _busy = true);
@@ -398,9 +396,7 @@ class WeightPageState extends ConsumerState<WeightPage> {
           final calibrator = TdeeCalibrator(db);
           final result = await calibrator.runAndApply(enabled: true);
           if (result.adjustmentKcal != 0 && mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('TDEE 已调整：${result.reason}')),
-            );
+            showAppToast(context, 'TDEE 已调整：${result.reason}');
           }
         }
       } catch (_) {
@@ -440,26 +436,13 @@ class WeightPageState extends ConsumerState<WeightPage> {
         child: Icon(Icons.delete, color: cs.onErrorContainer),
       ),
       // 滑删确认：避免误删（体重记录通常较少，二次确认成本可接受）
-      confirmDismiss: (_) async {
-        return await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('删除体重记录？'),
-            content: Text('${log.weightKg.toStringAsFixed(1)} kg · ${log.date}'),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx, false),
-                  child: const Text('取消')),
-              FilledButton(
-                  onPressed: () => Navigator.pop(ctx, true),
-                  style: FilledButton.styleFrom(
-                      backgroundColor: cs.errorContainer,
-                      foregroundColor: cs.onErrorContainer),
-                  child: const Text('删除')),
-            ],
-          ),
-        );
-      },
+      confirmDismiss: (_) => confirmAction(
+        context,
+        title: '删除体重记录？',
+        content: '${log.weightKg.toStringAsFixed(1)} kg · ${log.date}',
+        confirmLabel: '删除',
+        destructive: true,
+      ),
       onDismissed: (_) => _deleteWeight(log),
       child: ListTile(
         leading: const LeadingIconContainer(Icons.monitor_weight_outlined),

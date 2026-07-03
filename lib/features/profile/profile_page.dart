@@ -74,9 +74,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     } catch (e) {
       // DB 异常时不卡死 loading
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('档案加载失败：$e')),
-        );
+        showAppToast(context, '档案加载失败：$e');
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -437,27 +435,13 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       }
       if (warnings.isNotEmpty) {
         if (!mounted) return;
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: Row(children: [
-              Icon(Icons.warning_amber_rounded,
-                  color: Theme.of(context).colorScheme.error, size: 22),
-              const SizedBox(width: 8),
-              const Text('风险警告'),
-            ]),
-            content: Text(warnings.join('\n\n')),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('重新填写'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('我知道风险，继续'),
-              ),
-            ],
-          ),
+        final confirmed = await confirmAction(
+          context,
+          title: '风险警告',
+          content: warnings.join('\n\n'),
+          cancelLabel: '重新填写',
+          confirmLabel: '我知道风险，继续',
+          icon: Icons.warning_amber_rounded,
         );
         if (confirmed != true) return; // 用户取消
       }
@@ -489,9 +473,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         final suffix = specialAdj > 0
             ? '（含特殊加成 +$specialAdj kcal）'
             : '';
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已保存，每日目标 $target kcal$suffix')),
-        );
+        showAppToast(context, '已保存，每日目标 $target kcal$suffix');
         _dirty = false; // 清 dirty 让 PopScope 放行 programmatic pop
         Navigator.of(context).pop();
         // 通知 dashboard/records/insight 等监听 RefreshBus 的页面刷新
@@ -499,9 +481,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('保存失败：$e')),
-        );
+        showAppToast(context, '保存失败：$e');
       }
     } finally {
       if (mounted) setState(() => _busy = false);

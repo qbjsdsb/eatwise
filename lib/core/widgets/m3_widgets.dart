@@ -263,6 +263,63 @@ Future<bool> confirmDiscardChanges(BuildContext context) async {
       false;
 }
 
+/// 通用确认对话框：title + content + 取消/确认 两按钮。
+///
+/// 用于删除/重新生成/导入等需要二次确认的操作，统一 AlertDialog 样板。
+/// - [destructive]=true：确认按钮用 errorContainer 配色（删除等破坏性操作）
+/// - [icon]：非 null 时显示在 title 上方（MD3 AlertDialog.icon 位，用 cs.error 色，
+///   适合 warning_amber_rounded 等警示图标）
+/// - 返回 true=确认，false/null=取消（null 兜底为 false）
+Future<bool> confirmAction(
+  BuildContext context, {
+  required String title,
+  required String content,
+  String cancelLabel = '取消',
+  String confirmLabel = '确定',
+  IconData? icon,
+  bool destructive = false,
+}) async {
+  final cs = Theme.of(context).colorScheme;
+  return await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          icon: icon != null ? Icon(icon, color: cs.error) : null,
+          title: Text(title),
+          content: Text(content),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(cancelLabel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: destructive
+                  ? FilledButton.styleFrom(
+                      backgroundColor: cs.errorContainer,
+                      foregroundColor: cs.onErrorContainer)
+                  : null,
+              child: Text(confirmLabel),
+            ),
+          ],
+        ),
+      ) ??
+      false;
+}
+
+/// 通用 toast 提示：封装 ScaffoldMessenger + SnackBar 样板。
+///
+/// 用于成功/失败/提示消息，替代各页散落的
+/// `ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(...)))`。
+/// - [duration]：null 用默认 4s（与 SnackBar 默认一致）
+void showAppToast(BuildContext context, String msg, {Duration? duration}) {
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Text(msg),
+      duration: duration ?? const Duration(seconds: 4),
+    ),
+  );
+}
+
 /// 图表空数据占位：固定高度 120 + Card + show_chart 图标 + 文案。
 ///
 /// 用于 weight_page 趋势图 / insight_page 折线图数据不足时的占位，

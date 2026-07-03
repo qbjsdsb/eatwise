@@ -238,9 +238,7 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
   void _save() {
     final serving = double.tryParse(_servingCtrl.text.trim());
     if (serving == null || serving <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入有效份量')),
-      );
+      showAppToast(context, '请输入有效份量');
       return;
     }
     final n = _computeNutrition();

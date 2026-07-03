@@ -235,15 +235,14 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
         actualCarbsG: _selected!.carbsPer100g * ratio,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-                '已记录 ${_selected!.name} ${serving.toStringAsFixed(0)}g')));
+        showAppToast(context,
+            '已记录 ${_selected!.name} ${serving.toStringAsFixed(0)}g');
         _dirty = false; // 保存成功，允许返回不弹确认
         Navigator.of(context).pop();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('记录失败：$e')));
+        showAppToast(context, '记录失败：$e');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -309,14 +308,13 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
         actualCarbsG: carbs * ratio,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已存库并记录 ${_nameCtrl.text}')));
+        showAppToast(context, '已存库并记录 ${_nameCtrl.text}');
         _dirty = false; // 保存成功，允许返回不弹确认
         Navigator.of(context).pop();
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('记录失败：$e')));
+        showAppToast(context, '记录失败：$e');
       }
     } finally {
       if (mounted) setState(() => _busy = false);

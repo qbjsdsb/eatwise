@@ -287,14 +287,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       await ref.read(appConfigProvider.future);  // 触发重新 load
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('设置已保存')));
+        showAppToast(context, '设置已保存');
         _dirty = false; // 清 dirty 让 PopScope 放行 programmatic pop
         Navigator.of(context).pop();
       }
     } catch (e) {
       // secure_storage IO 失败等异常：提示用户，不静默卡死
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败：$e')));
+        showAppToast(context, '保存失败：$e');
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -360,14 +360,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             final store = ref.read(secureConfigStoreProvider);
             await store.setThemeSeed(argb);
             if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('已切换主题：$name')),
-            );
+            showAppToast(context, '已切换主题：$name');
           } catch (_) {
             if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('主题已临时切换，但保存失败，下次启动将恢复')),
-            );
+            showAppToast(context, '主题已临时切换，但保存失败，下次启动将恢复');
           }
         });
       }).toList(),
