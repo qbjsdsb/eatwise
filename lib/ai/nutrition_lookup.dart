@@ -151,6 +151,9 @@ class NutritionLookup {
   }
 }
 
+/// 营养数据来源（校准页展示徽章用）
+enum NutritionSource { database, aiEstimate }
+
 class NutritionResult {
   final int foodItemId;
   final double calories;
@@ -159,6 +162,10 @@ class NutritionResult {
   final double carbsG;
   final double oilG;
 
+  /// 数据来源：database=本地食物库命中；aiEstimate=库未命中时 AI 兜底估算
+  /// （foodItemId=0 为哨兵，recognize_page 写库前用 upsertAiRecognized 替换为真实 id）
+  final NutritionSource source;
+
   const NutritionResult({
     required this.foodItemId,
     required this.calories,
@@ -166,6 +173,7 @@ class NutritionResult {
     required this.fatG,
     required this.carbsG,
     required this.oilG,
+    this.source = NutritionSource.database,
   });
 }
 

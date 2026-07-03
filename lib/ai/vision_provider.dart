@@ -10,6 +10,12 @@ class VisionRecognitionResult {
   final bool isSingleItem;
   final double confidence;
   final String promptVersion;
+  // v1.1：AI 整菜营养估算（按 mid 份量），用于库未命中时的兜底。
+  // 旧 prompt(v1.0) 返回无此字段 → null，走原有"未命中转手动"流程。
+  final double? estimatedCalories;
+  final double? estimatedProteinG;
+  final double? estimatedFatG;
+  final double? estimatedCarbsG;
 
   const VisionRecognitionResult({
     required this.dishName,
@@ -21,6 +27,10 @@ class VisionRecognitionResult {
     required this.isSingleItem,
     required this.confidence,
     required this.promptVersion,
+    this.estimatedCalories,
+    this.estimatedProteinG,
+    this.estimatedFatG,
+    this.estimatedCarbsG,
   });
 
   factory VisionRecognitionResult.fromJson(
@@ -47,6 +57,11 @@ class VisionRecognitionResult {
       isSingleItem: json['is_single_item'] as bool,
       confidence: (json['confidence'] as num).toDouble(),
       promptVersion: promptVersion,
+      // v1.1 营养字段缺失时为 null（旧 prompt 兼容）
+      estimatedCalories: (json['estimated_calories'] as num?)?.toDouble(),
+      estimatedProteinG: (json['estimated_protein_g'] as num?)?.toDouble(),
+      estimatedFatG: (json['estimated_fat_g'] as num?)?.toDouble(),
+      estimatedCarbsG: (json['estimated_carbs_g'] as num?)?.toDouble(),
     );
   }
 }

@@ -152,10 +152,9 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
       return;
     }
 
-    state = state.copyWith(
+    state = RecognizeUiState(
       state: RecognizeState.pickingImage,
       mealType: mealType,
-      clearError: true,
     );
     XFile? xFile;
     try {
@@ -280,6 +279,8 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
           dishName: result.dishName,
           servingG: result.estimatedWeightGMid,
         );
+        // 库未命中时用 AI 整菜估算兜底（v1.1 prompt 提供）；旧 prompt 无估算则保持 null 走弹窗
+        final effective = nutrition ?? _aiFallbackNutrition(result);
         // T43：识别成功 + 查库回填完成，月度计数 +1（state=done 之前；离线入队/L3 转手动不计数）
         if (_secureConfigStore != null) {
           final now = DateTime.now();
@@ -287,7 +288,7 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         }
         state = state.copyWith(
           state: RecognizeState.done,
-          singleNutrition: nutrition,
+          singleNutrition: effective,
         );
       } else {
         final nutrition = await _nutritionLookup.lookupCompositeDish(
@@ -346,6 +347,23 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         errorMessage: e.toString(),
       );
     }
+  }
+
+  /// 库未命中时的 AI 整菜估算兜底（v1.1 prompt 提供 estimated_calories 等字段）。
+  /// 返回 null 表示无 AI 估算（旧 prompt 兼容），调用方保持 singleNutrition=null 走未命中弹窗。
+  /// foodItemId=0 为哨兵，recognize_page 写库前用 upsertAiRecognized 创建 food_item 替换为真实 id。
+  NutritionResult? _aiFallbackNutrition(VisionRecognitionResult r) {
+    final cal = r.estimatedCalories;
+    if (cal == null) return null;
+    return NutritionResult(
+      foodItemId: 0,
+      calories: cal,
+      proteinG: r.estimatedProteinG ?? 0,
+      fatG: r.estimatedFatG ?? 0,
+      carbsG: r.estimatedCarbsG ?? 0,
+      oilG: 0,
+      source: NutritionSource.aiEstimate,
+    );
   }
 
   /// T36：L3 转手动录入触发器

@@ -33,7 +33,7 @@ void main() {
         'is_single_item': false,
         'food_components': [
           {'name': '鸡蛋', 'estimated_g': 120},
-          {'name': '番茄', 'estimated_g': 150}
+          {'name': '番茄', 'estimated_g': 150},
         ],
         'cooking_method': 'stir-fry',
         'confidence': 0.85,
@@ -88,7 +88,7 @@ void main() {
       };
       final result = VisionRecognitionResult.fromJson(json, 'v1.0');
       expect(result.estimatedWeightGMid, 100);
-      expect(result.estimatedWeightGLow, 100);  // 回退 Mid
+      expect(result.estimatedWeightGLow, 100); // 回退 Mid
     });
 
     test('字段缺失：estimated_weight_g_high 缺失时回退 Mid', () {
@@ -101,7 +101,7 @@ void main() {
         // estimated_weight_g_high 缺失
       };
       final result = VisionRecognitionResult.fromJson(json, 'v1.0');
-      expect(result.estimatedWeightGHigh, 100);  // 回退 Mid
+      expect(result.estimatedWeightGHigh, 100); // 回退 Mid
     });
 
     test('必填字段缺失（dishName）抛异常（malformed）', () {
@@ -112,7 +112,10 @@ void main() {
         'confidence': 0.9,
         // dish_name 缺失
       };
-      expect(() => VisionRecognitionResult.fromJson(json, 'v1.0'), throwsA(anything));
+      expect(
+        () => VisionRecognitionResult.fromJson(json, 'v1.0'),
+        throwsA(anything),
+      );
     });
 
     test('必填字段缺失（confidence）抛异常（malformed）', () {
@@ -123,18 +126,78 @@ void main() {
         'cooking_method': 'boil',
         // confidence 缺失
       };
-      expect(() => VisionRecognitionResult.fromJson(json, 'v1.0'), throwsA(anything));
+      expect(
+        () => VisionRecognitionResult.fromJson(json, 'v1.0'),
+        throwsA(anything),
+      );
     });
 
     test('字段类型错误：estimated_weight_g_mid 为字符串抛异常（as num 失败）', () {
       final json = {
         'dish_name': '米饭',
-        'estimated_weight_g_mid': '100',  // 字符串，as num 失败
+        'estimated_weight_g_mid': '100', // 字符串，as num 失败
         'is_single_item': true,
         'cooking_method': 'boil',
         'confidence': 0.9,
       };
-      expect(() => VisionRecognitionResult.fromJson(json, 'v1.0'), throwsA(anything));
+      expect(
+        () => VisionRecognitionResult.fromJson(json, 'v1.0'),
+        throwsA(anything),
+      );
+    });
+
+    test('v1.1 营养字段正确解析', () {
+      final json = {
+        'dish_name': '苹果',
+        'estimated_weight_g_mid': 180,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'estimated_calories': 94,
+        'estimated_protein_g': 0.5,
+        'estimated_fat_g': 0.6,
+        'estimated_carbs_g': 25,
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.1');
+      expect(result.estimatedCalories, 94.0);
+      expect(result.estimatedProteinG, 0.5);
+      expect(result.estimatedFatG, 0.6);
+      expect(result.estimatedCarbsG, 25.0);
+    });
+
+    test('旧 schema(v1.0) 缺营养字段时为 null（向后兼容）', () {
+      final json = {
+        'dish_name': '苹果',
+        'estimated_weight_g_mid': 180,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.0');
+      expect(result.estimatedCalories, isNull);
+      expect(result.estimatedProteinG, isNull);
+      expect(result.estimatedFatG, isNull);
+      expect(result.estimatedCarbsG, isNull);
+    });
+
+    test('v1.1 营养字段为 int 时正确转 double', () {
+      final json = {
+        'dish_name': '米饭',
+        'estimated_weight_g_mid': 150,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'boil',
+        'confidence': 0.9,
+        'estimated_calories': 200, // int
+        'estimated_protein_g': 4,
+        'estimated_fat_g': 1,
+        'estimated_carbs_g': 44,
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.1');
+      expect(result.estimatedCalories, 200.0);
+      expect(result.estimatedProteinG, 4.0);
     });
   });
 }

@@ -93,6 +93,11 @@ class _CalibrationPageState extends State<CalibrationPage> {
                       '识别结果：${widget.recognitionResult.dishName}',
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
+                    if (widget.singleNutrition != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: _sourceBadge(widget.singleNutrition!.source),
+                      ),
                     Text(
                       '置信度：${(widget.recognitionResult.confidence * 100).toStringAsFixed(0)}%',
                     ),
@@ -179,6 +184,26 @@ class _CalibrationPageState extends State<CalibrationPage> {
       return _nutritionCard(cal, protein, fat, carbs);
     }
     return const SizedBox.shrink();
+  }
+
+  /// 数据来源徽章：库匹配（绿）/ AI 估算（橙），提示用户数据可信度
+  Widget _sourceBadge(NutritionSource source) {
+    final cs = Theme.of(context).colorScheme;
+    final isDb = source == NutritionSource.database;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: (isDb ? cs.primary : cs.tertiary).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: (isDb ? cs.primary : cs.tertiary).withValues(alpha: 0.4),
+        ),
+      ),
+      child: Text(
+        isDb ? '库匹配' : 'AI 估算（库未命中）',
+        style: TextStyle(fontSize: 11, color: isDb ? cs.primary : cs.tertiary),
+      ),
+    );
   }
 
   Widget _nutritionCard(
