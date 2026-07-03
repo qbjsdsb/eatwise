@@ -50,9 +50,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Flutter
+      - name: Setup Flutter 3.44.4 (与 v0.8.0 已验证可用构建一致)
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.44.4'
           channel: stable
           cache: true
 
@@ -118,7 +119,10 @@ jobs:
           BUILD_NAME=$(echo "$VERSION" | cut -d '+' -f 1)
           BUILD_NUMBER=$(echo "$VERSION" | cut -d '+' -f 2)
           echo "build-name=$BUILD_NAME build-number(versionCode)=$BUILD_NUMBER"
+          # --no-tree-shake-icons：与 v0.8.0 一致，避免 CupertinoIcons 字体被误删
+          # build.gradle.kts 已显式 isMinifyEnabled=false + isShrinkResources=false 防 R8 剥类崩溃
           flutter build apk --release \
+            --no-tree-shake-icons \
             --target-platform "${{ steps.platforms.outputs.targets }}" \
             --build-name="$BUILD_NAME" \
             --build-number="$BUILD_NUMBER" 2>&1 | tee build.log
@@ -129,6 +133,18 @@ jobs:
             exit 1
           fi
           ls -lh "$APK"
+
+      - name: Build debug APK (诊断兜底：release 闪退时显示红屏堆栈)
+        # debug 版不优化、不压缩，崩溃时显示完整红色错误页+堆栈，便于定位闪退根因
+        # （v0.8.0 release.yml 已验证的诊断策略）
+        run: |
+          flutter build apk --debug --no-tree-shake-icons 2>&1 | tee -a build.log
+          APK="build/app/outputs/flutter-apk/app-debug.apk"
+          if [ ! -f "$APK" ]; then
+            echo "::warning::debug APK 未生成（不阻塞 release 发布）"
+          else
+            ls -lh "$APK"
+          fi
 
       - name: Verify APK contents (架构 + native 库 + 版本号)
         run: |
@@ -179,23 +195,35 @@ jobs:
           else
             ARCH_TAG="$TARGETS"
           fi
-          NEW_NAME="eatwise-v${VERSION}-b${BUILD_NUMBER}-${ARCH_TAG}-${SHORT_SHA}.apk"
-          cp build/app/outputs/flutter-apk/app-release.apk "$NEW_NAME"
-          ls -lh "$NEW_NAME"
-          echo "apk_path=$NEW_NAME" >> "$GITHUB_OUTPUT"
-          echo "apk_name=$NEW_NAME" >> "$GITHUB_OUTPUT"
+          # release APK
+          REL_NAME="eatwise-v${VERSION}-b${BUILD_NUMBER}-${ARCH_TAG}-${SHORT_SHA}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$REL_NAME"
+          ls -lh "$REL_NAME"
+          echo "apk_path=$REL_NAME" >> "$GITHUB_OUTPUT"
+          echo "apk_name=$REL_NAME" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # debug APK（诊断用，若存在）
+          DBG_SRC="build/app/outputs/flutter-apk/app-debug.apk"
+          if [ -f "$DBG_SRC" ]; then
+            DBG_NAME="eatwise-v${VERSION}-b${BUILD_NUMBER}-debug-${SHORT_SHA}.apk"
+            cp "$DBG_SRC" "$DBG_NAME"
+            ls -lh "$DBG_NAME"
+            echo "dbg_path=$DBG_NAME" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Upload APK as workflow artifact
+      - name: Upload APKs as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.rename.outputs.apk_name }}
-          path: ${{ steps.rename.outputs.apk_path }}
+          path: |
+            ${{ steps.rename.outputs.apk_path }}
+            ${{ steps.rename.outputs.dbg_path }}
           retention-days: 90
           if-no-files-found: error
 
-      - name: Attach APK to GitHub Release
+      - name: Attach APKs to GitHub Release
         # 条件：workflow_dispatch 显式提供 release_tag，或 push 触发（tag 或 branch）
+        # 同时上传 release + debug APK：release 闪退时改装 debug 看红屏堆栈
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.release_tag != '') || github.event_name == 'push' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -210,8 +238,13 @@ jobs:
             TAG="${BRANCH_BUILD_RELEASE_TAG}"
           fi
           echo "上传 ${{ steps.rename.outputs.apk_path }} 到 release $TAG"
-          # 用 GitHub CLI（已预装在 ubuntu-latest runner）
-          gh release upload "$TAG" "${{ steps.rename.outputs.apk_path }}" --clobber --repo "$GITHUB_REPOSITORY"
+          FILES="${{ steps.rename.outputs.apk_path }}"
+          # debug APK 一起上传（若存在）
+          if [ -n "${{ steps.rename.outputs.dbg_path }}" ] && [ -f "${{ steps.rename.outputs.dbg_path }}" ]; then
+            FILES="$FILES ${{ steps.rename.outputs.dbg_path }}"
+          fi
+          # 用 GitHub CLI（已预装在 ubuntu-latest runner），--clobber 覆盖同名旧资产
+          gh release upload "$TAG" $FILES --clobber --repo "$GITHUB_REPOSITORY"
 
       - name: Upload build log on failure
         if: failure()
