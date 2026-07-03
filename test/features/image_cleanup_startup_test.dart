@@ -12,10 +12,21 @@ void main() {
   setUp(() async {
     db = EatWiseDatabase(NativeDatabase.memory());
     // 【第2轮修正】：meal_log.food_item_id 是 FK，先种子 food_item（id=1）
-    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
-          name: '测试食物', defaultServingG: 100, caloriesPer100g: 100,
-          proteinPer100g: 10, fatPer100g: 5, carbsPer100g: 20,
-          source: 'manual', sourceVersion: 'test', createdAt: 1000));
+    await db
+        .into(db.foodItems)
+        .insert(
+          FoodItemsCompanion.insert(
+            name: '测试食物',
+            defaultServingG: 100,
+            caloriesPer100g: 100,
+            proteinPer100g: 10,
+            fatPer100g: 5,
+            carbsPer100g: 20,
+            source: 'manual',
+            sourceVersion: 'test',
+            createdAt: 1000,
+          ),
+        );
   });
   tearDown(() async => db.close());
 
@@ -33,9 +44,13 @@ void main() {
     for (var i = 0; i < 50; i++) {
       await mealRepo.insertMealLog(
         date: '2026-05-${(i + 1).toString().padLeft(2, '0')}',
-        mealType: 'lunch', foodItemId: 1,
-        actualServingG: 100, actualCalories: 100, actualProteinG: 10,
-        actualFatG: 5, actualCarbsG: 20,
+        mealType: 'lunch',
+        foodItemId: 1,
+        actualServingG: 100,
+        actualCalories: 100,
+        actualProteinG: 10,
+        actualFatG: 5,
+        actualCarbsG: 20,
         originalImagePath: '/tmp/nonexistent_$i.jpg',
       );
     }
@@ -50,9 +65,13 @@ void main() {
     for (var i = 0; i < 51; i++) {
       await mealRepo.insertMealLog(
         date: '2026-05-${(i + 1).toString().padLeft(2, '0')}',
-        mealType: 'lunch', foodItemId: 1,
-        actualServingG: 100, actualCalories: 100, actualProteinG: 10,
-        actualFatG: 5, actualCarbsG: 20,
+        mealType: 'lunch',
+        foodItemId: 1,
+        actualServingG: 100,
+        actualCalories: 100,
+        actualProteinG: 10,
+        actualFatG: 5,
+        actualCarbsG: 20,
         originalImagePath: '/tmp/nonexistent_$i.jpg',
       );
     }
@@ -69,16 +88,24 @@ void main() {
     final mealRepo = MealLogRepository(db);
     await mealRepo.insertMealLog(
       date: '2026-06-24', // 8 天前
-      mealType: 'lunch', foodItemId: 1,
-      actualServingG: 100, actualCalories: 100, actualProteinG: 10,
-      actualFatG: 5, actualCarbsG: 20,
+      mealType: 'lunch',
+      foodItemId: 1,
+      actualServingG: 100,
+      actualCalories: 100,
+      actualProteinG: 10,
+      actualFatG: 5,
+      actualCarbsG: 20,
       originalImagePath: '/tmp/nonexistent_old.jpg',
     );
     await mealRepo.insertMealLog(
       date: '2026-06-26', // 6 天前
-      mealType: 'lunch', foodItemId: 1,
-      actualServingG: 100, actualCalories: 100, actualProteinG: 10,
-      actualFatG: 5, actualCarbsG: 20,
+      mealType: 'lunch',
+      foodItemId: 1,
+      actualServingG: 100,
+      actualCalories: 100,
+      actualProteinG: 10,
+      actualFatG: 5,
+      actualCarbsG: 20,
       originalImagePath: '/tmp/nonexistent_recent.jpg',
     );
 
@@ -100,9 +127,13 @@ void main() {
     for (var i = 0; i < 5; i++) {
       await mealRepo.insertMealLog(
         date: '2026-05-${(i + 1).toString().padLeft(2, '0')}',
-        mealType: 'lunch', foodItemId: 1,
-        actualServingG: 100, actualCalories: 100, actualProteinG: 10,
-        actualFatG: 5, actualCarbsG: 20,
+        mealType: 'lunch',
+        foodItemId: 1,
+        actualServingG: 100,
+        actualCalories: 100,
+        actualProteinG: 10,
+        actualFatG: 5,
+        actualCarbsG: 20,
         originalImagePath: '/tmp/nonexistent_keep_$i.jpg',
       );
     }

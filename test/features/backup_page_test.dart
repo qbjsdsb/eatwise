@@ -34,15 +34,17 @@ void main() {
   });
 
   testWidgets('渲染导出/导入按钮', (tester) async {
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: BackupPage()),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: BackupPage()),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('导出为 JSON'), findsOneWidget);
@@ -50,15 +52,17 @@ void main() {
   });
 
   testWidgets('点导出生成 JSON 文件并提示', (tester) async {
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: BackupPage()),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: BackupPage()),
+      ),
+    );
     await tester.pumpAndSettle();
 
     // 触发导出：tap 启动 _export。_export 含多段串行真实异步

@@ -17,9 +17,9 @@ void main() {
 
     // 不 override appConfigProvider：沙箱无 secure_storage，AppConfig.load() 抛 MissingPluginException，
     // appConfigProvider 进入 error 状态，glmApiKeyProvider 的 maybeWhen(orElse: () => '') 返回 ''
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(

@@ -16,7 +16,9 @@ void main() {
     addTearDown(db.close);
 
     // 先插 food_item（meal_log.foodItemId 是 FK）
-    final foodId = await db.into(db.foodItems).insert(
+    final foodId = await db
+        .into(db.foodItems)
+        .insert(
           FoodItemsCompanion.insert(
             name: '测试食物',
             defaultServingG: 100,
@@ -31,15 +33,17 @@ void main() {
         );
 
     // 种子：2 条体重记录（weight_log 无 loggedAt 字段）
-    await db.into(db.weightLogs).insert(
-          WeightLogsCompanion.insert(date: '2026-07-01', weightKg: 70.0),
-        );
-    await db.into(db.weightLogs).insert(
-          WeightLogsCompanion.insert(date: '2026-07-02', weightKg: 69.5),
-        );
+    await db
+        .into(db.weightLogs)
+        .insert(WeightLogsCompanion.insert(date: '2026-07-01', weightKg: 70.0));
+    await db
+        .into(db.weightLogs)
+        .insert(WeightLogsCompanion.insert(date: '2026-07-02', weightKg: 69.5));
 
     // 种子：2 条 meal_log（同日期，loggedAt 必填）
-    await db.into(db.mealLogs).insert(
+    await db
+        .into(db.mealLogs)
+        .insert(
           MealLogsCompanion.insert(
             date: '2026-07-01',
             mealType: 'lunch',
@@ -52,7 +56,9 @@ void main() {
             loggedAt: 1500,
           ),
         );
-    await db.into(db.mealLogs).insert(
+    await db
+        .into(db.mealLogs)
+        .insert(
           MealLogsCompanion.insert(
             date: '2026-07-02',
             mealType: 'lunch',
@@ -66,9 +72,9 @@ void main() {
           ),
         );
 
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(

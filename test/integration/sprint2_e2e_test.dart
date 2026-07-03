@@ -77,7 +77,9 @@ void main() {
   }
 
   Future<int> seedApple() async {
-    return db.into(db.foodItems).insert(
+    return db
+        .into(db.foodItems)
+        .insert(
           FoodItemsCompanion.insert(
             name: '苹果',
             defaultServingG: 100,
@@ -92,8 +94,7 @@ void main() {
         );
   }
 
-  test('Sprint 2 全流程：档案→拍照→手动录入→编辑→删除→体重→汇总→导出导入→离线回补',
-      () async {
+  test('Sprint 2 全流程：档案→拍照→手动录入→编辑→删除→体重→汇总→导出导入→离线回补', () async {
     // ========== 1. profile 录入 → 看板读宏量目标 ==========
     final profileRepo = ProfileRepository(db);
     await profileRepo.update(
@@ -187,9 +188,9 @@ void main() {
       actualFatG: nutrition.fatG * ratio,
       actualCarbsG: nutrition.carbsG * ratio,
     );
-    final updated = await (db.mealLogs.select()
-          ..where((m) => m.id.equals(mealId1)))
-        .getSingle();
+    final updated =
+        await (db.mealLogs.select()..where((m) => m.id.equals(mealId1)))
+            .getSingle();
     expect(updated.actualServingG, 200);
     expect(updated.actualCalories, closeTo(104.0, 0.1)); // 93.6 × (200/180)
 
@@ -280,9 +281,9 @@ void main() {
 
     // pending 应清空，新增 1 条 dinner meal_log
     expect(await pendingRepo.countPending(), 0);
-    final dinnerMeals = await (db.mealLogs.select()
-          ..where((m) => m.mealType.equals('dinner')))
-        .get();
+    final dinnerMeals =
+        await (db.mealLogs.select()..where((m) => m.mealType.equals('dinner')))
+            .get();
     expect(dinnerMeals.length, 1);
     expect(dinnerMeals.first.mealType, 'dinner');
     expect(dinnerMeals.first.actualCalories, greaterThan(0));
@@ -316,9 +317,9 @@ void main() {
     await controller.processPending();
     expect(await pendingRepo.countPending(), 0); // 不再 pending
 
-    final row = await (db.pendingRecognitions.select()
-          ..where((p) => p.id.equals(id)))
-        .getSingle();
+    final row =
+        await (db.pendingRecognitions.select()..where((p) => p.id.equals(id)))
+            .getSingle();
     expect(row.status, 'failed');
     expect(row.retryCount, 3);
   });

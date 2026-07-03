@@ -41,7 +41,9 @@ void main() {
 
   /// 插入食物种子（查库回填用）
   Future<int> seedApple() async {
-    return db.into(db.foodItems).insert(
+    return db
+        .into(db.foodItems)
+        .insert(
           FoodItemsCompanion.insert(
             name: '苹果',
             defaultServingG: 100,
@@ -59,9 +61,15 @@ void main() {
   test('enqueue + listPending + countPending', () async {
     final imgPath = await writeFakeImage('a');
     await pendingRepo.enqueue(
-        imagePath: imgPath, mealType: 'breakfast', date: '2026-07-02');
+      imagePath: imgPath,
+      mealType: 'breakfast',
+      date: '2026-07-02',
+    );
     await pendingRepo.enqueue(
-        imagePath: imgPath, mealType: 'lunch', date: '2026-07-02');
+      imagePath: imgPath,
+      mealType: 'lunch',
+      date: '2026-07-02',
+    );
 
     final pending = await pendingRepo.listPending();
     expect(pending.length, 2);
@@ -75,7 +83,10 @@ void main() {
     final foodId = await seedApple();
     final imgPath = await writeFakeImage('a');
     final id = await pendingRepo.enqueue(
-        imagePath: imgPath, mealType: 'breakfast', date: '2026-07-02');
+      imagePath: imgPath,
+      mealType: 'breakfast',
+      date: '2026-07-02',
+    );
 
     await pendingRepo.markDone(id, foodId);
     expect(await pendingRepo.countPending(), 0); // 不再 pending
@@ -88,22 +99,24 @@ void main() {
   test('markFailed 重试 3 次后标记 failed（不再 pending）', () async {
     final imgPath = await writeFakeImage('a');
     final id = await pendingRepo.enqueue(
-        imagePath: imgPath, mealType: 'breakfast', date: '2026-07-02');
+      imagePath: imgPath,
+      mealType: 'breakfast',
+      date: '2026-07-02',
+    );
 
     // 第 1 次失败：retryCount 0→1，status 仍 pending
     await pendingRepo.markFailed(id, '网络超时 1');
     expect(await pendingRepo.countPending(), 1);
-    var row = await (db.pendingRecognitions.select()
-          ..where((p) => p.id.equals(id)))
-        .getSingle();
+    var row =
+        await (db.pendingRecognitions.select()..where((p) => p.id.equals(id)))
+            .getSingle();
     expect(row.retryCount, 1);
     expect(row.status, 'pending');
 
     // 第 2 次失败：retryCount 1→2，status 仍 pending
     await pendingRepo.markFailed(id, '网络超时 2');
     expect(await pendingRepo.countPending(), 1);
-    row = await (db.pendingRecognitions.select()
-          ..where((p) => p.id.equals(id)))
+    row = await (db.pendingRecognitions.select()..where((p) => p.id.equals(id)))
         .getSingle();
     expect(row.retryCount, 2);
     expect(row.status, 'pending');
@@ -111,8 +124,7 @@ void main() {
     // 第 3 次失败：retryCount 2→3，status 转 failed（不再 pending）
     await pendingRepo.markFailed(id, '网络超时 3');
     expect(await pendingRepo.countPending(), 0); // 不再 pending
-    row = await (db.pendingRecognitions.select()
-          ..where((p) => p.id.equals(id)))
+    row = await (db.pendingRecognitions.select()..where((p) => p.id.equals(id)))
         .getSingle();
     expect(row.retryCount, 3);
     expect(row.status, 'failed');
@@ -140,12 +152,14 @@ void main() {
     expect(all.first.errorMessage, contains('图片文件不存在'));
   });
 
-  test('processPending 完整回补：入队 → Fake 识别 → 写 meal_log → markDone',
-      () async {
+  test('processPending 完整回补：入队 → Fake 识别 → 写 meal_log → markDone', () async {
     await seedApple(); // 苹果已入库，Fake provider 会识别为苹果
     final imgPath = await writeFakeImage('apple');
     await pendingRepo.enqueue(
-        imagePath: imgPath, mealType: 'breakfast', date: '2026-07-02');
+      imagePath: imgPath,
+      mealType: 'breakfast',
+      date: '2026-07-02',
+    );
 
     final controller = OfflineQueueController(
       db: db,
@@ -172,7 +186,10 @@ void main() {
   test('processPending 识别异常时 markFailed（重试计数 +1）', () async {
     final imgPath = await writeFakeImage('fail');
     await pendingRepo.enqueue(
-        imagePath: imgPath, mealType: 'breakfast', date: '2026-07-02');
+      imagePath: imgPath,
+      mealType: 'breakfast',
+      date: '2026-07-02',
+    );
 
     final controller = OfflineQueueController(
       db: db,

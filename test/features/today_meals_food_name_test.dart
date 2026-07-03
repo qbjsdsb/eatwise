@@ -14,7 +14,9 @@ void main() {
     addTearDown(db.close);
 
     // 种子数据：插入食物 + 今日 meal_log
-    final foodId = await db.into(db.foodItems).insert(
+    final foodId = await db
+        .into(db.foodItems)
+        .insert(
           FoodItemsCompanion.insert(
             name: '宫保鸡丁',
             defaultServingG: 100,
@@ -30,7 +32,9 @@ void main() {
     final now = DateTime.now();
     final today =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    await db.into(db.mealLogs).insert(
+    await db
+        .into(db.mealLogs)
+        .insert(
           MealLogsCompanion.insert(
             date: today,
             mealType: 'lunch',
@@ -44,9 +48,9 @@ void main() {
           ),
         );
 
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(

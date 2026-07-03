@@ -13,7 +13,9 @@ import 'package:flutter_test/flutter_test.dart';
 /// - china_fct 来源 → 显示"保存默认份量"按钮
 /// - 保存全部修改 → DB 更新 + SnackBar + pop
 Future<FoodItem> _insertFood(EatWiseDatabase db, String source) async {
-  final id = await db.into(db.foodItems).insert(
+  final id = await db
+      .into(db.foodItems)
+      .insert(
         FoodItemsCompanion.insert(
           name: '测试菜',
           defaultServingG: 100,
@@ -35,15 +37,17 @@ void main() {
     addTearDown(db.close);
     final foodItem = await _insertFood(db, 'ai_recognized');
 
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: MaterialApp(home: FoodEditPage(foodItem: foodItem)),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(home: FoodEditPage(foodItem: foodItem)),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('保存全部修改'), findsOneWidget);
@@ -55,15 +59,17 @@ void main() {
     addTearDown(db.close);
     final foodItem = await _insertFood(db, 'china_fct');
 
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: MaterialApp(home: FoodEditPage(foodItem: foodItem)),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(home: FoodEditPage(foodItem: foodItem)),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('保存默认份量'), findsOneWidget);
@@ -75,15 +81,17 @@ void main() {
     addTearDown(db.close);
     final foodItem = await _insertFood(db, 'ai_recognized');
 
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: MaterialApp(home: FoodEditPage(foodItem: foodItem)),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(home: FoodEditPage(foodItem: foodItem)),
+      ),
+    );
     await tester.pumpAndSettle();
 
     // 修改热量字段
@@ -101,7 +109,8 @@ void main() {
     for (var i = 0; i < 8; i++) {
       await tester.pump();
       await tester.runAsync(
-          () async => await Future.delayed(const Duration(milliseconds: 250)));
+        () async => await Future.delayed(const Duration(milliseconds: 250)),
+      );
     }
     await tester.pump();
 

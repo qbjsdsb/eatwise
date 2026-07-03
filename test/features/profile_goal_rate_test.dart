@@ -14,15 +14,17 @@ void main() {
   testWidgets('减脂时显示 goal_rate 输入', (tester) async {
     final db = EatWiseDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: ProfilePage()),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: ProfilePage()),
+      ),
+    );
     await tester.pumpAndSettle(const Duration(seconds: 1));
 
     // goal 是第 2 个 DropdownButtonFormField<String>（gender=第1, activity 是 double）
@@ -38,15 +40,17 @@ void main() {
   testWidgets('维持时不显示 goal_rate 输入', (tester) async {
     final db = EatWiseDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: ProfilePage()),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: ProfilePage()),
+      ),
+    );
     await tester.pumpAndSettle(const Duration(seconds: 1));
 
     // 选 maintain（goal 是第 2 个 DropdownButtonFormField<String>）

@@ -25,7 +25,8 @@ void main() {
 ]
 ''';
     final count = await importer.importFromJsonList(
-        (jsonDecode(dirty) as List).cast<Map<String, dynamic>>());
+      (jsonDecode(dirty) as List).cast<Map<String, dynamic>>(),
+    );
 
     // 第三条全 "—" → 解析为 0，仍会插入（Sprint 1 行为：必填字段 "—" → 0）
     // 实际 count = 3（不存在"空值跳过"，Sprint 1 的 _parseDouble 把 "—" → 0）
@@ -51,7 +52,8 @@ void main() {
 ]
 ''';
     await importer.importFromJsonList(
-        (jsonDecode(dirty) as List).cast<Map<String, dynamic>>());
+      (jsonDecode(dirty) as List).cast<Map<String, dynamic>>(),
+    );
 
     final banana = await importer.findByName('香蕉');
     expect(banana, isNotNull);
@@ -65,7 +67,8 @@ void main() {
 ]
 ''';
     await importer.importFromJsonList(
-        (jsonDecode(dirty) as List).cast<Map<String, dynamic>>());
+      (jsonDecode(dirty) as List).cast<Map<String, dynamic>>(),
+    );
 
     final item = await importer.findByName('多值测试');
     expect(item, isNotNull);

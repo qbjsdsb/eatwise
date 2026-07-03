@@ -29,16 +29,20 @@ void main() {
       summaryText: '这是已有的汇总内容',
     );
 
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-      recognize.glmApiKeyProvider.overrideWith((ref) => 'fake-key'),
-    ]);
+    final container = ProviderContainer(
+      overrides: [
+        recognize.databaseProvider.overrideWith((ref) async => db),
+        recognize.glmApiKeyProvider.overrideWith((ref) => 'fake-key'),
+      ],
+    );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: InsightPage()),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: InsightPage()),
+      ),
+    );
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
     // 验证已有汇总显示

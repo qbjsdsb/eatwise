@@ -13,9 +13,7 @@ void main() {
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,
-        child: const MaterialApp(
-          home: ManualEntryPage(initialName: '宫保鸡丁'),
-        ),
+        child: const MaterialApp(home: ManualEntryPage(initialName: '宫保鸡丁')),
       ),
     );
     await tester.pump();

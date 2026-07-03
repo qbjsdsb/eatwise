@@ -50,7 +50,10 @@ void main() {
     await AutoBackup.run(db);
     final time = await AutoBackup.lastBackupTime();
     expect(time, isNotNull);
-    expect(time!.isBefore(DateTime.now()) || time.isAtSameMomentAs(DateTime.now()), isTrue);
+    expect(
+      time!.isBefore(DateTime.now()) || time.isAtSameMomentAs(DateTime.now()),
+      isTrue,
+    );
   });
 
   test('无备份时 lastBackupTime 返回 null', () async {

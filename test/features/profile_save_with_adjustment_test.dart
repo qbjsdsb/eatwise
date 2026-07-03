@@ -17,15 +17,17 @@ void main() {
     addTearDown(db.close);
     final repo = ProfileRepository(db);
 
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: ProfilePage()),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: ProfilePage()),
+      ),
+    );
     await tester.pumpAndSettle(const Duration(seconds: 1));
 
     // 选"减脂"（goal 是第 2 个 DropdownButtonFormField<String>）
@@ -45,7 +47,11 @@ void main() {
     // 验证 dailyCalorieTarget 按 cut 公式重算
     // goalRate=0 → 回退默认 deficit=500；tdeeAdjustmentKcal=0（初始 profile 无校准）
     final bmr = NutritionCalculator.bmrMifflin(
-      weightKg: 70, heightCm: 170, age: 30, gender: Gender.male);
+      weightKg: 70,
+      heightCm: 170,
+      age: 30,
+      gender: Gender.male,
+    );
     final tdee = NutritionCalculator.tdee(bmr: bmr, activityLevel: 1.375);
     final expected = NutritionCalculator.dailyCalorieTarget(
       tdee: tdee,

@@ -15,9 +15,9 @@ void main() {
     final db = EatWiseDatabase(NativeDatabase.memory());
     addTearDown(db.close);
 
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(

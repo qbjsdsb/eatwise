@@ -106,10 +106,22 @@ void main() {
       final now = DateTime.now();
       String fmt(DateTime d) =>
           '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-      await weightRepo.insert(date: fmt(now.subtract(const Duration(days: 27))), weightKg: 70.0);
-      await weightRepo.insert(date: fmt(now.subtract(const Duration(days: 20))), weightKg: 69.9);
-      await weightRepo.insert(date: fmt(now.subtract(const Duration(days: 13))), weightKg: 69.8);
-      await weightRepo.insert(date: fmt(now.subtract(const Duration(days: 6))), weightKg: 69.7);
+      await weightRepo.insert(
+        date: fmt(now.subtract(const Duration(days: 27))),
+        weightKg: 70.0,
+      );
+      await weightRepo.insert(
+        date: fmt(now.subtract(const Duration(days: 20))),
+        weightKg: 69.9,
+      );
+      await weightRepo.insert(
+        date: fmt(now.subtract(const Duration(days: 13))),
+        weightKg: 69.8,
+      );
+      await weightRepo.insert(
+        date: fmt(now.subtract(const Duration(days: 6))),
+        weightKg: 69.7,
+      );
       await weightRepo.insert(date: fmt(now), weightKg: 69.6);
 
       // 设置 profile：cut + goalRate=-0.5（触发减脂校准）
@@ -120,7 +132,11 @@ void main() {
 
       // 验证 dailyCalorieTarget 重算：profile 含新 adjustment
       final profile = await profileRepo.get();
-      expect(profile.tdeeAdjustmentKcal, lessThan(0), reason: 'tdeeAdjustmentKcal 应已写入');
+      expect(
+        profile.tdeeAdjustmentKcal,
+        lessThan(0),
+        reason: 'tdeeAdjustmentKcal 应已写入',
+      );
 
       // 用新 adjustment 重算期望值
       final bmr = NutritionCalculator.bmrMifflin(
@@ -129,7 +145,10 @@ void main() {
         age: profile.age,
         gender: Gender.male,
       );
-      final tdee = NutritionCalculator.tdee(bmr: bmr, activityLevel: profile.activityLevel);
+      final tdee = NutritionCalculator.tdee(
+        bmr: bmr,
+        activityLevel: profile.activityLevel,
+      );
       final expectedTarget = NutritionCalculator.dailyCalorieTarget(
         tdee: tdee,
         goal: Goal.cut,
@@ -137,8 +156,11 @@ void main() {
         goalRateKgPerWeek: -0.5,
         gender: Gender.male,
       );
-      expect(profile.dailyCalorieTarget, expectedTarget,
-          reason: 'dailyCalorieTarget 应等于含新 adjustment 的重算值');
+      expect(
+        profile.dailyCalorieTarget,
+        expectedTarget,
+        reason: 'dailyCalorieTarget 应等于含新 adjustment 的重算值',
+      );
     });
 
     test('未触发 adjustment（偏差在阈值内）时 dailyCalorieTarget 不变', () async {
@@ -148,10 +170,22 @@ void main() {
       String fmt(DateTime d) =>
           '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
       // 实际 -0.5 kg/周 与目标一致 → 偏差 0 ≤ 0.3 → 不触发
-      await weightRepo.insert(date: fmt(now.subtract(const Duration(days: 27))), weightKg: 70.0);
-      await weightRepo.insert(date: fmt(now.subtract(const Duration(days: 20))), weightKg: 69.5);
-      await weightRepo.insert(date: fmt(now.subtract(const Duration(days: 13))), weightKg: 69.0);
-      await weightRepo.insert(date: fmt(now.subtract(const Duration(days: 6))), weightKg: 68.5);
+      await weightRepo.insert(
+        date: fmt(now.subtract(const Duration(days: 27))),
+        weightKg: 70.0,
+      );
+      await weightRepo.insert(
+        date: fmt(now.subtract(const Duration(days: 20))),
+        weightKg: 69.5,
+      );
+      await weightRepo.insert(
+        date: fmt(now.subtract(const Duration(days: 13))),
+        weightKg: 69.0,
+      );
+      await weightRepo.insert(
+        date: fmt(now.subtract(const Duration(days: 6))),
+        weightKg: 68.5,
+      );
       await weightRepo.insert(date: fmt(now), weightKg: 68.0);
 
       // 设置 profile：cut + goalRate=-0.5（与实际速率一致，偏差 0 → 不触发）
@@ -164,8 +198,11 @@ void main() {
       expect(result.adjustmentKcal, 0);
 
       final profileAfter = await profileRepo.get();
-      expect(profileAfter.dailyCalorieTarget, targetBefore,
-          reason: '未触发时 dailyCalorieTarget 应保持不变');
+      expect(
+        profileAfter.dailyCalorieTarget,
+        targetBefore,
+        reason: '未触发时 dailyCalorieTarget 应保持不变',
+      );
     });
   });
 }

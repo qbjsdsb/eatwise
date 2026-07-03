@@ -60,16 +60,18 @@ void main() {
     // 否则 lastBackupTime 的平台通道会挂起。
     await store.incrementMonthlyCount(2026, 7);
 
-    PathProviderPlatform.instance = _MemoryPathProvider('/tmp/monthly_cost_test');
+    PathProviderPlatform.instance = _MemoryPathProvider(
+      '/tmp/monthly_cost_test',
+    );
 
     // 放大测试视口：SettingsPage 的 ListView 是懒加载的，默认 800×600 视口
     // 无法完整显示「本月使用」区块（位于营养校准之后），需加高视口让所有
     // ListView 子项被 build，否则 find.text 找不到目标文本。
     await tester.binding.setSurfaceSize(const Size(800, 2400));
 
-    final container = ProviderContainer(overrides: [
-      secureConfigStoreProvider.overrideWithValue(store),
-    ]);
+    final container = ProviderContainer(
+      overrides: [secureConfigStoreProvider.overrideWithValue(store)],
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(

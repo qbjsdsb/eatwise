@@ -8,16 +8,25 @@ void main() {
 
   test('refusal 文本（非 JSON + 含关键词）判定为 refusal', () {
     expect(QwenVlProvider.isRefusalForTest('我无法识别这张图片', null), isTrue);
-    expect(QwenVlProvider.isRefusalForTest('I cannot help with this', null), isTrue);
+    expect(
+      QwenVlProvider.isRefusalForTest('I cannot help with this', null),
+      isTrue,
+    );
   });
 
   test('合法 JSON 不判定为 refusal（即使含关键词）', () {
     // 正常响应是 JSON，即使菜名含"无法"也不是 refusal
-    expect(QwenVlProvider.isRefusalForTest('{"dish_name":"无法命名的菜"}', null), isFalse);
+    expect(
+      QwenVlProvider.isRefusalForTest('{"dish_name":"无法命名的菜"}', null),
+      isFalse,
+    );
   });
 
   test('正常 JSON 响应不判定为 refusal', () {
-    expect(QwenVlProvider.isRefusalForTest('{"dish_name":"宫保鸡丁"}', null), isFalse);
+    expect(
+      QwenVlProvider.isRefusalForTest('{"dish_name":"宫保鸡丁"}', null),
+      isFalse,
+    );
   });
 
   test('空文本不判定为 refusal（走空响应分支）', () {

@@ -55,13 +55,18 @@ void main() {
 
   test('导入有效图片路径不置空', () async {
     // 创建真实存在的临时文件（writeAsString 会自动创建文件）
-    final tmpFile = File('${Directory.systemTemp.path}/img_test_${DateTime.now().microsecondsSinceEpoch}.jpg');
+    final tmpFile = File(
+      '${Directory.systemTemp.path}/img_test_${DateTime.now().microsecondsSinceEpoch}.jpg',
+    );
     await tmpFile.writeAsString('fake');
-    final tmpThumb = File('${Directory.systemTemp.path}/thumb_test_${DateTime.now().microsecondsSinceEpoch}.png');
+    final tmpThumb = File(
+      '${Directory.systemTemp.path}/thumb_test_${DateTime.now().microsecondsSinceEpoch}.png',
+    );
     await tmpThumb.writeAsString('fake');
 
     // Linux 沙箱路径用 / 无需转义
-    final json = '''
+    final json =
+        '''
 {
   "schemaVersion": 1,
   "exportedAt": 1730000000000,

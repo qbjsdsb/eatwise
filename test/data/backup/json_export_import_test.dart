@@ -20,7 +20,9 @@ void main() {
 
   // 准备：插入食物 + 餐次记录（建立外键关系）
   Future<void> seedData(EatWiseDatabase db) async {
-    final foodId = await db.into(db.foodItems).insert(
+    final foodId = await db
+        .into(db.foodItems)
+        .insert(
           FoodItemsCompanion.insert(
             name: '苹果',
             defaultServingG: 100,
@@ -33,7 +35,9 @@ void main() {
             createdAt: 1000,
           ),
         );
-    await db.into(db.mealLogs).insert(
+    await db
+        .into(db.mealLogs)
+        .insert(
           MealLogsCompanion.insert(
             date: '2026-07-02',
             mealType: 'breakfast',
@@ -46,10 +50,12 @@ void main() {
             loggedAt: 2000,
           ),
         );
-    await db.into(db.weightLogs).insert(
-          WeightLogsCompanion.insert(date: '2026-07-02', weightKg: 70.5),
-        );
-    await db.into(db.insightSummaries).insert(
+    await db
+        .into(db.weightLogs)
+        .insert(WeightLogsCompanion.insert(date: '2026-07-02', weightKg: 70.5));
+    await db
+        .into(db.insightSummaries)
+        .insert(
           InsightSummariesCompanion.insert(
             periodType: 'weekly',
             periodStart: '2026-06-30',
@@ -59,7 +65,9 @@ void main() {
           ),
         );
     // 反馈需引用 meal_log id（用上面插入的 meal_log，drift autoIncrement 从 1 开始）
-    await db.into(db.recognitionFeedbacks).insert(
+    await db
+        .into(db.recognitionFeedbacks)
+        .insert(
           RecognitionFeedbacksCompanion.insert(
             mealLogId: 1,
             isCorrect: 1,
@@ -103,11 +111,12 @@ void main() {
     final weight = await (dstDb.weightLogs.select()..limit(1)).getSingle();
     expect(weight.weightKg, 70.5);
 
-    final insight = await (dstDb.insightSummaries.select()..limit(1)).getSingle();
+    final insight = await (dstDb.insightSummaries.select()..limit(1))
+        .getSingle();
     expect(insight.summaryText, '本周热量偏高');
 
-    final feedback =
-        await (dstDb.recognitionFeedbacks.select()..limit(1)).getSingle();
+    final feedback = await (dstDb.recognitionFeedbacks.select()..limit(1))
+        .getSingle();
     expect(feedback.isCorrect, 1);
 
     await dstDb.close();
@@ -115,8 +124,7 @@ void main() {
 
   test('schemaVersion 不匹配抛 ArgumentError', () async {
     final importer = JsonImporter(srcDb);
-    const badJson =
-        '{"schemaVersion": 99, "exportedAt": 0, "tables": {}}';
+    const badJson = '{"schemaVersion": 99, "exportedAt": 0, "tables": {}}';
     expect(
       () => importer.importFromString(badJson),
       throwsA(isA<ArgumentError>()),

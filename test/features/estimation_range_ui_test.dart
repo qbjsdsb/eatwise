@@ -17,10 +17,21 @@ void main() {
     final db = EatWiseDatabase(NativeDatabase.memory());
     addTearDown(db.close);
     // 种子食物
-    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
-          name: '米饭', defaultServingG: 100, caloriesPer100g: 116,
-          proteinPer100g: 2.6, fatPer100g: 0.3, carbsPer100g: 25.9,
-          source: 'manual', sourceVersion: 'test', createdAt: 1000));
+    await db
+        .into(db.foodItems)
+        .insert(
+          FoodItemsCompanion.insert(
+            name: '米饭',
+            defaultServingG: 100,
+            caloriesPer100g: 116,
+            proteinPer100g: 2.6,
+            fatPer100g: 0.3,
+            carbsPer100g: 25.9,
+            source: 'manual',
+            sourceVersion: 'test',
+            createdAt: 1000,
+          ),
+        );
 
     final result = VisionRecognitionResult(
       dishName: '米饭',
@@ -33,18 +44,28 @@ void main() {
       confidence: 0.9,
       promptVersion: 'v1.0',
     );
-    final nutrition = await NutritionLookup(FoodItemRepository(db))
-        .lookupSingleItem(dishName: '米饭', servingG: 100);
+    final nutrition = await NutritionLookup(
+      FoodItemRepository(db),
+    ).lookupSingleItem(dishName: '米饭', servingG: 100);
 
-    await tester.pumpWidget(MaterialApp(
-      home: CalibrationPage(
-        recognitionResult: result,
-        singleNutrition: nutrition,
-        foodItemRepo: FoodItemRepository(db),
-        onConfirm: (servingG, calories, protein, fat, carbs,
-            {componentsSnapshot}) {},
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalibrationPage(
+          recognitionResult: result,
+          singleNutrition: nutrition,
+          foodItemRepo: FoodItemRepository(db),
+          onConfirm:
+              (
+                servingG,
+                calories,
+                protein,
+                fat,
+                carbs, {
+                componentsSnapshot,
+              }) {},
+        ),
       ),
-    ));
+    );
 
     // 验证显示区间（含 "90-110" 或 "估算" 文字）
     expect(find.textContaining('90'), findsWidgets);
@@ -56,10 +77,21 @@ void main() {
     addTearDown(db.close);
     // 默认 profile weightKg=70（DB 首次创建时种子）
     // 种子食物 + 今日 meal_log
-    final foodId = await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
-          name: '鸡胸肉', defaultServingG: 100, caloriesPer100g: 165,
-          proteinPer100g: 31.0, fatPer100g: 3.6, carbsPer100g: 0.0,
-          source: 'manual', sourceVersion: 'test', createdAt: 1000));
+    final foodId = await db
+        .into(db.foodItems)
+        .insert(
+          FoodItemsCompanion.insert(
+            name: '鸡胸肉',
+            defaultServingG: 100,
+            caloriesPer100g: 165,
+            proteinPer100g: 31.0,
+            fatPer100g: 3.6,
+            carbsPer100g: 0.0,
+            source: 'manual',
+            sourceVersion: 'test',
+            createdAt: 1000,
+          ),
+        );
     final now = DateTime.now();
     final today =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
@@ -74,9 +106,9 @@ void main() {
       actualCarbsG: 0.0,
     );
 
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(

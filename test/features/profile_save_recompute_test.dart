@@ -20,15 +20,17 @@ void main() {
     final repo = ProfileRepository(db);
     await repo.update(tdeeAdjustmentKcal: 100);
 
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: ProfilePage()),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: ProfilePage()),
+      ),
+    );
     await tester.pumpAndSettle(const Duration(seconds: 1));
 
     // 点保存（默认表单值：height=170 weight=70 age=30 male activity=1.375 maintain goalRate=0）
@@ -51,8 +53,15 @@ void main() {
       tdeeAdjustmentKcal: 0,
       gender: Gender.male,
     );
-    expect(saved.tdeeAdjustmentKcal, 100, reason: 'tdeeAdjustmentKcal 应保留为 100');
-    expect(saved.dailyCalorieTarget, baseTarget + 100,
-        reason: 'dailyCalorieTarget 应含 +100 adjustment');
+    expect(
+      saved.tdeeAdjustmentKcal,
+      100,
+      reason: 'tdeeAdjustmentKcal 应保留为 100',
+    );
+    expect(
+      saved.dailyCalorieTarget,
+      baseTarget + 100,
+      reason: 'dailyCalorieTarget 应含 +100 adjustment',
+    );
   });
 }

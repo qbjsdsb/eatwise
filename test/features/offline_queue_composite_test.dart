@@ -25,28 +25,36 @@ void main() {
     lookup = NutritionLookup(foodRepo);
     tmpDir = await Directory.systemTemp.createTemp('offline_composite_test_');
     // 种子：鸡肉 + 花生（复合菜组分）
-    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
-          name: '鸡肉',
-          defaultServingG: 100,
-          caloriesPer100g: 167,
-          proteinPer100g: 19,
-          fatPer100g: 9,
-          carbsPer100g: 0,
-          source: 'manual',
-          sourceVersion: 'test',
-          createdAt: 1000,
-        ));
-    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
-          name: '花生',
-          defaultServingG: 100,
-          caloriesPer100g: 567,
-          proteinPer100g: 25,
-          fatPer100g: 49,
-          carbsPer100g: 16,
-          source: 'manual',
-          sourceVersion: 'test',
-          createdAt: 1001,
-        ));
+    await db
+        .into(db.foodItems)
+        .insert(
+          FoodItemsCompanion.insert(
+            name: '鸡肉',
+            defaultServingG: 100,
+            caloriesPer100g: 167,
+            proteinPer100g: 19,
+            fatPer100g: 9,
+            carbsPer100g: 0,
+            source: 'manual',
+            sourceVersion: 'test',
+            createdAt: 1000,
+          ),
+        );
+    await db
+        .into(db.foodItems)
+        .insert(
+          FoodItemsCompanion.insert(
+            name: '花生',
+            defaultServingG: 100,
+            caloriesPer100g: 567,
+            proteinPer100g: 25,
+            fatPer100g: 49,
+            carbsPer100g: 16,
+            source: 'manual',
+            sourceVersion: 'test',
+            createdAt: 1001,
+          ),
+        );
   });
 
   tearDown(() async {

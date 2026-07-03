@@ -14,10 +14,21 @@ void main() {
     db = EatWiseDatabase(NativeDatabase.memory());
     lookup = NutritionLookup(FoodItemRepository(db));
     // 种子：米饭（116 kcal/100g）
-    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
-          name: '米饭', defaultServingG: 100, caloriesPer100g: 116,
-          proteinPer100g: 2.6, fatPer100g: 0.3, carbsPer100g: 25.9,
-          source: 'manual', sourceVersion: 'test', createdAt: 1000));
+    await db
+        .into(db.foodItems)
+        .insert(
+          FoodItemsCompanion.insert(
+            name: '米饭',
+            defaultServingG: 100,
+            caloriesPer100g: 116,
+            proteinPer100g: 2.6,
+            fatPer100g: 0.3,
+            carbsPer100g: 25.9,
+            source: 'manual',
+            sourceVersion: 'test',
+            createdAt: 1000,
+          ),
+        );
   });
   tearDown(() async => db.close());
 
@@ -41,7 +52,9 @@ void main() {
   test('单品未命中返回 null', () async {
     final range = await lookup.lookupSingleItemWithRange(
       dishName: '不存在的食物',
-      servingGLow: 90, servingGMid: 100, servingGHigh: 110,
+      servingGLow: 90,
+      servingGMid: 100,
+      servingGHigh: 110,
     );
     expect(range, isNull);
   });

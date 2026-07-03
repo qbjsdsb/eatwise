@@ -29,8 +29,7 @@ void main() {
       periodEnd: '2026-07-06',
       summaryText: '本周热量偏高，建议减少外卖。',
     );
-    final found =
-        await repo.find('weekly', '2026-06-30', '2026-07-06');
+    final found = await repo.find('weekly', '2026-06-30', '2026-07-06');
     expect(found, isNotNull);
     expect(found!.summaryText, contains('热量偏高'));
     expect(found.isEdited, 0); // 默认未编辑
@@ -64,8 +63,7 @@ void main() {
       summaryText: '原汇总',
     );
     await repo.updateText(id, '用户改写的汇总');
-    final found =
-        await repo.find('weekly', '2026-06-30', '2026-07-06');
+    final found = await repo.find('weekly', '2026-06-30', '2026-07-06');
     expect(found!.summaryText, '用户改写的汇总');
     expect(found.isEdited, 1); // 编辑后标记
   });
@@ -83,10 +81,8 @@ void main() {
       periodEnd: '2026-06-30',
       summaryText: '月报',
     );
-    final weekly =
-        await repo.find('weekly', '2026-06-30', '2026-07-06');
-    final monthly =
-        await repo.find('monthly', '2026-06-01', '2026-06-30');
+    final weekly = await repo.find('weekly', '2026-06-30', '2026-07-06');
+    final monthly = await repo.find('monthly', '2026-06-01', '2026-06-30');
     expect(weekly!.summaryText, '周报');
     expect(monthly!.summaryText, '月报');
   });

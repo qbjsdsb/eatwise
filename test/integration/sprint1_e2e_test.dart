@@ -117,7 +117,11 @@ void main() {
     expect(nutrition.proteinG, closeTo(0.54, 0.01)); // 0.3 × 1.8
     expect(nutrition.fatG, closeTo(0.36, 0.01)); // 0.2 × 1.8
     expect(nutrition.carbsG, closeTo(24.84, 0.01)); // 13.8 × 1.8
-    expect(nutrition.foodItemId, greaterThan(0), reason: 'foodItemId 必须有效（FK 约束）');
+    expect(
+      nutrition.foodItemId,
+      greaterThan(0),
+      reason: 'foodItemId 必须有效（FK 约束）',
+    );
 
     // 4. 模拟校准页「一键记录」（confidence 0.99 ≥ 0.85，单品允许跳过校准）
     //    用 AI 中值 180g，按比例换算营养素（CalibrationPage._confirmOneClick 逻辑）
@@ -153,17 +157,21 @@ void main() {
     const today = '2026-07-02';
 
     // 鸡蛋不在种子库，需手动插入（番茄已在种子库）
-    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
-          name: '鸡蛋',
-          defaultServingG: 60,
-          caloriesPer100g: 144,
-          proteinPer100g: 13,
-          fatPer100g: 9,
-          carbsPer100g: 1.1,
-          source: 'manual',
-          sourceVersion: 'manual',
-          createdAt: DateTime.now().millisecondsSinceEpoch,
-        ));
+    await db
+        .into(db.foodItems)
+        .insert(
+          FoodItemsCompanion.insert(
+            name: '鸡蛋',
+            defaultServingG: 60,
+            caloriesPer100g: 144,
+            proteinPer100g: 13,
+            fatPer100g: 9,
+            carbsPer100g: 1.1,
+            source: 'manual',
+            sourceVersion: 'manual',
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
 
     // 1. 模拟 Qwen-VL 识别番茄炒蛋（复合菜）
     final provider = FakeQwenVlProviderComposite();
@@ -193,7 +201,9 @@ void main() {
       carbsPer100g: 0,
       confidence: result.confidence,
       componentsJson: jsonEncode({
-        'components': result.foodComponents.map((c) => {'name': c.name, 'actual_g': c.estimatedG}).toList(),
+        'components': result.foodComponents
+            .map((c) => {'name': c.name, 'actual_g': c.estimatedG})
+            .toList(),
         'oil_g': nutrition.oilG,
       }),
     );

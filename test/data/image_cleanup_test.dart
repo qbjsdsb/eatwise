@@ -29,8 +29,12 @@ void main() {
     // seed 一个 food_item（meal_log 外键依赖）
     final foodRepo = FoodItemRepository(db);
     await foodRepo.upsertAiRecognized(
-      name: '测试食物', caloriesPer100g: 100,
-      proteinPer100g: 5, fatPer100g: 2, carbsPer100g: 20, confidence: 0.9,
+      name: '测试食物',
+      caloriesPer100g: 100,
+      proteinPer100g: 5,
+      fatPer100g: 2,
+      carbsPer100g: 20,
+      confidence: 0.9,
     );
   });
   tearDown(() async {
@@ -45,12 +49,18 @@ void main() {
 
     // 插入 35 天前的 meal_log，引用该图片
     final oldDate = DateTime.now().subtract(const Duration(days: 35));
-    final dateStr = '${oldDate.year}-${oldDate.month.toString().padLeft(2,'0')}-${oldDate.day.toString().padLeft(2,'0')}';
+    final dateStr =
+        '${oldDate.year}-${oldDate.month.toString().padLeft(2, '0')}-${oldDate.day.toString().padLeft(2, '0')}';
     final mealRepo = MealLogRepository(db);
     await mealRepo.insertMealLog(
-      date: dateStr, mealType: 'lunch', foodItemId: 1,
-      actualServingG: 100, actualCalories: 100,
-      actualProteinG: 5, actualFatG: 2, actualCarbsG: 20,
+      date: dateStr,
+      mealType: 'lunch',
+      foodItemId: 1,
+      actualServingG: 100,
+      actualCalories: 100,
+      actualProteinG: 5,
+      actualFatG: 2,
+      actualCarbsG: 20,
       originalImagePath: imgFile.path,
     );
 
@@ -71,12 +81,18 @@ void main() {
     await imgFile.writeAsString('fake');
 
     final recentDate = DateTime.now().subtract(const Duration(days: 10));
-    final dateStr = '${recentDate.year}-${recentDate.month.toString().padLeft(2,'0')}-${recentDate.day.toString().padLeft(2,'0')}';
+    final dateStr =
+        '${recentDate.year}-${recentDate.month.toString().padLeft(2, '0')}-${recentDate.day.toString().padLeft(2, '0')}';
     final mealRepo = MealLogRepository(db);
     await mealRepo.insertMealLog(
-      date: dateStr, mealType: 'lunch', foodItemId: 1,
-      actualServingG: 100, actualCalories: 100,
-      actualProteinG: 5, actualFatG: 2, actualCarbsG: 20,
+      date: dateStr,
+      mealType: 'lunch',
+      foodItemId: 1,
+      actualServingG: 100,
+      actualCalories: 100,
+      actualProteinG: 5,
+      actualFatG: 2,
+      actualCarbsG: 20,
       originalImagePath: imgFile.path,
     );
 

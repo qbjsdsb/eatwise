@@ -44,16 +44,15 @@ class _FakeNutritionLookup implements NutritionLookup {
   Future<CompositeNutritionResult> lookupCompositeDish({
     required List<FoodComponent> components,
     required String cookingMethod,
-  }) async =>
-      CompositeNutritionResult(
-        calories: 0,
-        proteinG: 0,
-        fatG: 0,
-        carbsG: 0,
-        oilG: 0,
-        componentHits: const [],
-        componentMisses: const [],
-      );
+  }) async => CompositeNutritionResult(
+    calories: 0,
+    proteinG: 0,
+    fatG: 0,
+    carbsG: 0,
+    oilG: 0,
+    componentHits: const [],
+    componentMisses: const [],
+  );
 
   @override
   Future<NutritionRange?> lookupSingleItemWithRange({
@@ -67,33 +66,35 @@ class _FakeNutritionLookup implements NutritionLookup {
   Future<CompositeNutritionRange> lookupCompositeDishWithRange({
     required List<FoodComponent> components,
     required String cookingMethod,
-  }) async =>
-      CompositeNutritionRange(
-        low: CompositeNutritionResult(
-            calories: 0,
-            proteinG: 0,
-            fatG: 0,
-            carbsG: 0,
-            oilG: 0,
-            componentHits: const [],
-            componentMisses: const []),
-        mid: CompositeNutritionResult(
-            calories: 0,
-            proteinG: 0,
-            fatG: 0,
-            carbsG: 0,
-            oilG: 0,
-            componentHits: const [],
-            componentMisses: const []),
-        high: CompositeNutritionResult(
-            calories: 0,
-            proteinG: 0,
-            fatG: 0,
-            carbsG: 0,
-            oilG: 0,
-            componentHits: const [],
-            componentMisses: const []),
-      );
+  }) async => CompositeNutritionRange(
+    low: CompositeNutritionResult(
+      calories: 0,
+      proteinG: 0,
+      fatG: 0,
+      carbsG: 0,
+      oilG: 0,
+      componentHits: const [],
+      componentMisses: const [],
+    ),
+    mid: CompositeNutritionResult(
+      calories: 0,
+      proteinG: 0,
+      fatG: 0,
+      carbsG: 0,
+      oilG: 0,
+      componentHits: const [],
+      componentMisses: const [],
+    ),
+    high: CompositeNutritionResult(
+      calories: 0,
+      proteinG: 0,
+      fatG: 0,
+      carbsG: 0,
+      oilG: 0,
+      componentHits: const [],
+      componentMisses: const [],
+    ),
+  );
 }
 
 void main() {
@@ -110,14 +111,19 @@ void main() {
     // 直接调用回调验证 promptVersion 透传（绕过 pickAndRecognize 的平台依赖）
     // 实际生产中由 catch 块调用，传入 Prompts.version
     controller.onOfflineEnqueueForTest?.call(
-      '/fake/path.jpg', 'breakfast', '2026-07-02', Prompts.version,
+      '/fake/path.jpg',
+      'breakfast',
+      '2026-07-02',
+      Prompts.version,
     );
     expect(capturedPromptVersion, Prompts.version);
   });
 
   test('限流：_lastRecognizeTime 初始为 null（未识别过）', () {
     final controller = RecognizeController(
-      _FakeVisionProvider(), null, _FakeNutritionLookup(),
+      _FakeVisionProvider(),
+      null,
+      _FakeNutritionLookup(),
     );
     expect(controller.lastRecognizeTimeForTest, isNull);
   });

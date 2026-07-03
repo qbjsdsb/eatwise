@@ -14,13 +14,15 @@ void main() {
   testWidgets('周热量折线图渲染', (tester) async {
     final db = EatWiseDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
     // 先插 food_item（meal_log.foodItemId 是 FK）
-    final foodId = await db.into(db.foodItems).insert(
+    final foodId = await db
+        .into(db.foodItems)
+        .insert(
           FoodItemsCompanion.insert(
             name: '测试食物',
             defaultServingG: 100,
@@ -42,33 +44,43 @@ void main() {
     // 用 subtract 避免月初 day-1 越界
     final yesterday = fmt(now.subtract(const Duration(days: 1)));
 
-    await db.into(db.mealLogs).insert(MealLogsCompanion.insert(
-          date: today,
-          mealType: 'lunch',
-          foodItemId: foodId,
-          actualServingG: 200,
-          actualCalories: 500,
-          actualProteinG: 30,
-          actualFatG: 20,
-          actualCarbsG: 50,
-          loggedAt: 1000,
-        ));
-    await db.into(db.mealLogs).insert(MealLogsCompanion.insert(
-          date: yesterday,
-          mealType: 'lunch',
-          foodItemId: foodId,
-          actualServingG: 180,
-          actualCalories: 450,
-          actualProteinG: 27,
-          actualFatG: 18,
-          actualCarbsG: 45,
-          loggedAt: 2000,
-        ));
+    await db
+        .into(db.mealLogs)
+        .insert(
+          MealLogsCompanion.insert(
+            date: today,
+            mealType: 'lunch',
+            foodItemId: foodId,
+            actualServingG: 200,
+            actualCalories: 500,
+            actualProteinG: 30,
+            actualFatG: 20,
+            actualCarbsG: 50,
+            loggedAt: 1000,
+          ),
+        );
+    await db
+        .into(db.mealLogs)
+        .insert(
+          MealLogsCompanion.insert(
+            date: yesterday,
+            mealType: 'lunch',
+            foodItemId: foodId,
+            actualServingG: 180,
+            actualCalories: 450,
+            actualProteinG: 27,
+            actualFatG: 18,
+            actualCarbsG: 45,
+            loggedAt: 2000,
+          ),
+        );
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: InsightPage()),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: InsightPage()),
+      ),
+    );
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
     // 验证 fl_chart 渲染

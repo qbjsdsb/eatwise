@@ -28,10 +28,7 @@ void main() {
 
   group('BMR Katch-McArdle', () {
     test('体脂率 20%', () {
-      final bmr = NutritionCalculator.bmrKatch(
-        weightKg: 70,
-        bodyFatPct: 20,
-      );
+      final bmr = NutritionCalculator.bmrKatch(weightKg: 70, bodyFatPct: 20);
       // 370 + 21.6 * 70 * (1 - 0.2) = 370 + 21.6 * 56 = 370 + 1209.6 = 1579.6
       expect(bmr, closeTo(1579.6, 0.01));
     });
@@ -195,12 +192,18 @@ void main() {
     test('安全速率无警告', () {
       expect(
         NutritionCalculator.validateGoalRate(
-          goalRateKgPerWeek: 0.5, weightKg: 70, goal: Goal.cut), // 0.5 < 0.7
+          goalRateKgPerWeek: 0.5,
+          weightKg: 70,
+          goal: Goal.cut,
+        ), // 0.5 < 0.7
         isNull,
       );
       expect(
         NutritionCalculator.validateGoalRate(
-          goalRateKgPerWeek: 0.3, weightKg: 70, goal: Goal.bulk), // 330 < 500
+          goalRateKgPerWeek: 0.3,
+          weightKg: 70,
+          goal: Goal.bulk,
+        ), // 330 < 500
         isNull,
       );
     });

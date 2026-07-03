@@ -17,8 +17,9 @@ void main() {
   tearDown(() async => db.close());
 
   test('解析 Sanotsu JSON：字段映射正确', () {
-    final json = jsonDecode(File('test/fixtures/sanotsu_sample.json').readAsStringSync())
-        as List<dynamic>;
+    final json =
+        jsonDecode(File('test/fixtures/sanotsu_sample.json').readAsStringSync())
+            as List<dynamic>;
     final items = FoodSeedImporter.parseJson(json.cast<Map<String, dynamic>>());
 
     expect(items.length, 4);
@@ -43,11 +44,14 @@ void main() {
   });
 
   test('导入到数据库：去重 + source 标注', () async {
-    final json = jsonDecode(File('test/fixtures/sanotsu_sample.json').readAsStringSync())
-        as List<dynamic>;
+    final json =
+        jsonDecode(File('test/fixtures/sanotsu_sample.json').readAsStringSync())
+            as List<dynamic>;
     final importer = FoodSeedImporter(db);
 
-    final count = await importer.importFromJsonList(json.cast<Map<String, dynamic>>());
+    final count = await importer.importFromJsonList(
+      json.cast<Map<String, dynamic>>(),
+    );
     expect(count, 4);
 
     final items = await db.foodItems.select().get();
@@ -57,23 +61,25 @@ void main() {
   });
 
   test('别名补充：番茄补充 aliases=["西红柿","tomato"]', () async {
-    final json = jsonDecode(File('test/fixtures/sanotsu_sample.json').readAsStringSync())
-        as List<dynamic>;
+    final json =
+        jsonDecode(File('test/fixtures/sanotsu_sample.json').readAsStringSync())
+            as List<dynamic>;
     final importer = FoodSeedImporter(db);
     await importer.importFromJsonList(json.cast<Map<String, dynamic>>());
     await importer.supplementAliases();
 
-    final tomato = await (db.foodItems.select()
-          ..where((f) => f.name.equals('番茄')))
-        .getSingle();
+    final tomato =
+        await (db.foodItems.select()..where((f) => f.name.equals('番茄')))
+            .getSingle();
     expect(tomato.aliasesJson, isNotNull);
     final aliases = jsonDecode(tomato.aliasesJson!) as List;
     expect(aliases, containsAll(['西红柿', 'tomato']));
   });
 
   test('重复导入：同 name+source 去重，更新而非新增', () async {
-    final json = jsonDecode(File('test/fixtures/sanotsu_sample.json').readAsStringSync())
-        as List<dynamic>;
+    final json =
+        jsonDecode(File('test/fixtures/sanotsu_sample.json').readAsStringSync())
+            as List<dynamic>;
     final importer = FoodSeedImporter(db);
 
     await importer.importFromJsonList(json.cast<Map<String, dynamic>>());

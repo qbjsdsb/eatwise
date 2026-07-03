@@ -13,13 +13,15 @@ void main() {
     });
 
     test('删除敏感 key 的 extra（food_name/calories/api_key）', () {
-      final event = SentryEvent(extra: {
-        'food_name': '宫保鸡丁',
-        'calories': 500,
-        'weight_kg': 70.5,
-        'api_key': 'sk-xxx',
-        'normal_field': 'ok',
-      });
+      final event = SentryEvent(
+        extra: {
+          'food_name': '宫保鸡丁',
+          'calories': 500,
+          'weight_kg': 70.5,
+          'api_key': 'sk-xxx',
+          'normal_field': 'ok',
+        },
+      );
       final result = scrubBeforeSend(event, Hint())!;
       expect(result.extra!.containsKey('food_name'), isFalse);
       expect(result.extra!.containsKey('calories'), isFalse);

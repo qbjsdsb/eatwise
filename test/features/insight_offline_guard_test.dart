@@ -14,18 +14,22 @@ void main() {
     final db = EatWiseDatabase(NativeDatabase.memory());
     addTearDown(db.close);
 
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-      recognize.glmApiKeyProvider.overrideWith((ref) => 'fake-key'),
-      // 模拟离线
-      recognize.networkAvailableProvider.overrideWith((ref) async => false),
-    ]);
+    final container = ProviderContainer(
+      overrides: [
+        recognize.databaseProvider.overrideWith((ref) async => db),
+        recognize.glmApiKeyProvider.overrideWith((ref) => 'fake-key'),
+        // 模拟离线
+        recognize.networkAvailableProvider.overrideWith((ref) async => false),
+      ],
+    );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: InsightPage()),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: InsightPage()),
+      ),
+    );
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
     // _summary 为空时按钮文案是"生成本周汇总"

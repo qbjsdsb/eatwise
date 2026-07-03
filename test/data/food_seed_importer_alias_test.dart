@@ -28,7 +28,8 @@ void main() {
 ]
 ''';
     await importer.importFromJsonList(
-        (jsonDecode(json) as List).cast<Map<String, dynamic>>());
+      (jsonDecode(json) as List).cast<Map<String, dynamic>>(),
+    );
 
     // 补充别名
     await importer.supplementAliases();
@@ -53,7 +54,10 @@ void main() {
 
   test('assets/sanotsu_common.json 完整导入 ≥ 300 条', () async {
     final count = await importer.importFromAssets();
-    expect(count, greaterThanOrEqualTo(300),
-        reason: '完整常吃分类应 ≥300 条，实际 $count');
+    expect(
+      count,
+      greaterThanOrEqualTo(300),
+      reason: '完整常吃分类应 ≥300 条，实际 $count',
+    );
   });
 }

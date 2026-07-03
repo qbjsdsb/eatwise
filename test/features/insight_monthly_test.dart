@@ -11,15 +11,17 @@ void main() {
   testWidgets('切换到月视图', (tester) async {
     final db = EatWiseDatabase(NativeDatabase.memory());
     addTearDown(db.close);
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-    ]);
+    final container = ProviderContainer(
+      overrides: [recognize.databaseProvider.overrideWith((ref) async => db)],
+    );
     addTearDown(container.dispose);
 
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: InsightPage()),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: InsightPage()),
+      ),
+    );
     await tester.pumpAndSettle(const Duration(seconds: 1));
 
     // 默认周视图：'周'和'月'按钮都存在

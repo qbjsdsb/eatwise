@@ -18,21 +18,27 @@ void main() {
   tearDown(() async => db.close());
 
   // 辅助：插入一条食物
-  Future<int> seedFood(String name,
-      {String source = 'china_fct',
-      double cal = 50,
-      double serving = 100}) async {
-    return db.into(db.foodItems).insert(FoodItemsCompanion.insert(
-          name: name,
-          defaultServingG: serving,
-          caloriesPer100g: cal,
-          proteinPer100g: 1.0,
-          fatPer100g: 0.2,
-          carbsPer100g: 13.5,
-          source: source,
-          sourceVersion: 'v1',
-          createdAt: 0,
-        ));
+  Future<int> seedFood(
+    String name, {
+    String source = 'china_fct',
+    double cal = 50,
+    double serving = 100,
+  }) async {
+    return db
+        .into(db.foodItems)
+        .insert(
+          FoodItemsCompanion.insert(
+            name: name,
+            defaultServingG: serving,
+            caloriesPer100g: cal,
+            proteinPer100g: 1.0,
+            fatPer100g: 0.2,
+            carbsPer100g: 13.5,
+            source: source,
+            sourceVersion: 'v1',
+            createdAt: 0,
+          ),
+        );
   }
 
   test('searchByName 模糊匹配', () async {

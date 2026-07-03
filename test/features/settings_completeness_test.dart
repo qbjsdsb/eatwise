@@ -32,16 +32,17 @@ void main() {
   });
 
   testWidgets('设置页含图片保留期选择', (tester) async {
-    PathProviderPlatform.instance =
-        _MemoryPathProvider('/tmp/settings_completeness_test');
+    PathProviderPlatform.instance = _MemoryPathProvider(
+      '/tmp/settings_completeness_test',
+    );
 
     // 放大视口：SettingsPage 的 ListView 懒加载，保留期/关于区位于列表后段，
     // 默认 800×600 视口无法完整显示，需加高视口让所有子项被 build。
     await tester.binding.setSurfaceSize(const Size(800, 2400));
 
-    final container = ProviderContainer(overrides: [
-      secureConfigStoreProvider.overrideWithValue(store),
-    ]);
+    final container = ProviderContainer(
+      overrides: [secureConfigStoreProvider.overrideWithValue(store)],
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(
@@ -62,14 +63,15 @@ void main() {
   }, timeout: const Timeout(Duration(seconds: 30)));
 
   testWidgets('设置页含关于入口', (tester) async {
-    PathProviderPlatform.instance =
-        _MemoryPathProvider('/tmp/settings_completeness_test2');
+    PathProviderPlatform.instance = _MemoryPathProvider(
+      '/tmp/settings_completeness_test2',
+    );
 
     await tester.binding.setSurfaceSize(const Size(800, 2400));
 
-    final container = ProviderContainer(overrides: [
-      secureConfigStoreProvider.overrideWithValue(store),
-    ]);
+    final container = ProviderContainer(
+      overrides: [secureConfigStoreProvider.overrideWithValue(store)],
+    );
     addTearDown(container.dispose);
 
     await tester.pumpWidget(

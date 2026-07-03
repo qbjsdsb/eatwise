@@ -68,18 +68,22 @@ void main() {
     final oldTime = DateTime.now().subtract(const Duration(days: 15));
     backupFile.setLastModifiedSync(oldTime);
 
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-      secureConfigStoreProvider.overrideWith((ref) => mockStore),
-    ]);
+    final container = ProviderContainer(
+      overrides: [
+        recognize.databaseProvider.overrideWith((ref) async => db),
+        secureConfigStoreProvider.overrideWith((ref) => mockStore),
+      ],
+    );
     addTearDown(container.dispose);
 
     // 放大视口：备份区位于 ListView 后段，默认视口无法完整显示
     await tester.binding.setSurfaceSize(const Size(800, 2400));
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: SettingsPage()),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: SettingsPage()),
+      ),
+    );
     // runAsync 让 _loadSettings 中的真实异步（mock getter、目录检查）
     // 在真实事件循环中完成；pumpAndSettle 会等所有 frame 稳定。
     await tester.runAsync(() async {
@@ -92,18 +96,22 @@ void main() {
 
   testWidgets('从未备份不显示超期提示（仅显示"从未"）', (tester) async {
     // 不造任何备份文件
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
-      secureConfigStoreProvider.overrideWith((ref) => mockStore),
-    ]);
+    final container = ProviderContainer(
+      overrides: [
+        recognize.databaseProvider.overrideWith((ref) async => db),
+        secureConfigStoreProvider.overrideWith((ref) => mockStore),
+      ],
+    );
     addTearDown(container.dispose);
 
     // 放大视口：备份区位于 ListView 后段，默认视口无法完整显示
     await tester.binding.setSurfaceSize(const Size(800, 2400));
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: const MaterialApp(home: SettingsPage()),
-    ));
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: const MaterialApp(home: SettingsPage()),
+      ),
+    );
     // runAsync 让 _loadSettings 中的真实异步（mock getter、目录检查）
     // 在真实事件循环中完成；pumpAndSettle 会等所有 frame 稳定。
     await tester.runAsync(() async {

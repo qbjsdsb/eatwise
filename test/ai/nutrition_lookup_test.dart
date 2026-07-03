@@ -13,29 +13,37 @@ void main() {
   setUp(() async {
     db = EatWiseDatabase(NativeDatabase.memory());
     // 预置测试数据
-    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
-          name: '番茄',
-          defaultServingG: 100,
-          caloriesPer100g: 18,
-          proteinPer100g: 0.9,
-          fatPer100g: 0.2,
-          carbsPer100g: 3.9,
-          aliasesJson: Value('["西红柿","tomato"]'),
-          source: 'china_fct',
-          sourceVersion: 'test',
-          createdAt: DateTime.now().millisecondsSinceEpoch,
-        ));
-    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
-          name: '鸡蛋',
-          defaultServingG: 60,
-          caloriesPer100g: 144,
-          proteinPer100g: 13,
-          fatPer100g: 9,
-          carbsPer100g: 1.1,
-          source: 'china_fct',
-          sourceVersion: 'test',
-          createdAt: DateTime.now().millisecondsSinceEpoch,
-        ));
+    await db
+        .into(db.foodItems)
+        .insert(
+          FoodItemsCompanion.insert(
+            name: '番茄',
+            defaultServingG: 100,
+            caloriesPer100g: 18,
+            proteinPer100g: 0.9,
+            fatPer100g: 0.2,
+            carbsPer100g: 3.9,
+            aliasesJson: Value('["西红柿","tomato"]'),
+            source: 'china_fct',
+            sourceVersion: 'test',
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+    await db
+        .into(db.foodItems)
+        .insert(
+          FoodItemsCompanion.insert(
+            name: '鸡蛋',
+            defaultServingG: 60,
+            caloriesPer100g: 144,
+            proteinPer100g: 13,
+            fatPer100g: 9,
+            carbsPer100g: 1.1,
+            source: 'china_fct',
+            sourceVersion: 'test',
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
     lookup = NutritionLookup(FoodItemRepository(db));
   });
 
@@ -48,13 +56,19 @@ void main() {
   });
 
   test('单品查库：按 aliases 命中（西红柿→番茄）', () async {
-    final result = await lookup.lookupSingleItem(dishName: '西红柿', servingG: 100);
+    final result = await lookup.lookupSingleItem(
+      dishName: '西红柿',
+      servingG: 100,
+    );
     expect(result, isNotNull);
     expect(result!.calories, 18);
   });
 
   test('单品查库：未命中返回 null', () async {
-    final result = await lookup.lookupSingleItem(dishName: '不存在的食物', servingG: 100);
+    final result = await lookup.lookupSingleItem(
+      dishName: '不存在的食物',
+      servingG: 100,
+    );
     expect(result, isNull);
   });
 

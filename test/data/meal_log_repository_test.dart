@@ -28,7 +28,9 @@ void main() {
     double carbs = 13.5,
     double? confidence,
   }) async {
-    final foodId = await db.into(db.foodItems).insert(
+    final foodId = await db
+        .into(db.foodItems)
+        .insert(
           FoodItemsCompanion.insert(
             name: '测试食物',
             defaultServingG: 100,

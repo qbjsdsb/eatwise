@@ -17,28 +17,36 @@ void main() {
     db = EatWiseDatabase(NativeDatabase.memory());
     foodRepo = FoodItemRepository(db);
     // 种子：鸡肉 + 花生（组分命中），不插入"黄瓜"（组分未命中）
-    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
-          name: '鸡肉',
-          defaultServingG: 100,
-          caloriesPer100g: 167,
-          proteinPer100g: 19,
-          fatPer100g: 9,
-          carbsPer100g: 0,
-          source: 'manual',
-          sourceVersion: 'test',
-          createdAt: 1000,
-        ));
-    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
-          name: '花生',
-          defaultServingG: 100,
-          caloriesPer100g: 567,
-          proteinPer100g: 25,
-          fatPer100g: 49,
-          carbsPer100g: 16,
-          source: 'manual',
-          sourceVersion: 'test',
-          createdAt: 1001,
-        ));
+    await db
+        .into(db.foodItems)
+        .insert(
+          FoodItemsCompanion.insert(
+            name: '鸡肉',
+            defaultServingG: 100,
+            caloriesPer100g: 167,
+            proteinPer100g: 19,
+            fatPer100g: 9,
+            carbsPer100g: 0,
+            source: 'manual',
+            sourceVersion: 'test',
+            createdAt: 1000,
+          ),
+        );
+    await db
+        .into(db.foodItems)
+        .insert(
+          FoodItemsCompanion.insert(
+            name: '花生',
+            defaultServingG: 100,
+            caloriesPer100g: 567,
+            proteinPer100g: 25,
+            fatPer100g: 49,
+            carbsPer100g: 16,
+            source: 'manual',
+            sourceVersion: 'test',
+            createdAt: 1001,
+          ),
+        );
   });
   tearDown(() async => db.close());
 
@@ -65,14 +73,16 @@ void main() {
       cookingMethod: recognition.cookingMethod,
     );
 
-    await tester.pumpWidget(MaterialApp(
-      home: CalibrationPage(
-        recognitionResult: recognition,
-        compositeNutrition: composite,
-        foodItemRepo: foodRepo,
-        onConfirm: (_, __, ___, ____, _____, {componentsSnapshot}) {},
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalibrationPage(
+          recognitionResult: recognition,
+          compositeNutrition: composite,
+          foodItemRepo: foodRepo,
+          onConfirm: (_, __, ___, ____, _____, {componentsSnapshot}) {},
+        ),
       ),
-    ));
+    );
 
     // 验证组分滑块标签
     expect(find.textContaining('鸡肉'), findsWidgets);
@@ -107,17 +117,19 @@ void main() {
 
     double? capturedCalories;
     double? capturedProtein;
-    await tester.pumpWidget(MaterialApp(
-      home: CalibrationPage(
-        recognitionResult: recognition,
-        compositeNutrition: composite,
-        foodItemRepo: foodRepo,
-        onConfirm: (_, calories, protein, __, _____, {componentsSnapshot}) {
-          capturedCalories = calories;
-          capturedProtein = protein;
-        },
+    await tester.pumpWidget(
+      MaterialApp(
+        home: CalibrationPage(
+          recognitionResult: recognition,
+          compositeNutrition: composite,
+          foodItemRepo: foodRepo,
+          onConfirm: (_, calories, protein, __, _____, {componentsSnapshot}) {
+            capturedCalories = calories;
+            capturedProtein = protein;
+          },
+        ),
       ),
-    ));
+    );
 
     // 点击"确认记录"按钮（用默认份量，应等于 lookupCompositeDish 的原始计算值）
     await tester.tap(find.text('确认记录'));
