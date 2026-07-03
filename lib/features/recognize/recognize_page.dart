@@ -203,8 +203,10 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
         if (!mounted) return;
         // 智能份量校准：单品路径查历史中位数作滑块初值（B 功能）
         // v1.3：多份场景跳过（CalibrationPage 会用 AI mid，查了也浪费 DB 调用）
+        // v1.4：AI 兜底（foodItemId=0 哨兵）跳过，库里还没有这条食物
         double? suggestedServingG;
         if (state.singleNutrition != null &&
+            state.singleNutrition!.foodItemId > 0 &&
             !state.recognitionResult!.isMultiQuantity) {
           final mealRepo = await ref.read(mealLogRepoProvider.future);
           suggestedServingG = await mealRepo.getMedianServing(
@@ -240,7 +242,22 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
                     // Task 2 已启用 PRAGMA foreign_keys = ON，id=0 会触发外键约束违规）
                     int foodItemId;
                     if (state.singleNutrition != null) {
-                      foodItemId = state.singleNutrition!.foodItemId;
+                      final n = state.singleNutrition!;
+                      if (n.foodItemId == 0) {
+                        // v1.4：单品库未命中，AI 估算兜底 → 创建 ai_recognized food_item
+                        // （per100g 由实际份量反算，便于后续复用该食物）
+                        final per100 = servingG > 0 ? 100.0 / servingG : 0.0;
+                        foodItemId = await foodRepo.upsertAiRecognized(
+                          name: result.dishName,
+                          caloriesPer100g: n.calories * per100,
+                          proteinPer100g: n.proteinG * per100,
+                          fatPer100g: n.fatG * per100,
+                          carbsPer100g: n.carbsG * per100,
+                          confidence: result.confidence,
+                        );
+                      } else {
+                        foodItemId = n.foodItemId;
+                      }
                     } else if (state.compositeNutrition != null) {
                       // 复合菜：存入 food_item（source=ai_recognized，components_json 存组分快照）
                       foodItemId = await foodRepo.upsertAiRecognized(

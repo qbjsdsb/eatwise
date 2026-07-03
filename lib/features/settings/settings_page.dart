@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/theme/theme_controller.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/backup/auto_backup.dart';
 
@@ -94,6 +95,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           SliverAppBar.large(title: const Text('设置')),
           SliverList(
             delegate: SliverChildListDelegate([
+              _sectionTitle('主题色'),
+              _groupCard([
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 12),
+                  child: _themePalette(),
+                ),
+              ]),
               _sectionTitle('AI 模型'),
               _groupCard([
                 TextField(
@@ -301,12 +310,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     await showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('关于 EatWise'),
+        title: const Text('关于慢慢吃'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('EatWise v1.0.0'),
+            const Text('慢慢吃 v0.10.0'),
             const SizedBox(height: 8),
             const Text('拍照识别食物热量 + 营养记录 + AI 汇总建议'),
             const SizedBox(height: 8),
@@ -316,6 +325,52 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
         ],
+      ),
+    );
+  }
+
+  /// 主题色板：点选即时换肤 + 持久化
+  Widget _themePalette() {
+    final currentSeed = ref.watch(themeSeedProvider);
+    return Wrap(
+      spacing: 16,
+      runSpacing: 12,
+      children: kThemePresets.map((preset) {
+        final (argb, name) = preset;
+        return _colorDot(Color(argb), name, argb == currentSeed, () async {
+          ref.read(themeSeedProvider.notifier).set(argb);
+          final store = ref.read(secureConfigStoreProvider);
+          await store.setThemeSeed(argb);
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('已切换主题：$name')),
+          );
+        });
+      }).toList(),
+    );
+  }
+
+  Widget _colorDot(
+      Color color, String name, bool selected, VoidCallback onTap) {
+    return Tooltip(
+      message: name,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            border: selected
+                ? Border.all(
+                    color: Theme.of(context).colorScheme.onSurface, width: 3)
+                : null,
+          ),
+          child: selected
+              ? const Icon(Icons.check, color: Colors.white, size: 20)
+              : null,
+        ),
       ),
     );
   }

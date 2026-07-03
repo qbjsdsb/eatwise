@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自适应图标前景：白色简化「碗 + 升起蒸汽」。
+  语义：碗 = 食物，蒸汽 = 袅袅升起的温热感 = 「慢慢吃」。
+  画布 108x108dp，图形集中在 66x66 安全区内（中心 54,54）。
+  Material 图标规范：几何简洁、单色、圆角线帽。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 蒸汽：3 条 S 形曲线，stroke 白色，圆头，体现「袅袅升起 = 慢」 -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M40,48 Q36,42 40,36 Q44,30 40,24" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M54,46 Q50,40 54,34 Q58,28 54,22" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M68,48 Q64,42 68,36 Q72,30 68,24" />
+
+    <!-- 碗身：U 形填充，顶部开口 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,60 Q30,86 54,86 Q78,86 78,60 Z" />
+
+    <!-- 碗口：椭圆边缘，盖在碗身顶部做厚度感 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,60 a24,5 0 1,0 48,0 a24,5 0 1,0 -48,0 Z" />
+</vector>

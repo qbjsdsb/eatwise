@@ -1,13 +1,14 @@
-// prompt v1.3 - 2026-07-02
+// prompt v1.4 - 2026-07-03
 // v1.1：要求 dish_name 用通用名（去品牌/量词/修饰），新增可选 brand 字段
 // v1.2：支持一桌多菜批量识别——新增 additional_dishes 数组（单菜时空）
 // v1.3：支持同物多份——新增 quantity/per_unit_g/unit 字段（解决拍两罐可乐只识别一罐的问题）
-// 目的：AI 显式数数量，减少漏识别；UI 据此显示"可乐 ×2"，用户可快速调整
+// v1.4：新增整菜营养估算字段（estimated_calories/protein_g/fat_g/carbs_g）
+//       —— 按 mid 份量估算整道菜营养，库未命中时 AI 兜底（参考中国食物成分表/USDA，含烹饪用油与调味糖）
 
 class Prompts {
   Prompts._();
 
-  static const version = 'v1.3';
+  static const version = 'v1.4';
 
   /// Qwen-VL system prompt（response_format=json_object 模式）
   static const systemPrompt = '''
@@ -27,6 +28,10 @@ JSON schema：
   "food_components": [{"name":"组分名","estimated_g":估算克数}],
   "cooking_method": "烹饪方式: raw/steam/boil/cold/toss/roast/stir-fry/pan-fry/deep-fry/braise 之一",
   "confidence": 0.0-1.0 置信度,
+  "estimated_calories": 按 mid 重量估算的整道菜热量(kcal,数值),
+  "estimated_protein_g": 按 mid 重量估算的整道菜蛋白质(克,数值),
+  "estimated_fat_g": 按 mid 重量估算的整道菜脂肪(克,数值),
+  "estimated_carbs_g": 按 mid 重量估算的整道菜碳水(克,数值),
   "additional_dishes": []
 }
 
@@ -46,24 +51,23 @@ JSON schema：
    - estimated_weight_g_mid = per_unit_g * quantity（总重量）
 4. 单品(is_single_item=true)时 food_components 为空数组 []
 5. 复合菜(is_single_item=false)时 food_components 必须列出 2-8 个主要食材组分
-6. additional_dishes（一桌多菜批量识别）：
+6. estimated_calories/protein_g/fat_g/carbs_g（v1.4 新增）：
+   - 基于 estimated_weight_g_mid 的重量估算整道菜的营养素
+   - 参考常见食物成分表（如中国食物成分表/USDA），含烹饪用油与调味糖
+   - 单品按总重量计算（如 2 罐可乐 = 660g × 0.42 kcal/g ≈ 277 kcal）
+   - 复合菜按各组分重量加总 + 烹饪用油热量
+7. additional_dishes（一桌多菜批量识别）：
    - 图片中只有一个菜时：additional_dishes 为空数组 []
    - 图片中有多个独立菜品（如一桌菜：米饭+宫保鸡丁+青菜）时：
      主对象放最显眼/最大的菜，其余菜放入 additional_dishes 数组
      每个元素是同 schema 的对象（但 additional_dishes 字段留空 []，不嵌套）
    - 最多识别 6 个菜（主对象 + additional_dishes 最多 5 个）
-7. 只返回 JSON，不要任何解释文字
+8. 只返回 JSON，不要任何解释文字
 
 示例1（两罐可乐-同物多份 v1.3）：
-{"dish_name":"可乐","brand":"可口可乐","quantity":2,"unit":"罐","per_unit_g":330,"estimated_weight_g_low":600,"estimated_weight_g_mid":660,"estimated_weight_g_high":720,"is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.9,"additional_dishes":[]}
+{"dish_name":"可乐","brand":"可口可乐","quantity":2,"unit":"罐","per_unit_g":330,"estimated_weight_g_low":600,"estimated_weight_g_mid":660,"estimated_weight_g_high":720,"is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.9,"estimated_calories":277,"estimated_protein_g":0,"estimated_fat_g":0,"estimated_carbs_g":69,"additional_dishes":[]}
 
-示例2（单罐可乐）：
-{"dish_name":"可乐","brand":"可口可乐","quantity":1,"unit":"罐","per_unit_g":330,"estimated_weight_g_low":300,"estimated_weight_g_mid":330,"estimated_weight_g_high":360,"is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.9,"additional_dishes":[]}
-
-示例3（番茄炒蛋-复合菜）：
-{"dish_name":"番茄炒蛋","brand":"","quantity":1,"unit":"份","per_unit_g":250,"estimated_weight_g_low":200,"estimated_weight_g_mid":250,"estimated_weight_g_high":300,"is_single_item":false,"food_components":[{"name":"鸡蛋","estimated_g":120},{"name":"番茄","estimated_g":150}],"cooking_method":"stir-fry","confidence":0.85,"additional_dishes":[]}
-
-示例4（一桌三菜-米饭+宫保鸡丁+清炒西兰花）：
-{"dish_name":"宫保鸡丁","brand":"","quantity":1,"unit":"份","per_unit_g":250,"estimated_weight_g_low":200,"estimated_weight_g_mid":250,"estimated_weight_g_high":300,"is_single_item":false,"food_components":[{"name":"鸡肉","estimated_g":150},{"name":"花生","estimated_g":30}],"cooking_method":"stir-fry","confidence":0.85,"additional_dishes":[{"dish_name":"米饭","brand":"","quantity":1,"unit":"碗","per_unit_g":200,"estimated_weight_g_low":150,"estimated_weight_g_mid":200,"estimated_weight_g_high":250,"is_single_item":true,"food_components":[],"cooking_method":"steam","confidence":0.9,"additional_dishes":[]},{"dish_name":"清炒西兰花","brand":"","quantity":1,"unit":"份","per_unit_g":150,"estimated_weight_g_low":100,"estimated_weight_g_mid":150,"estimated_weight_g_high":200,"is_single_item":false,"food_components":[{"name":"西兰花","estimated_g":150}],"cooking_method":"stir-fry","confidence":0.8,"additional_dishes":[]}]}
+示例2（番茄炒蛋-复合菜）：
+{"dish_name":"番茄炒蛋","brand":"","quantity":1,"unit":"份","per_unit_g":250,"estimated_weight_g_low":200,"estimated_weight_g_mid":250,"estimated_weight_g_high":300,"is_single_item":false,"food_components":[{"name":"鸡蛋","estimated_g":120},{"name":"番茄","estimated_g":150}],"cooking_method":"stir-fry","confidence":0.85,"estimated_calories":360,"estimated_protein_g":18,"estimated_fat_g":25,"estimated_carbs_g":12,"additional_dishes":[]}
 ''';
 }

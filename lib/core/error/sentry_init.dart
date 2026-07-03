@@ -30,7 +30,7 @@ Future<Widget> initSentryAndRunApp({
       options.tracesSampleRate = 1.0;
       // Release 版本配合 --split-debug-info 解符号
       options.release = const String.fromEnvironment('SENTRY_RELEASE',
-          defaultValue: 'eatwise@0.1.0');
+          defaultValue: 'eatwise@0.10.0');
     },
     appRunner: () {},
   );

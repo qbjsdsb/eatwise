@@ -277,6 +277,8 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
           dishName: result.dishName,
           servingG: result.estimatedWeightGMid,
         );
+        // v1.4：库未命中时用 AI 整菜估算兜底；旧 prompt 无估算则保持 null 走弹窗
+        mainSingle = mainSingle ?? _aiFallbackNutrition(result);
       } else {
         mainComposite = await _nutritionLookup.lookupCompositeDish(
           components: result.foodComponents,
@@ -289,10 +291,12 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
       final additionalItems = <MultiDishItem>[];
       for (final dish in result.additionalDishes) {
         if (dish.isSingleItem) {
-          final n = await _nutritionLookup.lookupSingleItem(
+          var n = await _nutritionLookup.lookupSingleItem(
             dishName: dish.dishName,
             servingG: dish.estimatedWeightGMid,
           );
+          // v1.4：附加菜库未命中也用 AI 兜底
+          n = n ?? _aiFallbackNutrition(dish);
           additionalItems.add(MultiDishItem(dish: dish, singleNutrition: n));
         } else {
           final n = await _nutritionLookup.lookupCompositeDish(
@@ -383,6 +387,23 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         errorMessage: isRefusal ? '内容被安全过滤' : '识别失败',
       );
     }
+  }
+
+  /// v1.4：库未命中时的 AI 整菜估算兜底（prompt v1.4 提供 estimated_calories 等字段）。
+  /// 返回 null 表示无 AI 估算（旧 prompt 兼容），调用方保持 null 走未命中弹窗。
+  /// foodItemId=0 为哨兵，recognize_page 写库前用 upsertAiRecognized 创建 food_item 替换为真实 id。
+  NutritionResult? _aiFallbackNutrition(VisionRecognitionResult r) {
+    final cal = r.estimatedCalories;
+    if (cal == null) return null;
+    return NutritionResult(
+      foodItemId: 0,
+      calories: cal,
+      proteinG: r.estimatedProteinG ?? 0,
+      fatG: r.estimatedFatG ?? 0,
+      carbsG: r.estimatedCarbsG ?? 0,
+      oilG: 0,
+      source: NutritionSource.aiEstimate,
+    );
   }
 }
 

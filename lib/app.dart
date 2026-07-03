@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/theme/theme_controller.dart';
 import 'features/backup/backup_page.dart';
 import 'features/dashboard/dashboard_page.dart';
 import 'features/food_library/food_library_page.dart';
@@ -14,18 +16,24 @@ import 'features/settings/settings_page.dart';
 import 'features/weight/weight_page.dart';
 import 'main_shell.dart';
 
-/// 莫奈《睡莲》seedColor：青绿色调，宁静治愈，契合健康饮食语义
-const _monetWaterLilySeed = Color(0xFF5B8C7B);
-
-class EatWiseApp extends StatelessWidget {
+class EatWiseApp extends ConsumerWidget {
   const EatWiseApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // 主题种子色来自 Riverpod（设置页点选色板时实时换肤）
+    final seed = Color(ref.watch(themeSeedProvider));
     return MaterialApp.router(
-      title: 'EatWise',
-      theme: _lightTheme,
-      darkTheme: _darkTheme,
+      title: '慢慢吃',
+      theme: _theme(ColorScheme.fromSeed(
+        seedColor: seed,
+        dynamicSchemeVariant: DynamicSchemeVariant.expressive,
+      )),
+      darkTheme: _theme(ColorScheme.fromSeed(
+        seedColor: seed,
+        brightness: Brightness.dark,
+        dynamicSchemeVariant: DynamicSchemeVariant.expressive,
+      )),
       themeMode: ThemeMode.system,
       routerConfig: _router,
     );
@@ -34,12 +42,7 @@ class EatWiseApp extends StatelessWidget {
   /// M3 规范基线：卡片 12dp 圆角、FilledButton 20dp 圆角 + 内容宽度、
   /// 输入框统一 OutlineInputBorder、SnackBar floating、NavigationBar pill 指示器。
   /// 亮/暗共用组件主题，仅 ColorScheme 随 brightness 变化。
-  static ThemeData _theme(Brightness brightness) {
-    final colorScheme = ColorScheme.fromSeed(
-      seedColor: _monetWaterLilySeed,
-      brightness: brightness,
-      dynamicSchemeVariant: DynamicSchemeVariant.expressive,
-    );
+  static ThemeData _theme(ColorScheme colorScheme) {
     return ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
@@ -86,9 +89,6 @@ class EatWiseApp extends StatelessWidget {
       ),
     );
   }
-
-  static final _lightTheme = _theme(Brightness.light);
-  static final _darkTheme = _theme(Brightness.dark);
 }
 
 final _router = GoRouter(

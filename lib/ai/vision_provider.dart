@@ -19,6 +19,12 @@ class VisionRecognitionResult {
   final int quantity;
   final String unit;
   final double perUnitG;
+  // v1.4：AI 整菜营养估算（按 mid 份量），用于库未命中时的兜底。
+  // 旧 prompt(v1.0-v1.3) 返回无此字段 → null，走原有"未命中转手动"流程。
+  final double? estimatedCalories;
+  final double? estimatedProteinG;
+  final double? estimatedFatG;
+  final double? estimatedCarbsG;
 
   const VisionRecognitionResult({
     required this.dishName,
@@ -35,6 +41,10 @@ class VisionRecognitionResult {
     this.quantity = 1,
     this.unit = '份',
     this.perUnitG = 0,
+    this.estimatedCalories,
+    this.estimatedProteinG,
+    this.estimatedFatG,
+    this.estimatedCarbsG,
   });
 
   /// 是否多菜（additionalDishes 非空）
@@ -89,6 +99,11 @@ class VisionRecognitionResult {
       quantity: quantity,
       unit: unit,
       perUnitG: perUnitG,
+      // v1.4 营养字段缺失时为 null（旧 prompt 兼容）
+      estimatedCalories: (json['estimated_calories'] as num?)?.toDouble(),
+      estimatedProteinG: (json['estimated_protein_g'] as num?)?.toDouble(),
+      estimatedFatG: (json['estimated_fat_g'] as num?)?.toDouble(),
+      estimatedCarbsG: (json['estimated_carbs_g'] as num?)?.toDouble(),
     );
   }
 }

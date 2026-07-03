@@ -70,6 +70,17 @@ class SecureConfigStore {
   Future<String?> readRaw(String key) => _storage.read(key: key);
   Future<void> deleteRaw(String key) => _storage.delete(key: key);
 
+  // --- 主题种子色（ARGB int 的十进制字符串，默认莫奈《睡莲》青绿 0xFF5B8C7B）---
+  static const _themeSeed = 'theme_seed';
+
+  /// 读取主题种子色 ARGB int（默认莫奈《睡莲》青绿）
+  Future<int> getThemeSeed() async {
+    final v = await readRaw(_themeSeed);
+    return int.tryParse(v ?? '') ?? 0xFF5B8C7B;
+  }
+
+  Future<void> setThemeSeed(int argb) => writeRaw(_themeSeed, argb.toString());
+
   // --- T48 图片保留期（0=永久保留，默认 30）---
   static const _imageRetentionDays = 'image_retention_days';
 
