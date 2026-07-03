@@ -58,8 +58,15 @@ class _InsightPageState extends ConsumerState<InsightPage> {
 
   /// 聚合当前周期数据（热量按日 + 体重序列 + 目标热量），供图表与 AI 生成共用。
   /// 结果同时写入 state 字段 _dailyCal/_dailyWeight/_targetCal，避免重复查询。
-  Future<({List<double> dailyCal, List<double> dailyWeight, int targetCal, String goal})>
-      _aggregatePeriod() async {
+  Future<
+    ({
+      List<double> dailyCal,
+      List<double> dailyWeight,
+      int targetCal,
+      String goal,
+    })
+  >
+  _aggregatePeriod() async {
     final db = await ref.read(recognize.databaseProvider.future);
     final mealRepo = MealLogRepository(db);
     final weightRepo = WeightLogRepository(db);
@@ -126,7 +133,9 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       }
       // Sprint 7 T54：离线守卫——无网络直接提示，不调 GLM API
       // 置于 apiKey 检查之后：key 未配置时直接提示设置页，避免在无网络/测试沙箱触发 connectivity 平台通道
-      final online = await ref.refresh(recognize.networkAvailableProvider.future);
+      final online = await ref.refresh(
+        recognize.networkAvailableProvider.future,
+      );
       if (!online) {
         if (!mounted) return;
         setState(() => _summary = '当前无网络，请联网后重试');
@@ -181,7 +190,9 @@ class _InsightPageState extends ConsumerState<InsightPage> {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, ctrl.text),
               child: const Text('保存'),
@@ -235,7 +246,11 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         title: Text('$_periodStart ~ $_periodEnd'),
         actions: [
           if (_summary != null)
-            IconButton(icon: const Icon(Icons.edit), onPressed: _edit),
+            IconButton(
+              icon: const Icon(Icons.edit),
+              tooltip: '编辑周报',
+              onPressed: _edit,
+            ),
         ],
       ),
       body: ListView(
@@ -243,14 +258,15 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         children: [
           // 周/月切换
           Center(
-            child: ToggleButtons(
-              isSelected: [
-                _periodType == 'weekly',
-                _periodType == 'monthly'
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'weekly', label: Text('周')),
+                ButtonSegment(value: 'monthly', label: Text('月')),
               ],
-              onPressed: (index) {
+              selected: {_periodType},
+              onSelectionChanged: (selection) {
                 setState(() {
-                  _periodType = index == 0 ? 'weekly' : 'monthly';
+                  _periodType = selection.first;
                   _calcPeriod();
                   _summary = null;
                   _dailyCal = [];
@@ -258,14 +274,6 @@ class _InsightPageState extends ConsumerState<InsightPage> {
                   _loadExisting();
                 });
               },
-              children: const [
-                Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text('周')),
-                Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: Text('月')),
-              ],
             ),
           ),
           const SizedBox(height: 16),
@@ -283,15 +291,18 @@ class _InsightPageState extends ConsumerState<InsightPage> {
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: SelectableText(_summary!,
-                    style: const TextStyle(fontSize: 15, height: 1.6)),
+                child: SelectableText(
+                  _summary!,
+                  style: const TextStyle(fontSize: 15, height: 1.6),
+                ),
               ),
             )
           else
             Card(
               child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text('$periodLabel尚未生成汇总，点击下方按钮生成')),
+                padding: const EdgeInsets.all(16),
+                child: Text('$periodLabel尚未生成汇总，点击下方按钮生成'),
+              ),
             ),
           const SizedBox(height: 16),
           if (_loading)
@@ -310,6 +321,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   /// 热量折线图：每日摄入 + 目标热量参考线 + 均值参考线
   /// 周视图 X 轴 '一二三四五六日'，月视图按日期每 5 天一个标签。
   Widget _buildCaloriesChart() {
+    final cs = Theme.of(context).colorScheme;
     final spots = <FlSpot>[];
     for (var i = 0; i < _dailyCal.length; i++) {
       spots.add(FlSpot(i.toDouble(), _dailyCal[i]));
@@ -318,94 +330,102 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     final avgCal = _dailyCal.reduce((a, b) => a + b) / _dailyCal.length;
     final start = DateTime.parse(_periodStart);
 
-    return LineChart(LineChartData(
-      gridData: const FlGridData(show: true),
-      borderData: FlBorderData(
-        show: true,
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      minX: 0,
-      maxX: (_dailyCal.length - 1).toDouble(),
-      minY: 0,
-      maxY: maxCal * 1.2,
-      titlesData: FlTitlesData(
-        bottomTitles: AxisTitles(
-          sideTitles: SideTitles(
-            showTitles: true,
-            getTitlesWidget: (value, meta) {
-              final idx = value.toInt();
-              if (idx < 0 || idx >= _dailyCal.length) {
+    return LineChart(
+      LineChartData(
+        gridData: const FlGridData(show: true),
+        borderData: FlBorderData(
+          show: true,
+          border: Border.all(color: cs.outlineVariant),
+        ),
+        minX: 0,
+        maxX: (_dailyCal.length - 1).toDouble(),
+        minY: 0,
+        maxY: maxCal * 1.2,
+        titlesData: FlTitlesData(
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                final idx = value.toInt();
+                if (idx < 0 || idx >= _dailyCal.length) {
+                  return const SizedBox.shrink();
+                }
+                if (_periodType == 'weekly') {
+                  const days = ['一', '二', '三', '四', '五', '六', '日'];
+                  return Text(days[idx], style: const TextStyle(fontSize: 10));
+                }
+                // 月视图：每 5 天一个标签（1/5/10/15/20/25/30）
+                final date = start.add(Duration(days: idx));
+                if (date.day == 1 || date.day % 5 == 0) {
+                  return Text(
+                    '${date.day}',
+                    style: const TextStyle(fontSize: 10),
+                  );
+                }
                 return const SizedBox.shrink();
-              }
-              if (_periodType == 'weekly') {
-                const days = ['一', '二', '三', '四', '五', '六', '日'];
-                return Text(days[idx], style: const TextStyle(fontSize: 10));
-              }
-              // 月视图：每 5 天一个标签（1/5/10/15/20/25/30）
-              final date = start.add(Duration(days: idx));
-              if (date.day == 1 || date.day % 5 == 0) {
-                return Text('${date.day}',
-                    style: const TextStyle(fontSize: 10));
-              }
-              return const SizedBox.shrink();
-            },
-          ),
-        ),
-        leftTitles: const AxisTitles(
-          sideTitles: SideTitles(showTitles: true, reservedSize: 40),
-        ),
-        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        rightTitles:
-            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-      ),
-      extraLinesData: ExtraLinesData(
-        horizontalLines: [
-          // 目标热量参考线
-          HorizontalLine(
-            y: _targetCal.toDouble(),
-            color: Colors.green,
-            strokeWidth: 1,
-            dashArray: [5, 5],
-            label: HorizontalLineLabel(
-              show: true,
-              alignment: Alignment.topRight,
-              style: const TextStyle(fontSize: 9, color: Colors.green),
-              labelResolver: (_) => '目标 $_targetCal',
+              },
             ),
           ),
-          // 平均线
-          HorizontalLine(
-            y: avgCal,
-            color: Colors.orange,
-            strokeWidth: 1,
-            dashArray: [5, 5],
-            label: HorizontalLineLabel(
+          leftTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+          ),
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+        ),
+        extraLinesData: ExtraLinesData(
+          horizontalLines: [
+            // 目标热量参考线
+            HorizontalLine(
+              y: _targetCal.toDouble(),
+              color: cs.primary,
+              strokeWidth: 1,
+              dashArray: [5, 5],
+              label: HorizontalLineLabel(
+                show: true,
+                alignment: Alignment.topRight,
+                style: TextStyle(fontSize: 9, color: cs.primary),
+                labelResolver: (_) => '目标 $_targetCal',
+              ),
+            ),
+            // 平均线
+            HorizontalLine(
+              y: avgCal,
+              color: cs.tertiary,
+              strokeWidth: 1,
+              dashArray: [5, 5],
+              label: HorizontalLineLabel(
+                show: true,
+                alignment: Alignment.bottomRight,
+                style: TextStyle(fontSize: 9, color: cs.tertiary),
+                labelResolver: (_) => '均值 ${avgCal.round()}',
+              ),
+            ),
+          ],
+        ),
+        lineBarsData: [
+          LineChartBarData(
+            spots: spots,
+            isCurved: true,
+            color: cs.primary,
+            barWidth: 3,
+            dotData: const FlDotData(show: true),
+            belowBarData: BarAreaData(
               show: true,
-              alignment: Alignment.bottomRight,
-              style: const TextStyle(fontSize: 9, color: Colors.orange),
-              labelResolver: (_) => '均值 ${avgCal.round()}',
+              color: cs.primary.withValues(alpha: 0.1),
             ),
           ),
         ],
       ),
-      lineBarsData: [
-        LineChartBarData(
-          spots: spots,
-          isCurved: true,
-          color: Colors.blue,
-          barWidth: 3,
-          dotData: const FlDotData(show: true),
-          belowBarData: BarAreaData(
-            show: true,
-            color: Colors.blue.withValues(alpha: 0.1),
-          ),
-        ),
-      ],
-    ));
+    );
   }
 
   /// 体重趋势折线图
   Widget _buildWeightChart() {
+    final cs = Theme.of(context).colorScheme;
     final spots = <FlSpot>[];
     for (var i = 0; i < _dailyWeight.length; i++) {
       spots.add(FlSpot(i.toDouble(), _dailyWeight[i]));
@@ -414,33 +434,35 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     final maxW = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
     final padding = (maxW - minW) * 0.1 + 0.5;
 
-    return LineChart(LineChartData(
-      gridData: const FlGridData(show: false),
-      borderData: FlBorderData(
-        show: true,
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      minX: 0,
-      maxX: (_dailyWeight.length - 1).toDouble(),
-      minY: minW - padding,
-      maxY: maxW + padding,
-      titlesData: const FlTitlesData(
-        bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        leftTitles: AxisTitles(
-          sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+    return LineChart(
+      LineChartData(
+        gridData: const FlGridData(show: false),
+        borderData: FlBorderData(
+          show: true,
+          border: Border.all(color: cs.outlineVariant),
         ),
-        topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-      ),
-      lineBarsData: [
-        LineChartBarData(
-          spots: spots,
-          isCurved: true,
-          color: Colors.purple,
-          barWidth: 2,
-          dotData: const FlDotData(show: true),
+        minX: 0,
+        maxX: (_dailyWeight.length - 1).toDouble(),
+        minY: minW - padding,
+        maxY: maxW + padding,
+        titlesData: const FlTitlesData(
+          bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+          ),
+          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
         ),
-      ],
-    ));
+        lineBarsData: [
+          LineChartBarData(
+            spots: spots,
+            isCurved: true,
+            color: cs.tertiary,
+            barWidth: 2,
+            dotData: const FlDotData(show: true),
+          ),
+        ],
+      ),
+    );
   }
 }

@@ -14,13 +14,13 @@ class Glm4vProvider implements VisionProvider {
     required String apiKey,
     required String baseUrl,
     String modelName = 'glm-4v-plus',
-  })  : _modelName = modelName,
-        _client = OpenAIClient(
-          config: OpenAIConfig(
-            authProvider: ApiKeyProvider(apiKey), // 与 QwenVlProvider 一致
-            baseUrl: baseUrl,
-          ),
-        );
+  }) : _modelName = modelName,
+       _client = OpenAIClient(
+         config: OpenAIConfig(
+           authProvider: ApiKeyProvider(apiKey), // 与 QwenVlProvider 一致
+           baseUrl: baseUrl,
+         ),
+       );
 
   @override
   String get name => 'GLM-4V-Plus';
@@ -30,5 +30,10 @@ class Glm4vProvider implements VisionProvider {
 
   @override
   Future<VisionRecognitionResult> recognize(String imageBase64) =>
-      QwenVlProvider.recognizeWithClient(_client, _modelName, imageBase64, promptVersion);
+      QwenVlProvider.recognizeWithClient(
+        _client,
+        _modelName,
+        imageBase64,
+        promptVersion,
+      );
 }

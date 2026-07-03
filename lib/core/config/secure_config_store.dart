@@ -23,18 +23,19 @@ class SecureConfigStore {
   final FlutterSecureStorage _storage;
 
   SecureConfigStore()
-      : _storage = const FlutterSecureStorage(
-          // iOS：首次解锁后可用 + 禁止 iCloud 同步（双重保险防备份恢复）
-          iOptions: IOSOptions(
-            accessibility: KeychainAccessibility.first_unlock_this_device,
-            synchronizable: false,
-          ),
-          // Android：10.x 默认 RSA OAEP + AES-GCM，minSdk 23+
-          // （encryptedSharedPreferences 已废弃，默认即自动迁移到 custom ciphers）
-        );
+    : _storage = const FlutterSecureStorage(
+        // iOS：首次解锁后可用 + 禁止 iCloud 同步（双重保险防备份恢复）
+        iOptions: IOSOptions(
+          accessibility: KeychainAccessibility.first_unlock_this_device,
+          synchronizable: false,
+        ),
+        // Android：10.x 默认 RSA OAEP + AES-GCM，minSdk 23+
+        // （encryptedSharedPreferences 已废弃，默认即自动迁移到 custom ciphers）
+      );
 
   @visibleForTesting
-  SecureConfigStore.forTesting(FlutterSecureStorage storage) : _storage = storage;
+  SecureConfigStore.forTesting(FlutterSecureStorage storage)
+    : _storage = storage;
 
   // --- Qwen ---
   Future<String?> getQwenApiKey() => _storage.read(key: _qwenApiKey);
@@ -66,7 +67,8 @@ class SecureConfigStore {
       _storage.write(key: _tdeeAutoCalib, value: v ? '1' : '0');
 
   // --- 通用 raw 读写（断路器/月度计数/保留期等用，key 自定义）---
-  Future<void> writeRaw(String key, String value) => _storage.write(key: key, value: value);
+  Future<void> writeRaw(String key, String value) =>
+      _storage.write(key: key, value: value);
   Future<String?> readRaw(String key) => _storage.read(key: key);
   Future<void> deleteRaw(String key) => _storage.delete(key: key);
 
@@ -82,8 +84,7 @@ class SecureConfigStore {
     return int.tryParse(v ?? '') ?? 0xFF5B8C7B;
   }
 
-  Future<void> setThemeSeed(int argb) =>
-      writeRaw(_themeSeed, argb.toString());
+  Future<void> setThemeSeed(int argb) => writeRaw(_themeSeed, argb.toString());
 
   /// 读取图片保留期（0=永久保留，默认 30）
   Future<int> getImageRetentionDays() async {

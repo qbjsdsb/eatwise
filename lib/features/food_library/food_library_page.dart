@@ -59,7 +59,10 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
       });
       return;
     }
-    _debounce = Timer(const Duration(milliseconds: 300), () => _doSearch(keyword));
+    _debounce = Timer(
+      const Duration(milliseconds: 300),
+      () => _doSearch(keyword),
+    );
   }
 
   Future<void> _doSearch(String keyword) async {
@@ -98,16 +101,24 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('常吃',
-                      style: TextStyle(fontWeight: FontWeight.bold))),
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '常吃',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
             ),
           if (!_searching && _frequent.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(16),
+            Padding(
+              padding: const EdgeInsets.all(16),
               child: Center(
-                  child: Text('暂无常用食物，去拍照识别或手动录入后会出现在这里',
-                      style: TextStyle(color: Colors.grey))),
+                child: Text(
+                  '暂无常用食物，去拍照识别或手动录入后会出现在这里',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
             ),
           Expanded(
             child: ListView.builder(
@@ -117,13 +128,17 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
                 return ListTile(
                   title: Text(f.name),
                   subtitle: Text(
-                      '${f.caloriesPer100g.toStringAsFixed(0)} kcal/100g · ${_sourceLabel(f.source)}'),
+                    '${f.caloriesPer100g.toStringAsFixed(0)} kcal/100g · ${_sourceLabel(f.source)}',
+                  ),
                   onTap: () {
                     if (widget.pickForReuse) {
                       Navigator.of(context).pop(f); // 返回选中的 FoodItem 给手动录入页
                     } else {
                       Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => FoodEditPage(foodItem: f)));
+                        MaterialPageRoute(
+                          builder: (_) => FoodEditPage(foodItem: f),
+                        ),
+                      );
                     }
                   },
                 );

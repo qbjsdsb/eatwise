@@ -14,7 +14,9 @@ class PendingRecognitionRepository {
     required String date,
     String promptVersion = 'v1.0',
   }) {
-    return _db.into(_db.pendingRecognitions).insert(
+    return _db
+        .into(_db.pendingRecognitions)
+        .insert(
           PendingRecognitionsCompanion.insert(
             imagePath: imagePath,
             mealType: mealType,
@@ -46,52 +48,56 @@ class PendingRecognitionRepository {
   Future<void> markDone(int id, int resultFoodItemId) async {
     await (_db.pendingRecognitions.update()..where((p) => p.id.equals(id)))
         .write(
-      PendingRecognitionsCompanion(
-        status: const Value('done'),
-        resultFoodItemId: Value(resultFoodItemId),
-        processedAt: Value(DateTime.now().millisecondsSinceEpoch),
-      ),
-    );
+          PendingRecognitionsCompanion(
+            status: const Value('done'),
+            resultFoodItemId: Value(resultFoodItemId),
+            processedAt: Value(DateTime.now().millisecondsSinceEpoch),
+          ),
+        );
   }
 
   /// 标记失败 + 重试计数 +1
   /// 重试 3 次后（retryCount 达到 3）标记 failed，不再重试
   ///
   /// [permanent] 为 true 时直接标记 failed（图片缺失等不可恢复错误），不增加重试计数
-  Future<void> markFailed(int id, String errorMessage,
-      {bool permanent = false}) async {
+  Future<void> markFailed(
+    int id,
+    String errorMessage, {
+    bool permanent = false,
+  }) async {
     if (permanent) {
       await (_db.pendingRecognitions.update()..where((p) => p.id.equals(id)))
           .write(
-        PendingRecognitionsCompanion(
-          status: const Value('failed'),
-          errorMessage: Value(errorMessage),
-          processedAt: Value(DateTime.now().millisecondsSinceEpoch),
-        ),
-      );
+            PendingRecognitionsCompanion(
+              status: const Value('failed'),
+              errorMessage: Value(errorMessage),
+              processedAt: Value(DateTime.now().millisecondsSinceEpoch),
+            ),
+          );
       return;
     }
-    final current = await (_db.pendingRecognitions.select()
-          ..where((p) => p.id.equals(id)))
-        .getSingle();
+    final current =
+        await (_db.pendingRecognitions.select()..where((p) => p.id.equals(id)))
+            .getSingle();
     await (_db.pendingRecognitions.update()..where((p) => p.id.equals(id)))
         .write(
-      PendingRecognitionsCompanion(
-        // retryCount 当前为 0/1/2 时下次还重试；当前为 2 时（即将变 3）标记 failed
-        status: current.retryCount >= 2
-            ? const Value('failed')
-            : const Value('pending'),
-        retryCount: Value(current.retryCount + 1),
-        errorMessage: Value(errorMessage),
-      ),
-    );
+          PendingRecognitionsCompanion(
+            // retryCount 当前为 0/1/2 时下次还重试；当前为 2 时（即将变 3）标记 failed
+            status: current.retryCount >= 2
+                ? const Value('failed')
+                : const Value('pending'),
+            retryCount: Value(current.retryCount + 1),
+            errorMessage: Value(errorMessage),
+          ),
+        );
   }
 
   /// 统计 pending 数量（UI 角标用）
   Future<int> countPending() async {
-    final result = await (_db.pendingRecognitions.select()
-          ..where((p) => p.status.equals('pending')))
-        .get();
+    final result =
+        await (_db.pendingRecognitions.select()
+              ..where((p) => p.status.equals('pending')))
+            .get();
     return result.length;
   }
 }

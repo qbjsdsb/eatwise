@@ -7,12 +7,16 @@ class InsightRepository {
 
   /// 查询是否已有该周期汇总（去重用）
   Future<InsightSummary?> find(
-      String periodType, String periodStart, String periodEnd) {
-    return (_db.insightSummaries.select()
-          ..where((i) =>
+    String periodType,
+    String periodStart,
+    String periodEnd,
+  ) {
+    return (_db.insightSummaries.select()..where(
+          (i) =>
               i.periodType.equals(periodType) &
               i.periodStart.equals(periodStart) &
-              i.periodEnd.equals(periodEnd)))
+              i.periodEnd.equals(periodEnd),
+        ))
         .getSingleOrNull();
   }
 
@@ -23,7 +27,9 @@ class InsightRepository {
     required String periodEnd,
     required String summaryText,
   }) {
-    return _db.into(_db.insightSummaries).insert(
+    return _db
+        .into(_db.insightSummaries)
+        .insert(
           InsightSummariesCompanion.insert(
             periodType: periodType,
             periodStart: periodStart,

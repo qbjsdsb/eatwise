@@ -12,8 +12,9 @@ class ThemeNotifier extends Notifier<int> {
   void set(int argb) => state = argb;
 }
 
-final themeSeedProvider =
-    NotifierProvider<ThemeNotifier, int>(ThemeNotifier.new);
+final themeSeedProvider = NotifierProvider<ThemeNotifier, int>(
+  ThemeNotifier.new,
+);
 
 /// 预设主题色板：莫奈画作取色 + Material 经典色。
 /// 每项为 (ARGB int, 名称)。

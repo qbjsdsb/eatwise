@@ -21,13 +21,15 @@ class QwenVlProvider implements VisionProvider {
     required String apiKey,
     required String baseUrl,
     String modelName = 'qwen3-vl-flash',
-  })  : _modelName = modelName,
-        _client = OpenAIClient(
-          config: OpenAIConfig(
-            authProvider: ApiKeyProvider(apiKey), // OpenAIConfig 无 apiKey 参数，用 authProvider
-            baseUrl: baseUrl,
-          ),
-        );
+  }) : _modelName = modelName,
+       _client = OpenAIClient(
+         config: OpenAIConfig(
+           authProvider: ApiKeyProvider(
+             apiKey,
+           ), // OpenAIConfig 无 apiKey 参数，用 authProvider
+           baseUrl: baseUrl,
+         ),
+       );
 
   @override
   String get name => 'Qwen-VL';
@@ -92,7 +94,10 @@ class QwenVlProvider implements VisionProvider {
       return VisionRecognitionResult.fromJson(json, promptVersion);
     } on FormatException catch (e) {
       // JSON 语法错误：malformed，不可盲目重试（设计文档 3.2 节）
-      throw VisionRecognitionException('JSON 解析失败: ${e.message}', retryable: false);
+      throw VisionRecognitionException(
+        'JSON 解析失败: ${e.message}',
+        retryable: false,
+      );
     } on RateLimitException catch (e) {
       // 429：尊重 Retry-After 头（e.retryAfter 为 Duration?）
       final waitSec = e.retryAfter?.inSeconds;
@@ -103,10 +108,16 @@ class QwenVlProvider implements VisionProvider {
       );
     } on AuthenticationException catch (e) {
       // 401：key 失效，引导到设置页（设计文档 3.2 节，非 retryable）
-      throw VisionRecognitionException('认证失败 401: ${e.message}', retryable: false);
+      throw VisionRecognitionException(
+        '认证失败 401: ${e.message}',
+        retryable: false,
+      );
     } on PermissionDeniedException catch (e) {
       // 403：key 无权限，引导到设置页（非 retryable）
-      throw VisionRecognitionException('权限拒绝 403: ${e.message}', retryable: false);
+      throw VisionRecognitionException(
+        '权限拒绝 403: ${e.message}',
+        retryable: false,
+      );
     } on RequestTimeoutException catch (e) {
       // 超时：retryable（L1 重试 → L2 切 GLM）
       throw VisionRecognitionException('请求超时: ${e.message}', retryable: true);
@@ -115,14 +126,23 @@ class QwenVlProvider implements VisionProvider {
       throw VisionRecognitionException('网络连接失败: ${e.message}', retryable: true);
     } on InternalServerException catch (e) {
       // 5xx：retryable（服务端临时错误）
-      throw VisionRecognitionException('服务器错误 ${e.statusCode}: ${e.message}', retryable: true);
+      throw VisionRecognitionException(
+        '服务器错误 ${e.statusCode}: ${e.message}',
+        retryable: true,
+      );
     } on ApiException catch (e) {
       // 其余 API 错误：5xx retryable，4xx（400/404 等）非 retryable
       final retryable = e.statusCode >= 500;
-      throw VisionRecognitionException('API 错误 ${e.statusCode}: ${e.message}', retryable: retryable);
+      throw VisionRecognitionException(
+        'API 错误 ${e.statusCode}: ${e.message}',
+        retryable: retryable,
+      );
     } on OpenAIException catch (e) {
       // SDK 基类兜底：retryable（未知错误保守重试）
-      throw VisionRecognitionException('OpenAI 错误: ${e.message}', retryable: true);
+      throw VisionRecognitionException(
+        'OpenAI 错误: ${e.message}',
+        retryable: true,
+      );
     } catch (e) {
       if (e is VisionRecognitionException) rethrow;
       throw VisionRecognitionException('未知错误: $e', retryable: true);
@@ -148,8 +168,17 @@ class QwenVlProvider implements VisionProvider {
     if (text == null || text.isEmpty) return false; // 空文本走"空响应"分支
     final lower = text.toLowerCase();
     const refusalKeywords = [
-      '我无法', '我不能', '无法识别', '不能识别', '内容违反', '违反政策',
-      'i cannot', "i can't", 'i am unable', 'content policy', 'safety',
+      '我无法',
+      '我不能',
+      '无法识别',
+      '不能识别',
+      '内容违反',
+      '违反政策',
+      'i cannot',
+      "i can't",
+      'i am unable',
+      'content policy',
+      'safety',
     ];
     // 仅当文本含关键词且【不是合法 JSON】时判定为 refusal
     // （正常菜名"我无法想象"等极罕见，且正常响应是 JSON 对象不会含这些短语）

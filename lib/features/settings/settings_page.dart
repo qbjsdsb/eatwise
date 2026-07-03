@@ -25,10 +25,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   bool _loading = true;
   int? _monthlyCount;
   double? _estimatedCost;
-  static const _costPerRecognition = 0.001;  // 估算：单次约 0.001 元（500 token × 0.15/百万）
-  static const _costWarningThreshold = 5.0;  // 5 元/月提示
-  int _imageRetentionDays = 30;  // T48 保留期
-  bool _backupOverdue = false;  // T55：14 天未备份提示
+  static const _costPerRecognition =
+      0.001; // 估算：单次约 0.001 元（500 token × 0.15/百万）
+  static const _costWarningThreshold = 5.0; // 5 元/月提示
+  int _imageRetentionDays = 30; // T48 保留期
+  bool _backupOverdue = false; // T55：14 天未备份提示
+  bool _busy = false;
 
   @override
   void initState() {
@@ -59,7 +61,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
       final lastBackup = await AutoBackup.lastBackupTime();
       _lastBackupTime = lastBackup != null
-          ? '${lastBackup.year}-${lastBackup.month.toString().padLeft(2,'0')}-${lastBackup.day.toString().padLeft(2,'0')}'
+          ? '${lastBackup.year}-${lastBackup.month.toString().padLeft(2, '0')}-${lastBackup.day.toString().padLeft(2, '0')}'
           : null;
 
       // T55：超过 14 天未备份提示（从未备份不提示，仅显示"从未"）
@@ -84,7 +86,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
       body: ListView(
@@ -99,7 +103,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _sectionHeader('AI 模型配置'),
           TextField(
             controller: _qwenKeyCtrl,
-            decoration: const InputDecoration(labelText: 'Qwen API Key', border: OutlineInputBorder()),
+            decoration: const InputDecoration(
+              labelText: 'Qwen API Key',
+              border: OutlineInputBorder(),
+            ),
             obscureText: true,
           ),
           const SizedBox(height: 8),
@@ -114,7 +121,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           const SizedBox(height: 8),
           TextField(
             controller: _glmKeyCtrl,
-            decoration: const InputDecoration(labelText: 'GLM API Key', border: OutlineInputBorder()),
+            decoration: const InputDecoration(
+              labelText: 'GLM API Key',
+              border: OutlineInputBorder(),
+            ),
             obscureText: true,
           ),
           const SizedBox(height: 8),
@@ -138,7 +148,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ),
           TextField(
             controller: _sentryDsnCtrl,
-            decoration: const InputDecoration(labelText: 'Sentry DSN', border: OutlineInputBorder()),
+            decoration: const InputDecoration(
+              labelText: 'Sentry DSN',
+              border: OutlineInputBorder(),
+            ),
           ),
           const SizedBox(height: 16),
 
@@ -196,7 +209,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ListTile(
             leading: const Icon(Icons.backup),
             title: const Text('上次自动备份'),
-            trailing: Text(_lastBackupTime ?? '从未', style: const TextStyle(color: Colors.grey)),
+            trailing: Text(
+              _lastBackupTime ?? '从未',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
           if (_backupOverdue)
             Padding(
@@ -228,7 +246,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
           const SizedBox(height: 24),
           FilledButton.icon(
-            onPressed: _save,
+            onPressed: _busy ? null : _save,
             icon: const Icon(Icons.save),
             label: const Text('保存设置'),
           ),
@@ -238,9 +256,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Widget _sectionHeader(String title) => Padding(
-        padding: const EdgeInsets.only(top: 8, bottom: 12),
-        child: Text(title, style: Theme.of(context).textTheme.titleMedium),
-      );
+    padding: const EdgeInsets.only(top: 8, bottom: 12),
+    child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+  );
 
   /// 主题色色板：圆形色块网格，选中态带勾选，点选即时换肤 + 持久化。
   Widget _themePalette() {
@@ -257,7 +275,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             await ref.read(secureConfigStoreProvider).setThemeSeed(argb);
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('已切换主题：$name'), duration: const Duration(seconds: 1)),
+                SnackBar(
+                  content: Text('已切换主题：$name'),
+                  duration: const Duration(seconds: 1),
+                ),
               );
             }
           }),
@@ -278,7 +299,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             color: c,
             shape: BoxShape.circle,
             border: Border.all(
-              color: selected ? Theme.of(context).colorScheme.onSurface : Colors.transparent,
+              color: selected
+                  ? Theme.of(context).colorScheme.onSurface
+                  : Colors.transparent,
               width: 3,
             ),
           ),
@@ -291,23 +314,37 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Future<void> _save() async {
-    final store = ref.read(secureConfigStoreProvider);
-    await store.setQwenApiKey(_qwenKeyCtrl.text.trim());
-    await store.setQwenBaseUrl(_qwenUrlCtrl.text.trim().isEmpty ? null : _qwenUrlCtrl.text.trim());
-    await store.setGlmApiKey(_glmKeyCtrl.text.trim());
-    await store.setGlmBaseUrl(_glmUrlCtrl.text.trim().isEmpty ? null : _glmUrlCtrl.text.trim());
-    await store.setSentryDsn(_sentryDsnCtrl.text.trim().isEmpty ? null : _sentryDsnCtrl.text.trim());
-    await store.setSentryEnabled(_sentryEnabled);
-    await store.setTdeeAutoCalib(_tdeeAutoCalib);
-    await store.setImageRetentionDays(_imageRetentionDays);
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final store = ref.read(secureConfigStoreProvider);
+      await store.setQwenApiKey(_qwenKeyCtrl.text.trim());
+      await store.setQwenBaseUrl(
+        _qwenUrlCtrl.text.trim().isEmpty ? null : _qwenUrlCtrl.text.trim(),
+      );
+      await store.setGlmApiKey(_glmKeyCtrl.text.trim());
+      await store.setGlmBaseUrl(
+        _glmUrlCtrl.text.trim().isEmpty ? null : _glmUrlCtrl.text.trim(),
+      );
+      await store.setSentryDsn(
+        _sentryDsnCtrl.text.trim().isEmpty ? null : _sentryDsnCtrl.text.trim(),
+      );
+      await store.setSentryEnabled(_sentryEnabled);
+      await store.setTdeeAutoCalib(_tdeeAutoCalib);
+      await store.setImageRetentionDays(_imageRetentionDays);
 
-    // 重新加载 appConfig（让其他 Provider 感知新值）
-    final config = await ref.read(appConfigProvider.future);
-    await config.reload();
+      // 重新加载 appConfig（让其他 Provider 感知新值）
+      final config = await ref.read(appConfigProvider.future);
+      await config.reload();
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('设置已保存')));
-      Navigator.of(context).pop();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('设置已保存')));
+        Navigator.of(context).pop();
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -323,7 +360,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           child: SingleChildScrollView(child: Text(text)),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
         ],
       ),
     );
@@ -335,19 +375,28 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('关于慢慢吃'),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('慢慢吃 v0.1.0'),
-            SizedBox(height: 8),
-            Text('拍照识别食物热量 + 营养记录 + AI 汇总建议'),
-            SizedBox(height: 8),
-            Text('营养目标依据 ACSM/ISSN/NIH/WHO 标准', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const Text('慢慢吃 v0.1.0'),
+            const SizedBox(height: 8),
+            const Text('拍照识别食物热量 + 营养记录 + AI 汇总建议'),
+            const SizedBox(height: 8),
+            Text(
+              '营养目标依据 ACSM/ISSN/NIH/WHO 标准',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
         ],
       ),
     );

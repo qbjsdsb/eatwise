@@ -15,7 +15,9 @@ class RecognitionFeedbackRepository {
     double? correctedServingG,
     required String promptVersion,
   }) async {
-    return _db.into(_db.recognitionFeedbacks).insert(
+    return _db
+        .into(_db.recognitionFeedbacks)
+        .insert(
           RecognitionFeedbacksCompanion.insert(
             mealLogId: mealLogId,
             isCorrect: isCorrect ? 1 : 0,
@@ -29,9 +31,10 @@ class RecognitionFeedbackRepository {
 
   /// 查询某条 meal_log 是否已有反馈（避免重复反馈）
   Future<bool> hasFeedback(int mealLogId) async {
-    final rows = await (_db.recognitionFeedbacks.select()
-          ..where((f) => f.mealLogId.equals(mealLogId)))
-        .get();
+    final rows =
+        await (_db.recognitionFeedbacks.select()
+              ..where((f) => f.mealLogId.equals(mealLogId)))
+            .get();
     return rows.isNotEmpty;
   }
 
@@ -59,17 +62,26 @@ class RecognitionFeedbackRepository {
 
   /// 查询某 prompt_version 的错判样本（供动态回归集导出）
   /// 返回含 mealLogId/correctedDishName/correctedServingG 的列表
-  Future<List<({int mealLogId, String? correctedDishName, double? correctedServingG})>>
-      getWrongSamples(String promptVersion) async {
-    final rows = await (_db.recognitionFeedbacks.select()
-          ..where((f) => f.promptVersion.equals(promptVersion) & f.isCorrect.equals(0)))
-        .get();
-    return rows
-        .map((r) => (
-              mealLogId: r.mealLogId,
-              correctedDishName: r.correctedDishName,
-              correctedServingG: r.correctedServingG,
+  Future<
+    List<
+      ({int mealLogId, String? correctedDishName, double? correctedServingG})
+    >
+  >
+  getWrongSamples(String promptVersion) async {
+    final rows =
+        await (_db.recognitionFeedbacks.select()..where(
+              (f) =>
+                  f.promptVersion.equals(promptVersion) & f.isCorrect.equals(0),
             ))
+            .get();
+    return rows
+        .map(
+          (r) => (
+            mealLogId: r.mealLogId,
+            correctedDishName: r.correctedDishName,
+            correctedServingG: r.correctedServingG,
+          ),
+        )
         .toList();
   }
 }

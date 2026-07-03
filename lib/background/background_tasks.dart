@@ -6,8 +6,10 @@ import 'package:workmanager/workmanager.dart';
 class BackgroundTasks {
   /// 离线队列回补（网络恢复时触发）
   static const offlineBackfill = 'offline_backfill';
+
   /// 自动备份（每周日凌晨）
   static const autoBackup = 'auto_backup';
+
   /// 图片清理（每周一次，清理配置保留期前原图，T48）
   static const imageCleanup = 'image_cleanup';
 

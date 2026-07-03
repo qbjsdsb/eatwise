@@ -34,11 +34,11 @@ class OfflineQueueController {
     VisionProvider? fallbackProvider,
     required NutritionLookup nutritionLookup,
     CircuitBreaker? circuitBreaker, // T37：可选命名参数（与 recognize_controller 模式一致）
-  })  : _db = db,
-        _visionProvider = visionProvider,
-        _fallbackProvider = fallbackProvider,
-        _nutritionLookup = nutritionLookup,
-        _circuitBreaker = circuitBreaker;
+  }) : _db = db,
+       _visionProvider = visionProvider,
+       _fallbackProvider = fallbackProvider,
+       _nutritionLookup = nutritionLookup,
+       _circuitBreaker = circuitBreaker;
 
   /// 启动监听（App 启动时调用）
   Future<void> start() async {
@@ -171,8 +171,10 @@ class OfflineQueueController {
             actualProteinG = composite.proteinG;
             actualFatG = composite.fatG;
             actualCarbsG = composite.carbsG;
-            actualServingG = result.foodComponents
-                .fold<double>(0, (s, c) => s + c.estimatedG);
+            actualServingG = result.foodComponents.fold<double>(
+              0,
+              (s, c) => s + c.estimatedG,
+            );
           }
 
           // 写 meal_log（复合菜不再静默丢弃）
@@ -215,8 +217,9 @@ class OfflineQueueController {
 
 /// Riverpod Provider：OfflineQueueController 单例
 /// App 启动时通过 ref.read(offlineQueueControllerProvider).start() 启动监听
-final offlineQueueControllerProvider =
-    FutureProvider<OfflineQueueController>((ref) async {
+final offlineQueueControllerProvider = FutureProvider<OfflineQueueController>((
+  ref,
+) async {
   final db = await ref.read(recognize.databaseProvider.future);
   final qwen = ref.read(recognize.qwenVlProviderProvider);
   final glm4v = ref.read(recognize.glm4vProviderProvider);

@@ -10,11 +10,11 @@ class GlmFlashProvider {
     required String apiKey,
     String baseUrl = 'https://open.bigmodel.cn/api/paas/v4',
   }) : _client = OpenAIClient(
-          config: OpenAIConfig(
-            authProvider: ApiKeyProvider(apiKey),
-            baseUrl: baseUrl,
-          ),
-        );
+         config: OpenAIConfig(
+           authProvider: ApiKeyProvider(apiKey),
+           baseUrl: baseUrl,
+         ),
+       );
 
   /// 根据一周饮食 + 体重数据生成 ≤300 字中文建议
   ///
@@ -51,7 +51,11 @@ class GlmFlashProvider {
     final weights = data['daily_weights'] as List;
     final target = data['target_calories'];
     final goal = data['goal'];
-    final goalLabel = goal == 'cut' ? '减脂' : goal == 'bulk' ? '增肌' : '维持';
+    final goalLabel = goal == 'cut'
+        ? '减脂'
+        : goal == 'bulk'
+        ? '增肌'
+        : '维持';
     return '本周目标：$goalLabel，每日热量目标 $target kcal。'
         '每日摄入热量：$calories kcal。'
         '每日体重：$weights kg。'
@@ -67,7 +71,9 @@ class GlmFlashProvider {
   ///   'target_calories': 2000,
   ///   'goal': 'cut',
   /// }
-  Future<String> generateMonthlySummary(Map<String, dynamic> monthlyData) async {
+  Future<String> generateMonthlySummary(
+    Map<String, dynamic> monthlyData,
+  ) async {
     final prompt = _buildMonthlyPrompt(monthlyData);
     final res = await _client.chat.completions.create(
       ChatCompletionCreateRequest(
@@ -91,7 +97,11 @@ class GlmFlashProvider {
     final weights = data['daily_weights'] as List;
     final target = data['target_calories'];
     final goal = data['goal'];
-    final goalLabel = goal == 'cut' ? '减脂' : goal == 'bulk' ? '增肌' : '维持';
+    final goalLabel = goal == 'cut'
+        ? '减脂'
+        : goal == 'bulk'
+        ? '增肌'
+        : '维持';
     return '本月目标：$goalLabel，每日热量目标 $target kcal。'
         '每日摄入热量：$calories kcal。'
         '每日体重：$weights kg。'

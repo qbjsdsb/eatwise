@@ -25,10 +25,7 @@ class NutritionCalculator {
   }
 
   /// TDEE = BMR × 活动系数
-  static double tdee({
-    required double bmr,
-    required double activityLevel,
-  }) {
+  static double tdee({required double bmr, required double activityLevel}) {
     return bmr * activityLevel;
   }
 

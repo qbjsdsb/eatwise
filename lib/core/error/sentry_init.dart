@@ -18,22 +18,23 @@ Future<Widget> initSentryAndRunApp({
   final dsn = config.sentryDsn;
 
   if (dsn.isEmpty || !config.sentryEnabled) {
-    debugPrint('Sentry 未启用：dsn 空=${dsn.isEmpty}, enabled=${config.sentryEnabled}');
+    debugPrint(
+      'Sentry 未启用：dsn 空=${dsn.isEmpty}, enabled=${config.sentryEnabled}',
+    );
     return app;
   }
 
-  await SentryFlutter.init(
-    (options) {
-      options.dsn = dsn;
-      options.beforeSend = scrubBeforeSend;
-      // 采样率：个人自用全采（1.0），无需抽样
-      options.tracesSampleRate = 1.0;
-      // Release 版本配合 --split-debug-info 解符号
-      options.release = const String.fromEnvironment('SENTRY_RELEASE',
-          defaultValue: 'eatwise@0.1.0');
-    },
-    appRunner: () {},
-  );
+  await SentryFlutter.init((options) {
+    options.dsn = dsn;
+    options.beforeSend = scrubBeforeSend;
+    // 采样率：个人自用全采（1.0），无需抽样
+    options.tracesSampleRate = 1.0;
+    // Release 版本配合 --split-debug-info 解符号
+    options.release = const String.fromEnvironment(
+      'SENTRY_RELEASE',
+      defaultValue: 'eatwise@0.1.0',
+    );
+  }, appRunner: () {});
 
   // SentryFlutter.init 已在内部 runApp，但为统一返回 widget，这里返回 app
   // 注意：调用方需用 SentryWidget 包裹 app

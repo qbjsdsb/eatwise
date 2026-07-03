@@ -49,7 +49,9 @@ class FoodSeedImporter {
   FoodSeedImporter(this._db);
 
   /// 解析 Sanotsu JSON 列表为 FoodItemsCompanion 列表（不入库）
-  static List<FoodItemsCompanion> parseJson(List<Map<String, dynamic>> jsonList) {
+  static List<FoodItemsCompanion> parseJson(
+    List<Map<String, dynamic>> jsonList,
+  ) {
     return jsonList.map(_parseItem).toList();
   }
 
@@ -74,9 +76,7 @@ class FoodSeedImporter {
   /// 去除别名括号后缀：[干酪]、(代表值)、(土豆,洋芋)、（代表值）
   /// Sprint 2 T0：扩展支持中文括号 （），原 Sprint 1 只支持 [] ()
   static String _cleanName(String name) {
-    return name
-        .replaceAll(RegExp(r'\s*[\[\(（][^\]\)）]*[\]\)）]\s*'), '')
-        .trim();
+    return name.replaceAll(RegExp(r'\s*[\[\(（][^\]\)）]*[\]\)）]\s*'), '').trim();
   }
 
   /// 字符串转 double；"—"/空串 → null
@@ -108,24 +108,30 @@ class FoodSeedImporter {
     var count = 0;
     for (final companion in companions) {
       // 查重：name + source
-      final existing = await (_db.foodItems.select()
-            ..where((f) => f.name.equals(companion.name.value) & f.source.equals('china_fct')))
-          .get();
+      final existing =
+          await (_db.foodItems.select()..where(
+                (f) =>
+                    f.name.equals(companion.name.value) &
+                    f.source.equals('china_fct'),
+              ))
+              .get();
 
       if (existing.isEmpty) {
         await _db.into(_db.foodItems).insert(companion);
         count++;
       } else {
         // 已存在，更新营养值
-        await (_db.foodItems.update()..where((f) => f.id.equals(existing.first.id))).write(
-          FoodItemsCompanion(
-            caloriesPer100g: companion.caloriesPer100g,
-            proteinPer100g: companion.proteinPer100g,
-            fatPer100g: companion.fatPer100g,
-            carbsPer100g: companion.carbsPer100g,
-            ediblePercent: Value(companion.ediblePercent.value),
-          ),
-        );
+        await (_db.foodItems.update()
+              ..where((f) => f.id.equals(existing.first.id)))
+            .write(
+              FoodItemsCompanion(
+                caloriesPer100g: companion.caloriesPer100g,
+                proteinPer100g: companion.proteinPer100g,
+                fatPer100g: companion.fatPer100g,
+                carbsPer100g: companion.carbsPer100g,
+                ediblePercent: Value(companion.ediblePercent.value),
+              ),
+            );
       }
     }
     return count;
@@ -134,11 +140,14 @@ class FoodSeedImporter {
   /// 补充别名（导入后人工补充的 20-30 组）
   Future<void> supplementAliases() async {
     for (final entry in _aliasMap.entries) {
-      final items = await (_db.foodItems.select()..where((f) => f.name.equals(entry.key))).get();
+      final items =
+          await (_db.foodItems.select()..where((f) => f.name.equals(entry.key)))
+              .get();
       for (final item in items) {
-        await (_db.foodItems.update()..where((f) => f.id.equals(item.id))).write(
-          FoodItemsCompanion(aliasesJson: Value(jsonEncode(entry.value))),
-        );
+        await (_db.foodItems.update()..where((f) => f.id.equals(item.id)))
+            .write(
+              FoodItemsCompanion(aliasesJson: Value(jsonEncode(entry.value))),
+            );
       }
     }
   }

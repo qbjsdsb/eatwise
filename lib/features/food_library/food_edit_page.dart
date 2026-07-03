@@ -21,20 +21,23 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
   late final TextEditingController _proteinCtrl;
   late final TextEditingController _fatCtrl;
   late final TextEditingController _carbsCtrl;
+  bool _busy = false;
 
   @override
   void initState() {
     super.initState();
     final f = widget.foodItem;
-    _servingCtrl =
-        TextEditingController(text: f.defaultServingG.toStringAsFixed(0));
-    _calCtrl =
-        TextEditingController(text: f.caloriesPer100g.toStringAsFixed(0));
-    _proteinCtrl =
-        TextEditingController(text: f.proteinPer100g.toStringAsFixed(1));
+    _servingCtrl = TextEditingController(
+      text: f.defaultServingG.toStringAsFixed(0),
+    );
+    _calCtrl = TextEditingController(
+      text: f.caloriesPer100g.toStringAsFixed(0),
+    );
+    _proteinCtrl = TextEditingController(
+      text: f.proteinPer100g.toStringAsFixed(1),
+    );
     _fatCtrl = TextEditingController(text: f.fatPer100g.toStringAsFixed(1));
-    _carbsCtrl =
-        TextEditingController(text: f.carbsPer100g.toStringAsFixed(1));
+    _carbsCtrl = TextEditingController(text: f.carbsPer100g.toStringAsFixed(1));
   }
 
   @override
@@ -70,93 +73,114 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
           ),
           const SizedBox(height: 16),
           TextField(
-              controller: _servingCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: '默认份量 (g)')),
+            controller: _servingCtrl,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: '默认份量 (g)'),
+          ),
           TextField(
-              controller: _calCtrl,
-              keyboardType: TextInputType.number,
-              enabled: editable,
-              decoration: const InputDecoration(labelText: '热量 /100g (kcal)')),
+            controller: _calCtrl,
+            keyboardType: TextInputType.number,
+            enabled: editable,
+            decoration: const InputDecoration(labelText: '热量 /100g (kcal)'),
+          ),
           TextField(
-              controller: _proteinCtrl,
-              keyboardType: TextInputType.number,
-              enabled: editable,
-              decoration: const InputDecoration(labelText: '蛋白质 /100g (g)')),
+            controller: _proteinCtrl,
+            keyboardType: TextInputType.number,
+            enabled: editable,
+            decoration: const InputDecoration(labelText: '蛋白质 /100g (g)'),
+          ),
           TextField(
-              controller: _fatCtrl,
-              keyboardType: TextInputType.number,
-              enabled: editable,
-              decoration: const InputDecoration(labelText: '脂肪 /100g (g)')),
+            controller: _fatCtrl,
+            keyboardType: TextInputType.number,
+            enabled: editable,
+            decoration: const InputDecoration(labelText: '脂肪 /100g (g)'),
+          ),
           TextField(
-              controller: _carbsCtrl,
-              keyboardType: TextInputType.number,
-              enabled: editable,
-              decoration: const InputDecoration(labelText: '碳水 /100g (g)')),
+            controller: _carbsCtrl,
+            keyboardType: TextInputType.number,
+            enabled: editable,
+            decoration: const InputDecoration(labelText: '碳水 /100g (g)'),
+          ),
           const SizedBox(height: 24),
           if (editable)
             FilledButton(
-                onPressed: _saveAll, child: const Text('保存全部修改')),
+              onPressed: _busy ? null : _saveAll,
+              child: const Text('保存全部修改'),
+            ),
           if (!editable)
             FilledButton(
-                onPressed: _saveServingOnly,
-                child: const Text('保存默认份量')),
+              onPressed: _busy ? null : _saveServingOnly,
+              child: const Text('保存默认份量'),
+            ),
         ],
       ),
     );
   }
 
   Future<void> _saveServingOnly() async {
-    final serving = double.tryParse(_servingCtrl.text);
-    if (serving == null || serving <= 0) {
-      _showError('请输入有效的份量');
-      return;
-    }
-    final db = await ref.read(recognize.databaseProvider.future);
-    final repo = FoodItemRepository(db);
-    await repo.updateDefaultServing(widget.foodItem.id, serving);
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已保存默认份量')));
-      Navigator.of(context).pop();
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final serving = double.tryParse(_servingCtrl.text);
+      if (serving == null || serving <= 0) {
+        _showError('请输入有效的份量');
+        return;
+      }
+      final db = await ref.read(recognize.databaseProvider.future);
+      final repo = FoodItemRepository(db);
+      await repo.updateDefaultServing(widget.foodItem.id, serving);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已保存默认份量')));
+        Navigator.of(context).pop();
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _saveAll() async {
-    final serving = double.tryParse(_servingCtrl.text);
-    final cal = double.tryParse(_calCtrl.text);
-    final protein = double.tryParse(_proteinCtrl.text);
-    final fat = double.tryParse(_fatCtrl.text);
-    final carbs = double.tryParse(_carbsCtrl.text);
-    if (serving == null || serving <= 0) {
-      _showError('请输入有效的份量');
-      return;
-    }
-    if (cal == null || protein == null || fat == null || carbs == null) {
-      _showError('热量/蛋白质/脂肪/碳水 必须为数字');
-      return;
-    }
-    final db = await ref.read(recognize.databaseProvider.future);
-    final repo = FoodItemRepository(db);
-    await repo.updateDefaultServing(widget.foodItem.id, serving);
-    await repo.updateNutrients(
-      id: widget.foodItem.id,
-      caloriesPer100g: cal,
-      proteinPer100g: protein,
-      fatPer100g: fat,
-      carbsPer100g: carbs,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已保存')));
-      Navigator.of(context).pop();
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final serving = double.tryParse(_servingCtrl.text);
+      final cal = double.tryParse(_calCtrl.text);
+      final protein = double.tryParse(_proteinCtrl.text);
+      final fat = double.tryParse(_fatCtrl.text);
+      final carbs = double.tryParse(_carbsCtrl.text);
+      if (serving == null || serving <= 0) {
+        _showError('请输入有效的份量');
+        return;
+      }
+      if (cal == null || protein == null || fat == null || carbs == null) {
+        _showError('热量/蛋白质/脂肪/碳水 必须为数字');
+        return;
+      }
+      final db = await ref.read(recognize.databaseProvider.future);
+      final repo = FoodItemRepository(db);
+      await repo.updateDefaultServing(widget.foodItem.id, serving);
+      await repo.updateNutrients(
+        id: widget.foodItem.id,
+        caloriesPer100g: cal,
+        proteinPer100g: protein,
+        fatPer100g: fat,
+        carbsPer100g: carbs,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已保存')));
+        Navigator.of(context).pop();
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   void _showError(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg)));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   String _sourceLabel(String source) {

@@ -47,7 +47,9 @@ class AutoBackup {
     if (files.length <= maxBackups) return;
 
     // 按修改时间降序排序，删除多余的
-    files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+    files.sort(
+      (a, b) => b.statSync().modified.compareTo(a.statSync().modified),
+    );
     for (var i = maxBackups; i < files.length; i++) {
       try {
         await files[i].delete();
@@ -68,7 +70,9 @@ class AutoBackup {
           .where((f) => f.path.endsWith('.json'))
           .toList();
       if (files.isEmpty) return null;
-      files.sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+      files.sort(
+        (a, b) => b.statSync().modified.compareTo(a.statSync().modified),
+      );
       return files.first.statSync().modified;
     } catch (_) {
       return null;

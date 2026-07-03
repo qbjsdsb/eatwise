@@ -9,10 +9,11 @@ class FoodItemRepository {
   /// 按 name 或 aliases 精确匹配（解决"西红柿/番茄"同物异名）
   Future<FoodItem?> findByNameOrAlias(String name) async {
     // 先精确匹配 name
-    final byName = await (_db.foodItems.select()
-          ..where((f) => f.name.equals(name))
-          ..limit(1))
-        .getSingleOrNull();
+    final byName =
+        await (_db.foodItems.select()
+              ..where((f) => f.name.equals(name))
+              ..limit(1))
+            .getSingleOrNull();
     if (byName != null) return byName;
 
     // 再遍历查 aliases_json（SQLite 无原生 JSON 查询，应用层过滤）
@@ -37,36 +38,43 @@ class FoodItemRepository {
     double? confidence,
     String? componentsJson,
   }) async {
-    final existing = await (_db.foodItems.select()
-          ..where((f) => f.name.equals(name) & f.source.equals('ai_recognized')))
-        .getSingleOrNull();
+    final existing =
+        await (_db.foodItems.select()..where(
+              (f) => f.name.equals(name) & f.source.equals('ai_recognized'),
+            ))
+            .getSingleOrNull();
 
     if (existing != null) {
-      await (_db.foodItems.update()..where((f) => f.id.equals(existing.id))).write(
-        FoodItemsCompanion(
-          caloriesPer100g: Value(caloriesPer100g),
-          proteinPer100g: Value(proteinPer100g),
-          fatPer100g: Value(fatPer100g),
-          carbsPer100g: Value(carbsPer100g),
-          confidence: Value(confidence),
-        ),
-      );
+      await (_db.foodItems.update()..where((f) => f.id.equals(existing.id)))
+          .write(
+            FoodItemsCompanion(
+              caloriesPer100g: Value(caloriesPer100g),
+              proteinPer100g: Value(proteinPer100g),
+              fatPer100g: Value(fatPer100g),
+              carbsPer100g: Value(carbsPer100g),
+              confidence: Value(confidence),
+            ),
+          );
       return existing.id;
     }
 
-    return _db.into(_db.foodItems).insert(FoodItemsCompanion.insert(
-          name: name,
-          defaultServingG: 100,
-          caloriesPer100g: caloriesPer100g,
-          proteinPer100g: proteinPer100g,
-          fatPer100g: fatPer100g,
-          carbsPer100g: carbsPer100g,
-          source: 'ai_recognized',
-          sourceVersion: 'ai',
-          confidence: Value(confidence),
-          componentsJson: Value(componentsJson),
-          createdAt: DateTime.now().millisecondsSinceEpoch,
-        ));
+    return _db
+        .into(_db.foodItems)
+        .insert(
+          FoodItemsCompanion.insert(
+            name: name,
+            defaultServingG: 100,
+            caloriesPer100g: caloriesPer100g,
+            proteinPer100g: proteinPer100g,
+            fatPer100g: fatPer100g,
+            carbsPer100g: carbsPer100g,
+            source: 'ai_recognized',
+            sourceVersion: 'ai',
+            confidence: Value(confidence),
+            componentsJson: Value(componentsJson),
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
   }
 
   /// 模糊搜索食物（名称 LIKE，MVP 够用，数据量 ≤3000 条）
@@ -93,12 +101,14 @@ class FoodItemRepository {
 
     // 查 meal_logs 引用次数（GROUP BY food_item_id）
     final refCounts = <int, int>{};
-    final countRows = await _db.customSelect(
-      'SELECT food_item_id, COUNT(id) AS cnt '
-      'FROM meal_logs '
-      'GROUP BY food_item_id',
-      readsFrom: {_db.mealLogs},
-    ).get();
+    final countRows = await _db
+        .customSelect(
+          'SELECT food_item_id, COUNT(id) AS cnt '
+          'FROM meal_logs '
+          'GROUP BY food_item_id',
+          readsFrom: {_db.mealLogs},
+        )
+        .get();
     for (final row in countRows) {
       refCounts[row.read<int>('food_item_id')] = row.read<int>('cnt');
     }
@@ -115,8 +125,9 @@ class FoodItemRepository {
 
   /// 更新默认份量
   Future<void> updateDefaultServing(int id, double servingG) async {
-    await (_db.foodItems.update()..where((f) => f.id.equals(id)))
-        .write(FoodItemsCompanion(defaultServingG: Value(servingG)));
+    await (_db.foodItems.update()..where((f) => f.id.equals(id))).write(
+      FoodItemsCompanion(defaultServingG: Value(servingG)),
+    );
   }
 
   /// 更新营养素（仅 ai_recognized / manual 来源允许，UI 层控制）
@@ -147,16 +158,20 @@ class FoodItemRepository {
     required double carbsPer100g,
     double defaultServingG = 100,
   }) async {
-    return _db.into(_db.foodItems).insert(FoodItemsCompanion.insert(
-          name: name,
-          defaultServingG: defaultServingG,
-          caloriesPer100g: caloriesPer100g,
-          proteinPer100g: proteinPer100g,
-          fatPer100g: fatPer100g,
-          carbsPer100g: carbsPer100g,
-          source: 'manual',
-          sourceVersion: 'manual',
-          createdAt: DateTime.now().millisecondsSinceEpoch,
-        ));
+    return _db
+        .into(_db.foodItems)
+        .insert(
+          FoodItemsCompanion.insert(
+            name: name,
+            defaultServingG: defaultServingG,
+            caloriesPer100g: caloriesPer100g,
+            proteinPer100g: proteinPer100g,
+            fatPer100g: fatPer100g,
+            carbsPer100g: carbsPer100g,
+            source: 'manual',
+            sourceVersion: 'manual',
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
   }
 }

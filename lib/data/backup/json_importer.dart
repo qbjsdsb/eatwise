@@ -10,18 +10,39 @@ class JsonImporter {
   JsonImporter(this._db);
 
   /// 从 JSON 字符串导入，返回各表条数统计 + 图片失效检测结果
-  Future<({int profiles, int foodItems, int mealLogs, int weightLogs, int insights, int feedbacks, ImageCheckResult imageCheckResult})>
-      importFromString(String jsonStr) async {
+  Future<
+    ({
+      int profiles,
+      int foodItems,
+      int mealLogs,
+      int weightLogs,
+      int insights,
+      int feedbacks,
+      ImageCheckResult imageCheckResult,
+    })
+  >
+  importFromString(String jsonStr) async {
     final data = jsonDecode(jsonStr) as Map<String, dynamic>;
     return importFromMap(data);
   }
 
-  Future<({int profiles, int foodItems, int mealLogs, int weightLogs, int insights, int feedbacks, ImageCheckResult imageCheckResult})>
-      importFromMap(Map<String, dynamic> data) async {
+  Future<
+    ({
+      int profiles,
+      int foodItems,
+      int mealLogs,
+      int weightLogs,
+      int insights,
+      int feedbacks,
+      ImageCheckResult imageCheckResult,
+    })
+  >
+  importFromMap(Map<String, dynamic> data) async {
     final schemaVersion = data['schemaVersion'] as int;
     if (schemaVersion != _db.schemaVersion) {
       throw ArgumentError(
-          'schemaVersion 不匹配：文件 $schemaVersion vs 当前 ${_db.schemaVersion}');
+        'schemaVersion 不匹配：文件 $schemaVersion vs 当前 ${_db.schemaVersion}',
+      );
     }
 
     final tables = data['tables'] as Map<String, dynamic>;
@@ -36,41 +57,52 @@ class JsonImporter {
       await _db.customStatement('DELETE FROM food_items;');
       await _db.customStatement('DELETE FROM profiles;');
 
-      var profiles = 0, foodItems = 0, mealLogs = 0, weightLogs = 0, insights = 0, feedbacks = 0;
+      var profiles = 0,
+          foodItems = 0,
+          mealLogs = 0,
+          weightLogs = 0,
+          insights = 0,
+          feedbacks = 0;
 
       // 1. profiles
       for (final p in (tables['profiles'] as List)) {
-        await _db.into(_db.profiles)
+        await _db
+            .into(_db.profiles)
             .insert(_profileFromJson(p as Map<String, dynamic>));
         profiles++;
       }
       // 2. food_items
       for (final f in (tables['food_items'] as List)) {
-        await _db.into(_db.foodItems)
+        await _db
+            .into(_db.foodItems)
             .insert(_foodItemFromJson(f as Map<String, dynamic>));
         foodItems++;
       }
       // 3. meal_logs（依赖 food_items）
       for (final m in (tables['meal_logs'] as List)) {
-        await _db.into(_db.mealLogs)
+        await _db
+            .into(_db.mealLogs)
             .insert(_mealLogFromJson(m as Map<String, dynamic>));
         mealLogs++;
       }
       // 4. weight_logs（独立）
       for (final w in (tables['weight_logs'] as List)) {
-        await _db.into(_db.weightLogs)
+        await _db
+            .into(_db.weightLogs)
             .insert(_weightLogFromJson(w as Map<String, dynamic>));
         weightLogs++;
       }
       // 5. insight_summaries（独立）
       for (final i in (tables['insight_summaries'] as List)) {
-        await _db.into(_db.insightSummaries)
+        await _db
+            .into(_db.insightSummaries)
             .insert(_insightFromJson(i as Map<String, dynamic>));
         insights++;
       }
       // 6. recognition_feedbacks（依赖 meal_logs）
       for (final f in (tables['recognition_feedbacks'] as List)) {
-        await _db.into(_db.recognitionFeedbacks)
+        await _db
+            .into(_db.recognitionFeedbacks)
             .insert(_feedbackFromJson(f as Map<String, dynamic>));
         feedbacks++;
       }
@@ -130,7 +162,9 @@ class JsonImporter {
     }
 
     return ImageCheckResult(
-        mealLogMissing: mealLogMissing, foodItemMissing: foodItemMissing);
+      mealLogMissing: mealLogMissing,
+      foodItemMissing: foodItemMissing,
+    );
   }
 
   ProfilesCompanion _profileFromJson(Map<String, dynamic> j) =>
@@ -223,6 +257,9 @@ class JsonImporter {
 class ImageCheckResult {
   final int mealLogMissing;
   final int foodItemMissing;
-  ImageCheckResult({required this.mealLogMissing, required this.foodItemMissing});
+  ImageCheckResult({
+    required this.mealLogMissing,
+    required this.foodItemMissing,
+  });
   int get totalMissing => mealLogMissing + foodItemMissing;
 }

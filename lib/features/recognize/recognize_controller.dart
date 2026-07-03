@@ -12,7 +12,16 @@ import '../../core/config/secure_config_store.dart';
 import 'circuit_breaker.dart';
 
 /// 拍照识别状态
-enum RecognizeState { idle, pickingImage, preprocessing, recognizing, lookupNutrition, done, error, queued }
+enum RecognizeState {
+  idle,
+  pickingImage,
+  preprocessing,
+  recognizing,
+  lookupNutrition,
+  done,
+  error,
+  queued,
+}
 
 class RecognizeUiState {
   final RecognizeState state;
@@ -64,8 +73,12 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   // 为 null 时走 Sprint 1 原逻辑（直接报错），向后兼容
   // T23：回调签名加第 4 个参数 promptVersion，透传真实版本
   final Future<void> Function(
-          String imagePath, String mealType, String date, String promptVersion)?
-      _onOfflineEnqueue;
+    String imagePath,
+    String mealType,
+    String date,
+    String promptVersion,
+  )?
+  _onOfflineEnqueue;
 
   // T36：L3 转手动录入回调（page 注入，非 retryable 错误时跳 ManualEntryPage）
   // 为 null 时仅置 error 状态，向后兼容
@@ -86,16 +99,20 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
     this._fallbackProvider,
     this._nutritionLookup, {
     Future<void> Function(
-            String imagePath, String mealType, String date, String promptVersion)?
-        onOfflineEnqueue,
+      String imagePath,
+      String mealType,
+      String date,
+      String promptVersion,
+    )?
+    onOfflineEnqueue,
     void Function()? onL3Fallback,
-    CircuitBreaker? circuitBreaker,  // T37：可选命名参数（与 T36 onL3Fallback 模式一致）
-    SecureConfigStore? secureConfigStore,  // T43：可选命名参数（月度计数）
-  })  : _onOfflineEnqueue = onOfflineEnqueue,
-        _onL3Fallback = onL3Fallback,
-        _circuitBreaker = circuitBreaker,
-        _secureConfigStore = secureConfigStore,
-        super(RecognizeUiState());
+    CircuitBreaker? circuitBreaker, // T37：可选命名参数（与 T36 onL3Fallback 模式一致）
+    SecureConfigStore? secureConfigStore, // T43：可选命名参数（月度计数）
+  }) : _onOfflineEnqueue = onOfflineEnqueue,
+       _onL3Fallback = onL3Fallback,
+       _circuitBreaker = circuitBreaker,
+       _secureConfigStore = secureConfigStore,
+       super(RecognizeUiState());
 
   /// 当前状态（供外部一次性读取，避免直接访问 StateNotifier 的 protected state）
   RecognizeUiState get current => state;
@@ -104,8 +121,8 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   DateTime? get lastRecognizeTimeForTest => _lastRecognizeTime;
 
   @visibleForTesting
-  Future<void> Function(String, String, String, String)? get onOfflineEnqueueForTest =>
-      _onOfflineEnqueue;
+  Future<void> Function(String, String, String, String)?
+  get onOfflineEnqueueForTest => _onOfflineEnqueue;
 
   @visibleForTesting
   void Function()? get onL3FallbackForTest => _onL3Fallback;
@@ -119,8 +136,10 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   /// 拍照入口
   /// Sprint 2 T0：新增 mealType 参数（breakfast/lunch/dinner/snack）
   /// Sprint 2 T14：网络异常时若有 onOfflineEnqueue 则入队，否则报错
-  Future<void> pickAndRecognize(ImageSource source,
-      {required String mealType}) async {
+  Future<void> pickAndRecognize(
+    ImageSource source, {
+    required String mealType,
+  }) async {
     // T23 限流：距上次识别不足 30s 则拒绝（防误触连点烧 token）
     final now = DateTime.now();
     if (_lastRecognizeTime != null &&
@@ -134,11 +153,18 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
     }
 
     state = state.copyWith(
-        state: RecognizeState.pickingImage, mealType: mealType, clearError: true);
+      state: RecognizeState.pickingImage,
+      mealType: mealType,
+      clearError: true,
+    );
     XFile? xFile;
     try {
       final picker = ImagePicker();
-      xFile = await picker.pickImage(source: source, maxWidth: 1024, maxHeight: 1024);
+      xFile = await picker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+      );
       if (xFile == null) {
         state = state.copyWith(state: RecognizeState.idle);
         return;
@@ -155,7 +181,10 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         // autoCorrectionAngle 默认 true，方向校正
       );
       if (compressedBytes == null) {
-        state = state.copyWith(state: RecognizeState.error, errorMessage: '图片压缩失败');
+        state = state.copyWith(
+          state: RecognizeState.error,
+          errorMessage: '图片压缩失败',
+        );
         return;
       }
 
@@ -174,9 +203,15 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         // xFile 经上文 if (xFile == null) return 已保证非空，无需重复判空
         if (_onOfflineEnqueue != null) {
           final now = DateTime.now();
-          final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+          final today =
+              '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
           try {
-            await _onOfflineEnqueue(xFile.path, mealType, today, Prompts.version);
+            await _onOfflineEnqueue(
+              xFile.path,
+              mealType,
+              today,
+              Prompts.version,
+            );
             state = state.copyWith(
               state: RecognizeState.queued,
               errorMessage: '识别服务暂时不可用，已加入队列，稍后自动重试',
@@ -250,7 +285,10 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
           final now = DateTime.now();
           await _secureConfigStore.incrementMonthlyCount(now.year, now.month);
         }
-        state = state.copyWith(state: RecognizeState.done, singleNutrition: nutrition);
+        state = state.copyWith(
+          state: RecognizeState.done,
+          singleNutrition: nutrition,
+        );
       } else {
         final nutrition = await _nutritionLookup.lookupCompositeDish(
           components: result.foodComponents,
@@ -261,7 +299,10 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
           final now = DateTime.now();
           await _secureConfigStore.incrementMonthlyCount(now.year, now.month);
         }
-        state = state.copyWith(state: RecognizeState.done, compositeNutrition: nutrition);
+        state = state.copyWith(
+          state: RecognizeState.done,
+          compositeNutrition: nutrition,
+        );
       }
     } catch (e) {
       // T37 断路器：retryable 失败记录（连续 3 次 → open）
@@ -300,7 +341,10 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
           return;
         }
       }
-      state = state.copyWith(state: RecognizeState.error, errorMessage: e.toString());
+      state = state.copyWith(
+        state: RecognizeState.error,
+        errorMessage: e.toString(),
+      );
     }
   }
 
@@ -324,4 +368,3 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
     }
   }
 }
-

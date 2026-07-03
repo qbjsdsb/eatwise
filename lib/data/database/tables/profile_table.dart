@@ -16,7 +16,8 @@ class Profiles extends Table {
   RealColumn get proteinGPerKg => real()();
   RealColumn get fatGPerKg => real()();
   RealColumn get carbGPerKg => real().nullable()();
-  IntColumn get tdeeAdjustmentKcal => integer().withDefault(const Constant(0))();
+  IntColumn get tdeeAdjustmentKcal =>
+      integer().withDefault(const Constant(0))();
   IntColumn get updatedAt => integer()(); // UTC 毫秒
 
   @override

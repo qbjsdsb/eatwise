@@ -26,7 +26,9 @@ Future<String> _getOrCreatePassphrase() async {
   // Random.secure() 底层调用 OS 级 CSPRNG（iOS: SecRandomCopyBytes / Android: SecureRandom）
   final random = Random.secure();
   final keyBytes = List<int>.generate(32, (_) => random.nextInt(256));
-  final passphrase = keyBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  final passphrase = keyBytes
+      .map((b) => b.toRadixString(16).padLeft(2, '0'))
+      .join();
   await storage.write(key: _keyStorageKey, value: passphrase);
   return passphrase;
 }

@@ -57,9 +57,26 @@ SentryEvent? scrubBeforeSend(SentryEvent event, Hint hint) {
 bool _isSensitiveKey(String key) {
   final lower = key.toLowerCase();
   const sensitive = [
-    'food', 'dish', 'serving', 'weight', 'calorie', 'kcal', 'protein', 'fat', 'carb',
-    'api_key', 'apikey', 'key', 'token', 'secret', 'password', 'dsn',
-    'image_path', 'imagepath', 'thumbnail', 'original_image',
+    'food',
+    'dish',
+    'serving',
+    'weight',
+    'calorie',
+    'kcal',
+    'protein',
+    'fat',
+    'carb',
+    'api_key',
+    'apikey',
+    'key',
+    'token',
+    'secret',
+    'password',
+    'dsn',
+    'image_path',
+    'imagepath',
+    'thumbnail',
+    'original_image',
   ];
   return sensitive.any((s) => lower.contains(s));
 }
@@ -70,7 +87,10 @@ String? _scrubString(String? input) {
   // 文件路径（含 /data/ 或 .jpg/.png/.jpeg）
   // 注意：计划原文用 raw 字符串 r'...\'..' 无法转义单引号（Dart raw 串不支持 \），
   // 改用普通字符串 + 转义，正则语义完全一致：/[^\s"'<>]+\.(jpg|jpeg|png|webp)/
-  var result = input.replaceAll(RegExp('/[^\\s"\'<>]+\\.(jpg|jpeg|png|webp)'), '[path]');
+  var result = input.replaceAll(
+    RegExp('/[^\\s"\'<>]+\\.(jpg|jpeg|png|webp)'),
+    '[path]',
+  );
   // 32+ 位 hex/key 模式
   result = result.replaceAll(RegExp(r'[a-f0-9]{32,}'), '[redacted]');
   // sk- 开头的 API key

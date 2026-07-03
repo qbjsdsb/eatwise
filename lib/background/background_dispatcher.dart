@@ -37,7 +37,8 @@ void callbackDispatcher() {
           break;
         case BackgroundTasks.imageCleanup:
           // T48：用配置的保留期（0=永久保留，跳过清理）
-          final retentionDays = await SecureConfigStore().getImageRetentionDays();
+          final retentionDays = await SecureConfigStore()
+              .getImageRetentionDays();
           if (retentionDays > 0) {
             await ImageCleanup.run(db, retentionDays: retentionDays);
           }

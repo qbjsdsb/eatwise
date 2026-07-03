@@ -65,7 +65,7 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       'breakfast': '早餐',
       'lunch': '午餐',
       'dinner': '晚餐',
-      'snack': '加餐'
+      'snack': '加餐',
     };
 
     return Scaffold(
@@ -85,18 +85,20 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   }
 
   Widget _buildSectionHeader(String label) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-        child: Text(label, style: Theme.of(context).textTheme.titleMedium),
-      );
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+    child: Text(label, style: Theme.of(context).textTheme.titleMedium),
+  );
 
   Widget _buildMealTile(MealLog m) {
+    final cs = Theme.of(context).colorScheme;
     return Dismissible(
       key: ValueKey(m.id),
       direction: DismissDirection.endToStart,
       background: Container(
-          color: Colors.red,
-          alignment: Alignment.centerRight,
-          child: const Icon(Icons.delete, color: Colors.white)),
+        color: cs.error,
+        alignment: Alignment.centerRight,
+        child: Icon(Icons.delete, color: cs.onError),
+      ),
       onDismissed: (_) async {
         try {
           final repo = await ref.read(recognize.mealLogRepoProvider.future);
@@ -107,27 +109,32 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
           if (!mounted) return;
           await _load();
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('删除失败：$e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('删除失败：$e')));
         }
       },
       child: ListTile(
         leading: m.originalImagePath != null
-            ? Image.file(File(m.originalImagePath!),
+            ? Image.file(
+                File(m.originalImagePath!),
                 width: 48,
                 height: 48,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(
-                    Icons.broken_image_outlined,
-                    color: Colors.grey))
-            : const Icon(Icons.restaurant_outlined, color: Colors.grey),
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.broken_image_outlined,
+                  color: cs.onSurfaceVariant,
+                ),
+              )
+            : Icon(Icons.restaurant_outlined, color: cs.onSurfaceVariant),
         title: Text(_foodNames[m.foodItemId] ?? '食物 #${m.foodItemId}'),
         subtitle: Text(
-            '${m.actualServingG.toStringAsFixed(0)}g · ${m.actualCalories.toStringAsFixed(0)} kcal'),
+          '${m.actualServingG.toStringAsFixed(0)}g · ${m.actualCalories.toStringAsFixed(0)} kcal',
+        ),
         trailing: m.recognitionConfidence != null
             ? IconButton(
                 icon: const Icon(Icons.feedback_outlined),
+                tooltip: '识别反馈',
                 onPressed: () => _showFeedbackDialog(m),
               )
             : null,
@@ -137,8 +144,9 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   }
 
   Future<void> _showEditDialog(MealLog m) async {
-    final servingCtrl =
-        TextEditingController(text: m.actualServingG.toStringAsFixed(0));
+    final servingCtrl = TextEditingController(
+      text: m.actualServingG.toStringAsFixed(0),
+    );
     double? result;
     try {
       result = await showDialog<double>(
@@ -146,17 +154,20 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         builder: (_) => AlertDialog(
           title: const Text('编辑份量'),
           content: TextField(
-              controller: servingCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: '份量 (g)')),
+            controller: servingCtrl,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: '份量 (g)'),
+          ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('取消')),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('取消'),
+            ),
             TextButton(
               onPressed: () =>
                   Navigator.pop(context, double.tryParse(servingCtrl.text)),
-              child: const Text('保存')),
+              child: const Text('保存'),
+            ),
           ],
         ),
       );
@@ -184,8 +195,9 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     final feedbackRepo = RecognitionFeedbackRepository(db);
     if (await feedbackRepo.hasFeedback(m.id)) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已反馈过')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已反馈过')));
       }
       return;
     }
@@ -196,11 +208,13 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         title: const Text('识别准不准？'),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('准')),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('准'),
+          ),
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('不准')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('不准'),
+          ),
         ],
       ),
     );
@@ -215,7 +229,9 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         context: context,
         builder: (ctx) {
           // 【第2轮修正】：MealLog 无 foodItemName 字段（today_meals_page.dart:125 用 _foodNames map 反查）
-          final nameCtrl = TextEditingController(text: _foodNames[m.foodItemId] ?? '');
+          final nameCtrl = TextEditingController(
+            text: _foodNames[m.foodItemId] ?? '',
+          );
           final servingCtrl = TextEditingController();
           return AlertDialog(
             title: const Text('请输入正确信息'),
@@ -224,23 +240,37 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
               children: [
                 TextField(
                   controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: '正确菜名', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(
+                    labelText: '正确菜名',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: servingCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: '正确份量(g)', border: OutlineInputBorder()),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: const InputDecoration(
+                    labelText: '正确份量(g)',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
               ],
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('跳过')),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('跳过'),
+              ),
               FilledButton(
-                onPressed: () => Navigator.pop(ctx, _CorrectionResult(
-                  nameCtrl.text.trim().isEmpty ? null : nameCtrl.text.trim(),
-                  double.tryParse(servingCtrl.text.trim()),
-                )),
+                onPressed: () => Navigator.pop(
+                  ctx,
+                  _CorrectionResult(
+                    nameCtrl.text.trim().isEmpty ? null : nameCtrl.text.trim(),
+                    double.tryParse(servingCtrl.text.trim()),
+                  ),
+                ),
                 child: const Text('提交'),
               ),
             ],
@@ -261,8 +291,9 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     if (m.originalImagePath != null) {
       final pendingRepo = PendingRecognitionRepository(db);
       final pendingList = await pendingRepo.listAll();
-      final match =
-          pendingList.where((p) => p.imagePath == m.originalImagePath).toList();
+      final match = pendingList
+          .where((p) => p.imagePath == m.originalImagePath)
+          .toList();
       if (match.isNotEmpty && match.first.promptVersion != null) {
         promptVersion = match.first.promptVersion!;
       }
@@ -276,8 +307,9 @@ class _TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       promptVersion: promptVersion,
     );
     if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已记录反馈')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已记录反馈')));
     }
   }
 }

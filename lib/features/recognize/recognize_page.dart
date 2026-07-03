@@ -52,9 +52,9 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       onL3Fallback: () {
         // T36：非 retryable 错误（malformed/401/403）→ 跳手动录入页
         if (!mounted) return;
-        Navigator.of(context).push(MaterialPageRoute(
-          builder: (_) => const ManualEntryPage(),
-        ));
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const ManualEntryPage()));
       },
       circuitBreaker: breaker, // T37：断路器（open 时不调 API 直接入队）
       secureConfigStore: store, // T43：识别成功月度计数
@@ -122,71 +122,86 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       }
       final foodItemRepo = await ref.read(foodItemRepoProvider.future);
       if (!mounted) return;
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => CalibrationPage(
-          recognitionResult: state.recognitionResult!,
-          singleNutrition: state.singleNutrition,
-          compositeNutrition: state.compositeNutrition,
-          foodItemRepo: foodItemRepo,
-          onConfirm: (servingG, calories, protein, fat, carbs, {componentsSnapshot}) async {
-            final mealRepo = await ref.read(mealLogRepoProvider.future);
-            final foodRepo = await ref.read(foodItemRepoProvider.future);
-            final result = state.recognitionResult!;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => CalibrationPage(
+            recognitionResult: state.recognitionResult!,
+            singleNutrition: state.singleNutrition,
+            compositeNutrition: state.compositeNutrition,
+            foodItemRepo: foodItemRepo,
+            onConfirm:
+                (
+                  servingG,
+                  calories,
+                  protein,
+                  fat,
+                  carbs, {
+                  componentsSnapshot,
+                }) async {
+                  final mealRepo = await ref.read(mealLogRepoProvider.future);
+                  final foodRepo = await ref.read(foodItemRepoProvider.future);
+                  final result = state.recognitionResult!;
 
-            // 获取 foodItemId：单品用查库命中，复合菜创建 ai_recognized 记录
-            // 必须有有效 food_item_id（meal_log.food_item_id 是非空 FK，
-            // Task 2 已启用 PRAGMA foreign_keys = ON，id=0 会触发外键约束违规）
-            int foodItemId;
-            if (state.singleNutrition != null) {
-              foodItemId = state.singleNutrition!.foodItemId;
-            } else if (state.compositeNutrition != null) {
-              // 复合菜：存入 food_item（source=ai_recognized，components_json 存组分快照）
-              foodItemId = await foodRepo.upsertAiRecognized(
-                name: result.dishName,
-                caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储，实际值在 meal_log
-                proteinPer100g: 0,
-                fatPer100g: 0,
-                carbsPer100g: 0,
-                confidence: result.confidence,
-                componentsJson: componentsSnapshot,
-              );
-            } else {
-              // 无营养数据（查库未命中），不记录
-              return;
-            }
+                  // 获取 foodItemId：单品用查库命中，复合菜创建 ai_recognized 记录
+                  // 必须有有效 food_item_id（meal_log.food_item_id 是非空 FK，
+                  // Task 2 已启用 PRAGMA foreign_keys = ON，id=0 会触发外键约束违规）
+                  int foodItemId;
+                  if (state.singleNutrition != null) {
+                    foodItemId = state.singleNutrition!.foodItemId;
+                  } else if (state.compositeNutrition != null) {
+                    // 复合菜：存入 food_item（source=ai_recognized，components_json 存组分快照）
+                    foodItemId = await foodRepo.upsertAiRecognized(
+                      name: result.dishName,
+                      caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储，实际值在 meal_log
+                      proteinPer100g: 0,
+                      fatPer100g: 0,
+                      carbsPer100g: 0,
+                      confidence: result.confidence,
+                      componentsJson: componentsSnapshot,
+                    );
+                  } else {
+                    // 无营养数据（查库未命中），不记录
+                    return;
+                  }
 
-            await mealRepo.insertMealLog(
-              date: _todayLocalDate(),
-              mealType: state.mealType, // Sprint 2 T0：从 controller state 读餐次
-              foodItemId: foodItemId,
-              actualServingG: servingG,
-              actualCalories: calories,
-              actualProteinG: protein,
-              actualFatG: fat,
-              actualCarbsG: carbs,
-              originalImagePath: state.imagePath,
-              recognitionConfidence: result.confidence,
-              componentsSnapshotJson: componentsSnapshot,
-            );
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('已记录：${calories.toStringAsFixed(0)} kcal')),
-              );
-            }
-          },
+                  await mealRepo.insertMealLog(
+                    date: _todayLocalDate(),
+                    mealType:
+                        state.mealType, // Sprint 2 T0：从 controller state 读餐次
+                    foodItemId: foodItemId,
+                    actualServingG: servingG,
+                    actualCalories: calories,
+                    actualProteinG: protein,
+                    actualFatG: fat,
+                    actualCarbsG: carbs,
+                    originalImagePath: state.imagePath,
+                    recognitionConfidence: result.confidence,
+                    componentsSnapshotJson: componentsSnapshot,
+                  );
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          '已记录：${calories.toStringAsFixed(0)} kcal',
+                        ),
+                      ),
+                    );
+                  }
+                },
+          ),
         ),
-      ));
+      );
     } else if (state.state == RecognizeState.error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('识别失败：${state.errorMessage}')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('识别失败：${state.errorMessage}')));
     } else if (state.state == RecognizeState.queued) {
       // Sprint 2 T14：离线已入队提示
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(state.errorMessage ?? '已加入离线队列')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(state.errorMessage ?? '已加入离线队列')));
     }
   }
 
@@ -200,8 +215,10 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('未找到营养数据'),
-        content: Text('识别菜名「${result.dishName}」在食物库中未命中。'
-            '可修改菜名重试，或转手动录入。'),
+        content: Text(
+          '识别菜名「${result.dishName}」在食物库中未命中。'
+          '可修改菜名重试，或转手动录入。',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, _NotFoundAction.cancel),
@@ -222,9 +239,11 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     if (!mounted) return;
 
     if (action == _NotFoundAction.manual) {
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ManualEntryPage(initialName: result.dishName),
-      ));
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ManualEntryPage(initialName: result.dishName),
+        ),
+      );
       return;
     }
 
@@ -241,9 +260,9 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     if (nutrition == null) {
       // 仍未命中 → 再次弹窗引导（递归，透传 mealType/imagePath）
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('修改后的菜名仍未命中，请转手动录入')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('修改后的菜名仍未命中，请转手动录入')));
       await _showNotFoundDialog(
         result,
         mealType: mealType,
@@ -255,32 +274,44 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     if (!mounted) return;
     final foodItemRepo = await ref.read(foodItemRepoProvider.future);
     if (!mounted) return;
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => CalibrationPage(
-        recognitionResult: result,
-        singleNutrition: nutrition,
-        foodItemRepo: foodItemRepo,
-        onConfirm: (servingG, calories, protein, fat, carbs, {componentsSnapshot}) async {
-          final mealRepo = await ref.read(mealLogRepoProvider.future);
-          await mealRepo.insertMealLog(
-            date: _todayLocalDate(),
-            mealType: mealType,
-            foodItemId: nutrition.foodItemId,
-            actualServingG: servingG,
-            actualCalories: calories,
-            actualProteinG: protein,
-            actualFatG: fat,
-            actualCarbsG: carbs,
-            originalImagePath: imagePath,
-          );
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('已记录：${calories.toStringAsFixed(0)} kcal')),
-            );
-          }
-        },
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CalibrationPage(
+          recognitionResult: result,
+          singleNutrition: nutrition,
+          foodItemRepo: foodItemRepo,
+          onConfirm:
+              (
+                servingG,
+                calories,
+                protein,
+                fat,
+                carbs, {
+                componentsSnapshot,
+              }) async {
+                final mealRepo = await ref.read(mealLogRepoProvider.future);
+                await mealRepo.insertMealLog(
+                  date: _todayLocalDate(),
+                  mealType: mealType,
+                  foodItemId: nutrition.foodItemId,
+                  actualServingG: servingG,
+                  actualCalories: calories,
+                  actualProteinG: protein,
+                  actualFatG: fat,
+                  actualCarbsG: carbs,
+                  originalImagePath: imagePath,
+                );
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('已记录：${calories.toStringAsFixed(0)} kcal'),
+                    ),
+                  );
+                }
+              },
+        ),
       ),
-    ));
+    );
   }
 
   Future<String?> _promptNewDishName(String original) async {
@@ -297,7 +328,9 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
               child: const Text('重试'),

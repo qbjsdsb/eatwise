@@ -36,8 +36,9 @@ class ProfileRepository {
       bodyFatPct: bodyFatPct != null ? Value(bodyFatPct) : const Value.absent(),
       age: age != null ? Value(age) : const Value.absent(),
       gender: gender != null ? Value(gender) : const Value.absent(),
-      activityLevel:
-          activityLevel != null ? Value(activityLevel) : const Value.absent(),
+      activityLevel: activityLevel != null
+          ? Value(activityLevel)
+          : const Value.absent(),
       goal: goal != null ? Value(goal) : const Value.absent(),
       goalRateKgPerWeek: goalRateKgPerWeek != null
           ? Value(goalRateKgPerWeek)
@@ -46,16 +47,18 @@ class ProfileRepository {
       dailyCalorieTarget: dailyCalorieTarget != null
           ? Value(dailyCalorieTarget)
           : const Value.absent(),
-      proteinGPerKg:
-          proteinGPerKg != null ? Value(proteinGPerKg) : const Value.absent(),
+      proteinGPerKg: proteinGPerKg != null
+          ? Value(proteinGPerKg)
+          : const Value.absent(),
       fatGPerKg: fatGPerKg != null ? Value(fatGPerKg) : const Value.absent(),
-      carbGPerKg:
-          carbGPerKg != null ? Value(carbGPerKg) : const Value.absent(),
+      carbGPerKg: carbGPerKg != null ? Value(carbGPerKg) : const Value.absent(),
       tdeeAdjustmentKcal: tdeeAdjustmentKcal != null
           ? Value(tdeeAdjustmentKcal)
           : const Value.absent(),
       updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
     );
-    await (_db.profiles.update()..where((p) => p.id.equals(1))).write(companion);
+    await (_db.profiles.update()..where((p) => p.id.equals(1))).write(
+      companion,
+    );
   }
 }

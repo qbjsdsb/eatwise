@@ -5,7 +5,8 @@ class VisionRecognitionResult {
   final double estimatedWeightGMid;
   final double estimatedWeightGHigh;
   final List<FoodComponent> foodComponents;
-  final String cookingMethod; // steam/boil/cold/toss/roast/stir-fry/pan-fry/deep-fry/braise
+  final String
+  cookingMethod; // steam/boil/cold/toss/roast/stir-fry/pan-fry/deep-fry/braise
   final bool isSingleItem;
   final double confidence;
   final String promptVersion;
@@ -22,7 +23,10 @@ class VisionRecognitionResult {
     required this.promptVersion,
   });
 
-  factory VisionRecognitionResult.fromJson(Map<String, dynamic> json, String promptVersion) {
+  factory VisionRecognitionResult.fromJson(
+    Map<String, dynamic> json,
+    String promptVersion,
+  ) {
     final mid = (json['estimated_weight_g_mid'] as num).toDouble();
     // Low/High 缺失时回退 Mid（设计 5.6，避免区间显示异常）
     final low = json['estimated_weight_g_low'] != null
@@ -74,7 +78,8 @@ abstract class VisionProvider {
 /// 识别异常
 class VisionRecognitionException implements Exception {
   final String reason;
-  final bool retryable; // malformed=false(带错误信息重发), timeout=true, rate_limit=true
+  final bool
+  retryable; // malformed=false(带错误信息重发), timeout=true, rate_limit=true
   final Duration? retryAfter; // 429 的 Retry-After 等待时长
   final bool isRefusal; // T39 内容安全过滤标记
 

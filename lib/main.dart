@@ -37,8 +37,9 @@ void main() async {
 
   // 启动离线队列监听（Sprint 2 T14）
   try {
-    final offlineQueue =
-        await container.read(offlineQueueControllerProvider.future);
+    final offlineQueue = await container.read(
+      offlineQueueControllerProvider.future,
+    );
     await offlineQueue.start();
   } catch (e) {
     debugPrint('OfflineQueueController.start 失败：$e');

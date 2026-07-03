@@ -53,8 +53,11 @@ class TdeeCalibrator {
     // 用首尾差值 / 周数（简单线性，足够 MVP）
     final first = filtered.first;
     final last = filtered.last;
-    final daysDiff = DateTime.parse(last.date).difference(DateTime.parse(first.date)).inDays;
-    if (daysDiff < minWeeks * 7 - 1) { // 至少接近 4 周
+    final daysDiff = DateTime.parse(
+      last.date,
+    ).difference(DateTime.parse(first.date)).inDays;
+    if (daysDiff < minWeeks * 7 - 1) {
+      // 至少接近 4 周
       return TdeeCalibrationResult(
         adjustmentKcal: 0,
         reason: '观察窗口不足 $minWeeks 周（当前 ${daysDiff ~/ 7} 周）',
@@ -78,11 +81,14 @@ class TdeeCalibrator {
     // 1 kg 体重 ≈ 7700 kcal，周偏差 × 7700 / 7 = 日热量调整
     final rawAdjustment = -deviation * 7700 / 7;
     // 限制单次 ±100 kcal
-    final adjustment = rawAdjustment.clamp(-maxAdjustmentKcal.toDouble(), maxAdjustmentKcal.toDouble()).toInt();
+    final adjustment = rawAdjustment
+        .clamp(-maxAdjustmentKcal.toDouble(), maxAdjustmentKcal.toDouble())
+        .toInt();
 
     return TdeeCalibrationResult(
       adjustmentKcal: adjustment,
-      reason: '实际速率 ${actualRateKgPerWeek.toStringAsFixed(2)} kg/周 vs 目标 ${goalRateKgPerWeek.toStringAsFixed(2)} kg/周，'
+      reason:
+          '实际速率 ${actualRateKgPerWeek.toStringAsFixed(2)} kg/周 vs 目标 ${goalRateKgPerWeek.toStringAsFixed(2)} kg/周，'
           '建议微调 ${adjustment > 0 ? "+" : ""}$adjustment kcal/天',
     );
   }
@@ -114,13 +120,12 @@ class TdeeCalibrator {
       final newAdjustment = profile.tdeeAdjustmentKcal + result.adjustmentKcal;
 
       // 重算 dailyCalorieTarget（含新 adjustment），让校准值立即生效
-      final genderEnum =
-          profile.gender == 'male' ? Gender.male : Gender.female;
+      final genderEnum = profile.gender == 'male' ? Gender.male : Gender.female;
       final goalEnum = profile.goal == 'cut'
           ? Goal.cut
           : profile.goal == 'bulk'
-              ? Goal.bulk
-              : Goal.maintain;
+          ? Goal.bulk
+          : Goal.maintain;
       final bmr = NutritionCalculator.bmrMifflin(
         weightKg: profile.weightKg,
         heightCm: profile.heightCm,
@@ -128,7 +133,9 @@ class TdeeCalibrator {
         gender: genderEnum,
       );
       final tdee = NutritionCalculator.tdee(
-          bmr: bmr, activityLevel: profile.activityLevel);
+        bmr: bmr,
+        activityLevel: profile.activityLevel,
+      );
       final newTarget = NutritionCalculator.dailyCalorieTarget(
         tdee: tdee,
         goal: goalEnum,

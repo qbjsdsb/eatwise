@@ -9,7 +9,8 @@ class PendingRecognitions extends Table {
   TextColumn get date => text()(); // 'YYYY-MM-DD' 本地时区自然日
   TextColumn get status => text()(); // pending/done/failed
   IntColumn get retryCount => integer().withDefault(const Constant(0))();
-  IntColumn get resultFoodItemId => integer().nullable().references(FoodItems, #id)();
+  IntColumn get resultFoodItemId =>
+      integer().nullable().references(FoodItems, #id)();
   TextColumn get errorMessage => text().nullable()();
   TextColumn get promptVersion => text().nullable()();
   IntColumn get createdAt => integer()(); // UTC 毫秒

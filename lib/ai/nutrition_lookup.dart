@@ -67,15 +67,17 @@ class NutritionLookup {
       totalProtein += food.proteinPer100g * g / 100;
       totalFat += food.fatPer100g * g / 100;
       totalCarbs += food.carbsPer100g * g / 100;
-      hits.add(ComponentHit(
-        name: comp.name,
-        foodItemId: food.id,
-        estimatedG: g,
-        caloriesPer100g: food.caloriesPer100g,
-        proteinPer100g: food.proteinPer100g,
-        fatPer100g: food.fatPer100g,
-        carbsPer100g: food.carbsPer100g,
-      ));
+      hits.add(
+        ComponentHit(
+          name: comp.name,
+          foodItemId: food.id,
+          estimatedG: g,
+          caloriesPer100g: food.caloriesPer100g,
+          proteinPer100g: food.proteinPer100g,
+          fatPer100g: food.fatPer100g,
+          carbsPer100g: food.carbsPer100g,
+        ),
+      );
     }
 
     // 加烹饪用油
@@ -104,9 +106,18 @@ class NutritionLookup {
     required double servingGMid,
     required double servingGHigh,
   }) async {
-    final low = await lookupSingleItem(dishName: dishName, servingG: servingGLow);
-    final mid = await lookupSingleItem(dishName: dishName, servingG: servingGMid);
-    final high = await lookupSingleItem(dishName: dishName, servingG: servingGHigh);
+    final low = await lookupSingleItem(
+      dishName: dishName,
+      servingG: servingGLow,
+    );
+    final mid = await lookupSingleItem(
+      dishName: dishName,
+      servingG: servingGMid,
+    );
+    final high = await lookupSingleItem(
+      dishName: dishName,
+      servingG: servingGHigh,
+    );
     if (low == null || mid == null || high == null) return null;
     return NutritionRange(low: low, mid: mid, high: high);
   }
@@ -117,12 +128,25 @@ class NutritionLookup {
     required List<FoodComponent> components,
     required String cookingMethod,
   }) async {
-    final mid = await lookupCompositeDish(components: components, cookingMethod: cookingMethod);
+    final mid = await lookupCompositeDish(
+      components: components,
+      cookingMethod: cookingMethod,
+    );
     // Low/High 按份量 ±10% 缩放（组分份量按比例）
-    final lowComponents = components.map((c) => FoodComponent(name: c.name, estimatedG: c.estimatedG * 0.9)).toList();
-    final highComponents = components.map((c) => FoodComponent(name: c.name, estimatedG: c.estimatedG * 1.1)).toList();
-    final low = await lookupCompositeDish(components: lowComponents, cookingMethod: cookingMethod);
-    final high = await lookupCompositeDish(components: highComponents, cookingMethod: cookingMethod);
+    final lowComponents = components
+        .map((c) => FoodComponent(name: c.name, estimatedG: c.estimatedG * 0.9))
+        .toList();
+    final highComponents = components
+        .map((c) => FoodComponent(name: c.name, estimatedG: c.estimatedG * 1.1))
+        .toList();
+    final low = await lookupCompositeDish(
+      components: lowComponents,
+      cookingMethod: cookingMethod,
+    );
+    final high = await lookupCompositeDish(
+      components: highComponents,
+      cookingMethod: cookingMethod,
+    );
     return CompositeNutritionRange(low: low, mid: mid, high: high);
   }
 }
@@ -151,7 +175,11 @@ class NutritionRange {
   final NutritionResult mid;
   final NutritionResult high;
 
-  const NutritionRange({required this.low, required this.mid, required this.high});
+  const NutritionRange({
+    required this.low,
+    required this.mid,
+    required this.high,
+  });
 }
 
 /// 复合菜营养素区间
@@ -160,7 +188,11 @@ class CompositeNutritionRange {
   final CompositeNutritionResult mid;
   final CompositeNutritionResult high;
 
-  const CompositeNutritionRange({required this.low, required this.mid, required this.high});
+  const CompositeNutritionRange({
+    required this.low,
+    required this.mid,
+    required this.high,
+  });
 }
 
 class CompositeNutritionResult {

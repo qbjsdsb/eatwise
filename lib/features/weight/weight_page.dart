@@ -22,6 +22,7 @@ class _WeightPageState extends ConsumerState<WeightPage> {
   List<MealLog> _meals = []; // 30 天 meal_log（双轴图热量用）
   Map<String, double> _dailyCalories = {}; // 日期 → 当日总热量
   bool _loading = true;
+  bool _busy = false;
 
   @override
   void initState() {
@@ -50,8 +51,7 @@ class _WeightPageState extends ConsumerState<WeightPage> {
     _meals = await mealRepo.getRange(startStr, endStr);
     _dailyCalories = {};
     for (final m in _meals) {
-      _dailyCalories[m.date] =
-          (_dailyCalories[m.date] ?? 0) + m.actualCalories;
+      _dailyCalories[m.date] = (_dailyCalories[m.date] ?? 0) + m.actualCalories;
     }
     if (mounted) setState(() => _loading = false);
   }
@@ -79,7 +79,10 @@ class _WeightPageState extends ConsumerState<WeightPage> {
                 ),
               ),
               const SizedBox(width: 16),
-              FilledButton(onPressed: _save, child: const Text('记录')),
+              FilledButton(
+                onPressed: _busy ? null : _save,
+                child: const Text('记录'),
+              ),
             ],
           ),
           const SizedBox(height: 24),
@@ -100,6 +103,7 @@ class _WeightPageState extends ConsumerState<WeightPage> {
   }
 
   Widget _buildChart() {
+    final cs = Theme.of(context).colorScheme;
     if (_logs.length < 2) {
       return const Center(child: Text('至少记录 2 次才能显示趋势图'));
     }
@@ -130,74 +134,76 @@ class _WeightPageState extends ConsumerState<WeightPage> {
     final wMin = minW - wPadding;
     final wMax = maxW + wPadding;
 
-    return LineChart(LineChartData(
-      gridData: const FlGridData(show: true),
-      borderData: FlBorderData(
-        show: true,
-        border: Border.all(color: Colors.grey.shade300),
+    return LineChart(
+      LineChartData(
+        gridData: const FlGridData(show: true),
+        borderData: FlBorderData(
+          show: true,
+          border: Border.all(color: cs.outlineVariant),
+        ),
+        minX: 0,
+        maxX: (_logs.length - 1).toDouble(),
+        minY: 0,
+        maxY: calRange,
+        titlesData: FlTitlesData(
+          bottomTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          leftTitles: AxisTitles(
+            axisNameWidget: const Text('kcal', style: TextStyle(fontSize: 10)),
+            sideTitles: const SideTitles(showTitles: true, reservedSize: 40),
+          ),
+          topTitles: AxisTitles(
+            axisNameWidget: const Text('kg', style: TextStyle(fontSize: 10)),
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 40,
+              interval: ((maxW - minW) / 4).clamp(0.1, 10).toDouble(),
+              getTitlesWidget: (value, meta) {
+                // 将热量轴值反向映射回体重轴值
+                final ratio = value / calRange;
+                final w = wMin + (wMax - wMin) * ratio;
+                return Text(
+                  w.toStringAsFixed(1),
+                  style: const TextStyle(fontSize: 9),
+                );
+              },
+            ),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+        ),
+        lineBarsData: [
+          // 热量（左轴，主）
+          LineChartBarData(
+            spots: calSpots,
+            isCurved: true,
+            color: cs.tertiary,
+            barWidth: 2,
+            isStrokeCapRound: true,
+            dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(
+              show: true,
+              color: cs.tertiary.withValues(alpha: 0.1),
+            ),
+          ),
+          // 体重（映射到主轴范围）
+          LineChartBarData(
+            spots: weightSpots
+                .map(
+                  (s) => FlSpot(s.x, (s.y - wMin) / (wMax - wMin) * calRange),
+                )
+                .toList(),
+            isCurved: true,
+            color: cs.primary,
+            barWidth: 3,
+            isStrokeCapRound: true,
+            dotData: const FlDotData(show: true),
+          ),
+        ],
       ),
-      minX: 0,
-      maxX: (_logs.length - 1).toDouble(),
-      minY: 0,
-      maxY: calRange,
-      titlesData: FlTitlesData(
-        bottomTitles: const AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
-        ),
-        leftTitles: AxisTitles(
-          axisNameWidget: const Text('kcal', style: TextStyle(fontSize: 10)),
-          sideTitles: const SideTitles(
-            showTitles: true,
-            reservedSize: 40,
-          ),
-        ),
-        topTitles: AxisTitles(
-          axisNameWidget: const Text('kg', style: TextStyle(fontSize: 10)),
-          sideTitles: SideTitles(
-            showTitles: true,
-            reservedSize: 40,
-            interval: ((maxW - minW) / 4).clamp(0.1, 10).toDouble(),
-            getTitlesWidget: (value, meta) {
-              // 将热量轴值反向映射回体重轴值
-              final ratio = value / calRange;
-              final w = wMin + (wMax - wMin) * ratio;
-              return Text(w.toStringAsFixed(1),
-                  style: const TextStyle(fontSize: 9));
-            },
-          ),
-        ),
-        rightTitles: const AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
-        ),
-      ),
-      lineBarsData: [
-        // 热量（左轴，主）
-        LineChartBarData(
-          spots: calSpots,
-          isCurved: true,
-          color: Colors.orange,
-          barWidth: 2,
-          isStrokeCapRound: true,
-          dotData: const FlDotData(show: false),
-          belowBarData: BarAreaData(
-            show: true,
-            color: Colors.orange.withValues(alpha: 0.1),
-          ),
-        ),
-        // 体重（映射到主轴范围）
-        LineChartBarData(
-          spots: weightSpots
-              .map((s) => FlSpot(
-                  s.x, (s.y - wMin) / (wMax - wMin) * calRange))
-              .toList(),
-          isCurved: true,
-          color: Colors.green,
-          barWidth: 3,
-          isStrokeCapRound: true,
-          dotData: const FlDotData(show: true),
-        ),
-      ],
-    ));
+    );
   }
 
   Future<void> _save() async {
@@ -205,39 +211,46 @@ class _WeightPageState extends ConsumerState<WeightPage> {
     final weight = double.tryParse(_weightCtrl.text);
     if (weight == null || weight <= 0) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('请输入有效的体重数字')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('请输入有效的体重数字')));
       return;
     }
-    final db = await ref.read(recognize.databaseProvider.future);
-    final repo = WeightLogRepository(db);
-    final now = DateTime.now();
-    final today =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    await repo.insert(date: today, weightKg: weight);
-
-    // 触发 TDEE 自适应校准（Sprint 3 T22）
+    if (_busy) return;
+    setState(() => _busy = true);
     try {
-      final config = await ref.read(appConfigProvider.future);
-      if (config.tdeeAutoCalib) {
-        final calibrator = TdeeCalibrator(db);
-        final result = await calibrator.runAndApply(enabled: true);
-        if (result.adjustmentKcal != 0 && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('TDEE 已调整：${result.reason}')),
-          );
-        }
-      }
-    } catch (_) {
-      // 校准失败不影响体重记录主流程
-    }
+      final db = await ref.read(recognize.databaseProvider.future);
+      final repo = WeightLogRepository(db);
+      final now = DateTime.now();
+      final today =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      await repo.insert(date: today, weightKg: weight);
 
-    _weightCtrl.clear();
-    await _load();
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已记录体重')));
+      // 触发 TDEE 自适应校准（Sprint 3 T22）
+      try {
+        final config = await ref.read(appConfigProvider.future);
+        if (config.tdeeAutoCalib) {
+          final calibrator = TdeeCalibrator(db);
+          final result = await calibrator.runAndApply(enabled: true);
+          if (result.adjustmentKcal != 0 && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('TDEE 已调整：${result.reason}')),
+            );
+          }
+        }
+      } catch (_) {
+        // 校准失败不影响体重记录主流程
+      }
+
+      _weightCtrl.clear();
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已记录体重')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 }

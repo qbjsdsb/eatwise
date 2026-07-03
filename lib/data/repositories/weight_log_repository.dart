@@ -7,10 +7,9 @@ class WeightLogRepository {
 
   /// 插入体重记录（同一天多次记录各存一条，UI 取最新）
   Future<int> insert({required String date, required double weightKg}) {
-    return _db.into(_db.weightLogs).insert(WeightLogsCompanion.insert(
-          date: date,
-          weightKg: weightKg,
-        ));
+    return _db
+        .into(_db.weightLogs)
+        .insert(WeightLogsCompanion.insert(date: date, weightKg: weightKg));
   }
 
   /// 查询某区间体重记录（折线图用，按日期升序）
@@ -42,10 +41,11 @@ class WeightLogRepository {
     final endDate =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-    final all = await (_db.weightLogs.select()
-          ..where((w) => w.date.isBetweenValues(startDate, endDate))
-          ..orderBy([(w) => OrderingTerm.asc(w.date)]))
-        .get();
+    final all =
+        await (_db.weightLogs.select()
+              ..where((w) => w.date.isBetweenValues(startDate, endDate))
+              ..orderBy([(w) => OrderingTerm.asc(w.date)]))
+            .get();
 
     // 同一天多条取最后一条（按 id 降序即插入顺序，同日最后插入的最新）
     final byDate = <String, WeightLog>{};

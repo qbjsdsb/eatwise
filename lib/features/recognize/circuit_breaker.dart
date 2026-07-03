@@ -29,16 +29,18 @@ class CircuitBreaker {
     required Future<String?> Function(String key) read,
     required Future<void> Function(String key) delete,
     DateTime Function()? now,
-  })  : _write = write,
-        _read = read,
-        _delete = delete,
-        _now = now ?? DateTime.now;
+  }) : _write = write,
+       _read = read,
+       _delete = delete,
+       _now = now ?? DateTime.now;
 
   /// 当前状态（读持久化数据判断）
   Future<CircuitBreakerState> get state async {
     final openUntilStr = await _read(_keyOpenUntil);
     if (openUntilStr != null) {
-      final openUntil = DateTime.fromMillisecondsSinceEpoch(int.parse(openUntilStr));
+      final openUntil = DateTime.fromMillisecondsSinceEpoch(
+        int.parse(openUntilStr),
+      );
       if (_now().isBefore(openUntil)) return CircuitBreakerState.open;
       // 已过 open 截止 → halfOpen（未持久化，仅内存判断）
       return CircuitBreakerState.halfOpen;

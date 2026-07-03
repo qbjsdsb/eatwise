@@ -15,7 +15,15 @@ class CalibrationPage extends StatefulWidget {
   final NutritionResult? singleNutrition;
   final CompositeNutritionResult? compositeNutrition;
   final FoodItemRepository foodItemRepo;
-  final void Function(double servingG, double calories, double protein, double fat, double carbs, {String? componentsSnapshot}) onConfirm;
+  final void Function(
+    double servingG,
+    double calories,
+    double protein,
+    double fat,
+    double carbs, {
+    String? componentsSnapshot,
+  })
+  onConfirm;
 
   const CalibrationPage({
     super.key,
@@ -42,7 +50,8 @@ class _CalibrationPageState extends State<CalibrationPage> {
     super.initState();
     _servingG = widget.recognitionResult.estimatedWeightGMid;
     _canSkipCalibration =
-        widget.recognitionResult.confidence >= 0.85 && widget.recognitionResult.isSingleItem;
+        widget.recognitionResult.confidence >= 0.85 &&
+        widget.recognitionResult.isSingleItem;
     // 复合菜初始化组分份量 + 用油量
     if (widget.compositeNutrition != null) {
       final hits = widget.compositeNutrition!.componentHits;
@@ -57,22 +66,17 @@ class _CalibrationPageState extends State<CalibrationPage> {
   Widget build(BuildContext context) {
     final isLowConfidence = widget.recognitionResult.confidence < 0.6;
     final isMidConfidence =
-        widget.recognitionResult.confidence >= 0.6 && widget.recognitionResult.confidence < 0.85;
+        widget.recognitionResult.confidence >= 0.6 &&
+        widget.recognitionResult.confidence < 0.85;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('校准份量'),
         actions: [
           if (_canSkipCalibration)
-            TextButton(
-              onPressed: _confirmOneClick,
-              child: const Text('一键记录'),
-            ),
+            TextButton(onPressed: _confirmOneClick, child: const Text('一键记录')),
           if (isMidConfidence)
-            TextButton(
-              onPressed: _trustAi,
-              child: const Text('信任 AI'),
-            ),
+            TextButton(onPressed: _trustAi, child: const Text('信任 AI')),
         ],
       ),
       body: Padding(
@@ -85,18 +89,28 @@ class _CalibrationPageState extends State<CalibrationPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('识别结果：${widget.recognitionResult.dishName}',
-                        style: Theme.of(context).textTheme.headlineSmall),
-                    Text('置信度：${(widget.recognitionResult.confidence * 100).toStringAsFixed(0)}%'),
+                    Text(
+                      '识别结果：${widget.recognitionResult.dishName}',
+                      style: Theme.of(context).textTheme.headlineSmall,
+                    ),
+                    Text(
+                      '置信度：${(widget.recognitionResult.confidence * 100).toStringAsFixed(0)}%',
+                    ),
                     if (isLowConfidence)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 8),
-                        child: Text('⚠️ 待确认（置信度低，请仔细校准）',
-                            style: TextStyle(color: Colors.red)),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: Text(
+                          '⚠️ 待确认（置信度低，请仔细校准）',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
                       ),
                     const SizedBox(height: 24),
-                    Text('份量：${_servingG.toStringAsFixed(0)} g'
-                        '${widget.singleNutrition != null ? " (估算 ${widget.recognitionResult.estimatedWeightGLow.toStringAsFixed(0)}-${widget.recognitionResult.estimatedWeightGHigh.toStringAsFixed(0)} g)" : ""}'),
+                    Text(
+                      '份量：${_servingG.toStringAsFixed(0)} g'
+                      '${widget.singleNutrition != null ? " (估算 ${widget.recognitionResult.estimatedWeightGLow.toStringAsFixed(0)}-${widget.recognitionResult.estimatedWeightGHigh.toStringAsFixed(0)} g)" : ""}',
+                    ),
                     Slider(
                       value: _servingG,
                       min: 0,
@@ -138,9 +152,14 @@ class _CalibrationPageState extends State<CalibrationPage> {
       final protein = widget.singleNutrition!.proteinG * ratio;
       final fat = widget.singleNutrition!.fatG * ratio;
       final carbs = widget.singleNutrition!.carbsG * ratio;
-      final lowRatio = widget.recognitionResult.estimatedWeightGLow / widget.recognitionResult.estimatedWeightGMid;
-      final highRatio = widget.recognitionResult.estimatedWeightGHigh / widget.recognitionResult.estimatedWeightGMid;
-      final calRange = ' (${(cal * lowRatio).toStringAsFixed(0)}-${(cal * highRatio).toStringAsFixed(0)})';
+      final lowRatio =
+          widget.recognitionResult.estimatedWeightGLow /
+          widget.recognitionResult.estimatedWeightGMid;
+      final highRatio =
+          widget.recognitionResult.estimatedWeightGHigh /
+          widget.recognitionResult.estimatedWeightGMid;
+      final calRange =
+          ' (${(cal * lowRatio).toStringAsFixed(0)}-${(cal * highRatio).toStringAsFixed(0)})';
       return _nutritionCard(cal, protein, fat, carbs, calRange: calRange);
     }
     if (widget.compositeNutrition != null) {
@@ -162,7 +181,13 @@ class _CalibrationPageState extends State<CalibrationPage> {
     return const SizedBox.shrink();
   }
 
-  Widget _nutritionCard(double cal, double protein, double fat, double carbs, {String? calRange}) {
+  Widget _nutritionCard(
+    double cal,
+    double protein,
+    double fat,
+    double carbs, {
+    String? calRange,
+  }) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -189,18 +214,26 @@ class _CalibrationPageState extends State<CalibrationPage> {
           _buildComponentSlider(i, composite.componentHits[i]),
         if (composite.componentMisses.isNotEmpty) ...[
           const SizedBox(height: 8),
-          const Text('⚠ 待确认组分（未在食物库找到）：',
-              style: TextStyle(color: Colors.orange)),
+          const Text(
+            '⚠ 待确认组分（未在食物库找到）：',
+            style: TextStyle(color: Colors.orange),
+          ),
           for (final miss in composite.componentMisses)
             Padding(
               padding: const EdgeInsets.only(left: 16),
-              child: Text('• $miss（请转手动录入或补充食物库）',
-                  style: const TextStyle(color: Colors.grey)),
+              child: Text(
+                '• $miss（请转手动录入或补充食物库）',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
         ],
         const SizedBox(height: 16),
-        Text('用油量：${_oilG.toStringAsFixed(0)} g',
-            style: Theme.of(context).textTheme.titleSmall),
+        Text(
+          '用油量：${_oilG.toStringAsFixed(0)} g',
+          style: Theme.of(context).textTheme.titleSmall,
+        ),
         Slider(
           value: _oilG,
           min: 0,
@@ -293,9 +326,6 @@ class _CalibrationPageState extends State<CalibrationPage> {
         'actual_g': _componentServings[i] ?? hit.estimatedG,
       });
     }
-    return jsonEncode({
-      'components': components,
-      'oil_g': _oilG,
-    });
+    return jsonEncode({'components': components, 'oil_g': _oilG});
   }
 }

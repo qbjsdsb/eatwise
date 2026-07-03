@@ -25,15 +25,20 @@ class AppConfig {
   /// 从 secure_storage 加载全部配置（App 启动时调用一次）
   /// --dart-define 作为 fallback：若 secure_storage 无值则用 define 值并回写 storage
   Future<void> load() async {
-    qwenApiKey = (await _store.getQwenApiKey()) ??
+    qwenApiKey =
+        (await _store.getQwenApiKey()) ??
         const String.fromEnvironment('QWEN_API_KEY', defaultValue: '');
-    qwenBaseUrl = (await _store.getQwenBaseUrl()) ??
+    qwenBaseUrl =
+        (await _store.getQwenBaseUrl()) ??
         const String.fromEnvironment('QWEN_BASE_URL', defaultValue: '');
-    glmApiKey = (await _store.getGlmApiKey()) ??
+    glmApiKey =
+        (await _store.getGlmApiKey()) ??
         const String.fromEnvironment('GLM_API_KEY', defaultValue: '');
-    glmBaseUrl = (await _store.getGlmBaseUrl()) ??
+    glmBaseUrl =
+        (await _store.getGlmBaseUrl()) ??
         const String.fromEnvironment('GLM_BASE_URL', defaultValue: '');
-    sentryDsn = await _store.getSentryDsn() ??
+    sentryDsn =
+        await _store.getSentryDsn() ??
         const String.fromEnvironment('SENTRY_DSN', defaultValue: '');
     sentryEnabled = await _store.getSentryEnabled();
     tdeeAutoCalib = await _store.getTdeeAutoCalib();

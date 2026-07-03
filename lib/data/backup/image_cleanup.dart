@@ -39,7 +39,10 @@ class ImageCleanup {
   /// App 启动时若待清理项 > 50 则前台异步清理
   /// 设计文档 9.4：触发时机
   /// retentionDays <= 0 表示永久保留，不触发
-  static Future<void> runIfBacklogLarge(EatWiseDatabase db, {int? retentionDays}) async {
+  static Future<void> runIfBacklogLarge(
+    EatWiseDatabase db, {
+    int? retentionDays,
+  }) async {
     final days = retentionDays ?? defaultRetentionDays;
     if (days <= 0) return; // 永久保留，不触发
     final mealRepo = MealLogRepository(db);

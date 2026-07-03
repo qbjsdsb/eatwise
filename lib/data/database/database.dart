@@ -12,15 +12,17 @@ import 'tables/recognition_feedback_table.dart';
 
 part 'database.g.dart';
 
-@DriftDatabase(tables: [
-  Profiles,
-  FoodItems,
-  MealLogs,
-  WeightLogs,
-  PendingRecognitions,
-  InsightSummaries,
-  RecognitionFeedbacks,
-])
+@DriftDatabase(
+  tables: [
+    Profiles,
+    FoodItems,
+    MealLogs,
+    WeightLogs,
+    PendingRecognitions,
+    InsightSummaries,
+    RecognitionFeedbacks,
+  ],
+)
 class EatWiseDatabase extends _$EatWiseDatabase {
   /// 生产环境：传入 openEncryptedConnection() 的 executor
   EatWiseDatabase(super.executor);
@@ -30,31 +32,33 @@ class EatWiseDatabase extends _$EatWiseDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) => m.createAll(),
-        beforeOpen: (details) async {
-          // 启用 SQLite 外键约束（drift NativeDatabase 默认不启用）
-          // recognition_feedback.meal_log_id 的 ON DELETE CASCADE 依赖此 PRAGMA
-          await customStatement('PRAGMA foreign_keys = ON;');
-          if (details.wasCreated) {
-            // 首次创建时初始化 profile 单行
-            await into(profiles).insert(ProfilesCompanion.insert(
-              id: const Value(1),
-              heightCm: 170,
-              weightKg: 70,
-              age: 30,
-              gender: 'male',
-              activityLevel: 1.375,
-              goal: 'maintain',
-              goalRateKgPerWeek: 0,
-              formula: 'mifflin',
-              dailyCalorieTarget: 2000,
-              proteinGPerKg: 1.4,
-              fatGPerKg: 0.9,
-              updatedAt: DateTime.now().millisecondsSinceEpoch,
-            ));
-          }
-        },
-      );
+    onCreate: (m) => m.createAll(),
+    beforeOpen: (details) async {
+      // 启用 SQLite 外键约束（drift NativeDatabase 默认不启用）
+      // recognition_feedback.meal_log_id 的 ON DELETE CASCADE 依赖此 PRAGMA
+      await customStatement('PRAGMA foreign_keys = ON;');
+      if (details.wasCreated) {
+        // 首次创建时初始化 profile 单行
+        await into(profiles).insert(
+          ProfilesCompanion.insert(
+            id: const Value(1),
+            heightCm: 170,
+            weightKg: 70,
+            age: 30,
+            gender: 'male',
+            activityLevel: 1.375,
+            goal: 'maintain',
+            goalRateKgPerWeek: 0,
+            formula: 'mifflin',
+            dailyCalorieTarget: 2000,
+            proteinGPerKg: 1.4,
+            fatGPerKg: 0.9,
+            updatedAt: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+      }
+    },
+  );
 }
 
 /// 生产环境 Database Provider（Riverpod）

@@ -24,8 +24,20 @@ class DashboardPage extends ConsumerStatefulWidget {
 
 class _DashboardPageState extends ConsumerState<DashboardPage> {
   // 缓存 future 避免每次 build 重建 Future 导致反复查询 + 闪烁
-  Future<({double cal, double protein, double fat, double carbs, int target, double proteinGoal, double fatGoal, double carbGoal, double weightKg})>?
-      _future;
+  Future<
+    ({
+      double cal,
+      double protein,
+      double fat,
+      double carbs,
+      int target,
+      double proteinGoal,
+      double fatGoal,
+      double carbGoal,
+      double weightKg,
+    })
+  >?
+  _future;
 
   @override
   void initState() {
@@ -33,8 +45,20 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     _future = _loadData();
   }
 
-  Future<({double cal, double protein, double fat, double carbs, int target, double proteinGoal, double fatGoal, double carbGoal, double weightKg})>
-      _loadData() async {
+  Future<
+    ({
+      double cal,
+      double protein,
+      double fat,
+      double carbs,
+      int target,
+      double proteinGoal,
+      double fatGoal,
+      double carbGoal,
+      double weightKg,
+    })
+  >
+  _loadData() async {
     final db = await ref.read(recognize.databaseProvider.future);
     final mealRepo = MealLogRepository(db);
     final profileRepo = ProfileRepository(db);
@@ -65,154 +89,222 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('今日'),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            onPressed: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => const SettingsPage())),
+            tooltip: '设置',
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const SettingsPage())),
           ),
           IconButton(
             icon: const Icon(Icons.list_alt),
-            onPressed: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => const TodayMealsPage())),
+            tooltip: '今日记录',
+            onPressed: () => Navigator.of(
+              context,
+            ).push(MaterialPageRoute(builder: (_) => const TodayMealsPage())),
           ),
         ],
       ),
       drawer: _buildDrawer(context),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.of(context)
-            .push(MaterialPageRoute(builder: (_) => const RecognizePage())),
+        onPressed: () => Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => const RecognizePage())),
         child: const Icon(Icons.add),
       ),
-      body: FutureBuilder<
-          ({
-            double cal,
-            double protein,
-            double fat,
-            double carbs,
-            int target,
-            double proteinGoal,
-            double fatGoal,
-            double carbGoal,
-            double weightKg
-          })>(
-        future: _future,
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text('数据加载失败：${snapshot.error}',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.red)),
-              ),
-            );
-          }
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          final d = snapshot.data!;
-          final remain = d.target - d.cal;
-          final overflow = remain < 0;
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              // 环形进度（热量）
-              SizedBox(
-                height: 200,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    PieChart(PieChartData(
-                      sectionsSpace: 0,
-                      centerSpaceRadius: 60,
-                      sections: [
-                        PieChartSectionData(
-                          value: d.cal > d.target
-                              ? d.target.toDouble()
-                              : d.cal,
-                          color: overflow ? Colors.red : Colors.green,
-                          radius: 16,
-                          showTitle: false,
-                        ),
-                        if (d.cal < d.target)
-                          PieChartSectionData(
-                            value: (d.target - d.cal).toDouble(),
-                            color: Colors.grey.shade200,
-                            radius: 16,
-                            showTitle: false,
-                          ),
-                      ],
-                    )),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
+      body:
+          FutureBuilder<
+            ({
+              double cal,
+              double protein,
+              double fat,
+              double carbs,
+              int target,
+              double proteinGoal,
+              double fatGoal,
+              double carbGoal,
+              double weightKg,
+            })
+          >(
+            future: _future,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Text(
+                      '数据加载失败：${snapshot.error}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: cs.error),
+                    ),
+                  ),
+                );
+              }
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final d = snapshot.data!;
+              final remain = d.target - d.cal;
+              final overflow = remain < 0;
+              return ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  // 环形进度（热量）
+                  SizedBox(
+                    height: 200,
+                    child: Stack(
+                      alignment: Alignment.center,
                       children: [
-                        Text(d.cal.toStringAsFixed(0),
-                            style: Theme.of(context).textTheme.headlineMedium),
-                        Text('/ ${d.target} kcal',
-                            style: Theme.of(context).textTheme.bodySmall),
-                        if (overflow)
-                          Text('超 ${(-remain).toStringAsFixed(0)} kcal',
-                              style: const TextStyle(
-                                  color: Colors.red,
-                                  fontWeight: FontWeight.bold)),
-                        if (!overflow)
-                          Text('余 ${remain.toStringAsFixed(0)} kcal',
-                              style: TextStyle(color: Colors.grey.shade600)),
+                        PieChart(
+                          PieChartData(
+                            sectionsSpace: 0,
+                            centerSpaceRadius: 60,
+                            sections: [
+                              PieChartSectionData(
+                                value: d.cal > d.target
+                                    ? d.target.toDouble()
+                                    : d.cal,
+                                color: overflow ? cs.error : cs.primary,
+                                radius: 16,
+                                showTitle: false,
+                              ),
+                              if (d.cal < d.target)
+                                PieChartSectionData(
+                                  value: (d.target - d.cal).toDouble(),
+                                  color: cs.surfaceContainerHighest,
+                                  radius: 16,
+                                  showTitle: false,
+                                ),
+                            ],
+                          ),
+                        ),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              d.cal.toStringAsFixed(0),
+                              style: Theme.of(context).textTheme.headlineMedium,
+                            ),
+                            Text(
+                              '/ ${d.target} kcal',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                            if (overflow)
+                              Text(
+                                '超 ${(-remain).toStringAsFixed(0)} kcal',
+                                style: TextStyle(
+                                  color: cs.error,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            if (!overflow)
+                              Text(
+                                '余 ${remain.toStringAsFixed(0)} kcal',
+                                style: TextStyle(color: cs.onSurfaceVariant),
+                              ),
+                          ],
+                        ),
                       ],
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              // 三宏量进度条
-              _macroBar('蛋白质', d.protein, d.proteinGoal, Colors.blue, d.weightKg),
-              _macroBar('脂肪', d.fat, d.fatGoal, Colors.orange, d.weightKg),
-              _macroBar('碳水', d.carbs, d.carbGoal, Colors.purple, d.weightKg),
-            ],
-          );
-        },
-      ),
+                  ),
+                  const SizedBox(height: 24),
+                  // 三宏量进度条
+                  _macroBar(
+                    '蛋白质',
+                    d.protein,
+                    d.proteinGoal,
+                    cs.primary,
+                    d.weightKg,
+                  ),
+                  _macroBar('脂肪', d.fat, d.fatGoal, cs.tertiary, d.weightKg),
+                  _macroBar(
+                    '碳水',
+                    d.carbs,
+                    d.carbGoal,
+                    cs.secondary,
+                    d.weightKg,
+                  ),
+                ],
+              );
+            },
+          ),
     );
   }
 
   Widget _buildDrawer(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Drawer(
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          const DrawerHeader(
-            decoration: BoxDecoration(color: Colors.green),
-            child: Text('EatWise',
-                style: TextStyle(color: Colors.white, fontSize: 24)),
+          DrawerHeader(
+            decoration: BoxDecoration(color: cs.primaryContainer),
+            child: Text(
+              '慢慢吃',
+              style: TextStyle(color: cs.onPrimaryContainer, fontSize: 24),
+            ),
           ),
           _drawerItem(Icons.person_outline, '个人档案', () => const ProfilePage()),
-          _drawerItem(Icons.monitor_weight_outlined, '体重记录', () => const WeightPage()),
-          _drawerItem(Icons.insights_outlined, 'AI 周报', () => const InsightPage()),
-          _drawerItem(Icons.restaurant_menu_outlined, '食物库', () => const FoodLibraryPage()),
-          _drawerItem(Icons.edit_note_outlined, '手动录入', () => const ManualEntryPage()),
+          _drawerItem(
+            Icons.monitor_weight_outlined,
+            '体重记录',
+            () => const WeightPage(),
+          ),
+          _drawerItem(
+            Icons.insights_outlined,
+            'AI 周报',
+            () => const InsightPage(),
+          ),
+          _drawerItem(
+            Icons.restaurant_menu_outlined,
+            '食物库',
+            () => const FoodLibraryPage(),
+          ),
+          _drawerItem(
+            Icons.edit_note_outlined,
+            '手动录入',
+            () => const ManualEntryPage(),
+          ),
           _drawerItem(Icons.backup_outlined, '数据备份', () => const BackupPage()),
-          _drawerItem(Icons.settings_outlined, '设置', () => const SettingsPage()),
+          _drawerItem(
+            Icons.settings_outlined,
+            '设置',
+            () => const SettingsPage(),
+          ),
         ],
       ),
     );
   }
 
-  Widget _drawerItem(IconData icon, String title, Widget Function() pageBuilder) {
+  Widget _drawerItem(
+    IconData icon,
+    String title,
+    Widget Function() pageBuilder,
+  ) {
     return ListTile(
       leading: Icon(icon),
       title: Text(title),
       onTap: () {
         Navigator.of(context).pop(); // 先关 Drawer
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => pageBuilder()));
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute(builder: (_) => pageBuilder()));
       },
     );
   }
 
-  Widget _macroBar(String label, double value, double goal, Color color, double weightKg) {
+  Widget _macroBar(
+    String label,
+    double value,
+    double goal,
+    Color color,
+    double weightKg,
+  ) {
     final pct = goal > 0 ? (value / goal).clamp(0.0, 1.0) : 0.0;
     final gPerKg = weightKg > 0 ? (value / weightKg).toStringAsFixed(1) : '-';
     return Padding(
@@ -224,15 +316,18 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(label),
-              Text('${value.toStringAsFixed(1)} / ${goal.toStringAsFixed(0)} g ($gPerKg g/kg)'),
+              Text(
+                '${value.toStringAsFixed(1)} / ${goal.toStringAsFixed(0)} g ($gPerKg g/kg)',
+              ),
             ],
           ),
           const SizedBox(height: 4),
           LinearProgressIndicator(
-              value: pct,
-              backgroundColor: color.withValues(alpha: 0.1),
-              color: color,
-              minHeight: 8),
+            value: pct,
+            backgroundColor: color.withValues(alpha: 0.1),
+            color: color,
+            minHeight: 8,
+          ),
         ],
       ),
     );
