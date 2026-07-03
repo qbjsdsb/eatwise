@@ -195,9 +195,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 if (_estimatedCost! >= _costWarningThreshold)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text(
-                      '⚠️ 本月花费已达 ${_estimatedCost!.toStringAsFixed(2)} 元，建议在厂商控制台设置月度费用上限',
-                      style: TextStyle(color: cs.error, fontSize: 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.warning_amber_rounded,
+                            color: cs.error, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '本月花费已达 ${_estimatedCost!.toStringAsFixed(2)} 元，建议在厂商控制台设置月度费用上限',
+                            style: TextStyle(color: cs.error, fontSize: 12),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
               ]),
@@ -212,9 +222,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 if (_backupOverdue)
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Text(
-                      '⚠️ 已超过 14 天未备份，建议立即导出备份',
-                      style: TextStyle(color: cs.error, fontSize: 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.warning_amber_rounded,
+                            color: cs.error, size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            '已超过 14 天未备份，建议立即导出备份',
+                            style: TextStyle(color: cs.error, fontSize: 12),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
               ]),
@@ -268,7 +288,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         height: 1,
         indent: 16,
         endIndent: 16,
-        color: Theme.of(context).dividerColor,
+        color: Theme.of(context).colorScheme.outlineVariant,
       );
 
   Future<void> _save() async {
@@ -395,7 +415,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 : null,
           ),
           child: selected
-              ? const Icon(Icons.check, color: Colors.white, size: 20)
+              ? Icon(Icons.check,
+                  // 浅色种子时白色 check 对比度不足，按色块亮度动态选黑/白（WCAG AA）
+                  color: color.computeLuminance() > 0.5
+                      ? Colors.black
+                      : Colors.white,
+                  size: 20)
               : null,
         ),
       ),

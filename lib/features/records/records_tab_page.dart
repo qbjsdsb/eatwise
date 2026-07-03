@@ -49,6 +49,8 @@ class _RecordsTabPageState extends State<RecordsTabPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // SliverAppBar.medium 与 dashboard/me 主 tab 统一 AppBar 风格
+      // SegmentedButton 放 bottom（pinned，切换子页时切换器常驻顶部）
       appBar: AppBar(
         title: Text(_titles[_index]),
         bottom: PreferredSize(

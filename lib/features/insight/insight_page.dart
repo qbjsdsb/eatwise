@@ -252,29 +252,35 @@ class _InsightPageState extends ConsumerState<InsightPage> {
           if (_summary != null)
             IconButton(icon: const Icon(Icons.edit), onPressed: _edit),
         ],
+        // 周/月切换器 pin 在 AppBar.bottom（不随 ListView 滚动消失，与 records_tab 统一）
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(56),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'weekly', label: Text('周')),
+                ButtonSegment(value: 'monthly', label: Text('月')),
+              ],
+              selected: {_periodType},
+              onSelectionChanged: (v) {
+                setState(() {
+                  _periodType = v.first;
+                  _calcPeriod();
+                  _summary = null;
+                  _dailyCal = [];
+                  _dailyWeight = [];
+                  _loadExisting();
+                });
+              },
+            ),
+          ),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // 周/月切换（M3 SegmentedButton，与 records_tab/recognize 统一）
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'weekly', label: Text('周')),
-              ButtonSegment(value: 'monthly', label: Text('月')),
-            ],
-            selected: {_periodType},
-            onSelectionChanged: (v) {
-              setState(() {
-                _periodType = v.first;
-                _calcPeriod();
-                _summary = null;
-                _dailyCal = [];
-                _dailyWeight = [];
-                _loadExisting();
-              });
-            },
-          ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 0),
           // 热量折线图（含目标/均值参考线，至少 2 天数据才渲染）
           if (_dailyCal.length >= 2) ...[
             SizedBox(height: 200, child: _buildCaloriesChart()),
@@ -296,7 +302,10 @@ class _InsightPageState extends ConsumerState<InsightPage> {
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: SelectableText(_summary!,
-                    style: const TextStyle(fontSize: 15, height: 1.6)),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.copyWith(height: 1.6)),
               ),
             )
           else

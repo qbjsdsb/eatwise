@@ -36,12 +36,12 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（v0.11.1 已发布；v0.11.1 之后又提交了 2 个修复但**未发布**）
+**工作区状态**：clean（v0.11.1 已发布；v0.11.1 之后又提交了 3 个修复但**未发布**）
 **最近 commit**：
+- （待提交）feat: 界面 MD3 全面优化（协调性+合规+字体层级，未发布）
 - `a680241` feat: 智能推荐算法 v3 五维评分 + addAlias 冲突检测（未发布）
 - `1064449` fix: 识别精准度修复+界面偏右修正（雪花啤酒→雪碧假阳性，未发布）
 - `52dc876` docs: 更新 HANDOFF——v0.11.1 已发布
-- `a907625` chore: 版本号 bump 到 0.11.1+12 准备发布 v0.11.1
 - `84cc29a` feat: 个人档案特殊人群适配（孕期/哺乳/老年/青少年/糖尿病/肾病/素食，schema v1→v2，未发布）
 - `c6a76be` feat: 折线图美化与智能推荐算法升级（Y 轴 interval 防重叠+渐变填充+触摸 tooltip+推荐四维评分，未发布）
 - `685fc9e` docs: 更新 HANDOFF——记录启动与首屏性能优化
@@ -79,6 +79,8 @@
 7. **识别精准度修复 + 界面偏右修正**（`1064449`）：用户反馈"雪花啤酒被识别成雪碧"+"界面整体偏右"。识别错配根因有三：①findByNameOrAlias 优先级 5 编辑距离 ≤1 对 2 字短名假阳性（"雪花"vs"雪碧"编辑距离恰好 1 → 误命中）；②反馈回流 addAlias 用 5 级模糊查"正确菜"，模糊命中错对象后把 AI 错误名写成错对象别名 → 永久错配（无法自愈）；③_normalize 不处理全角半角（AI 返回全角字符精确匹配 miss → 降级模糊匹配增加误命中）。修复：①优先级 5 加严——query 长度 ≥3 且 target 与 query 等长才走编辑距离（2 字短名禁用，typo 容错仅保留 3+ 字等长如"蕃茄炒蛋"→"番茄炒蛋"）；②新增 findExactByNameOrAlias（只走 name/alias 精确匹配），today_meals_page 反馈回流改用它，避免模糊命中错对象导致反向错配；③_normalize 加全角→半角转换（数字/字母/空格/括号）。界面偏右根因：SectionTitle padding `fromLTRB(24,20,16,8)` 左 24 右 16 不对称，被 6 页面 14 处复用，标题相对下方卡片（padding 16）右移 8px → 改 `fromLTRB(16,20,16,8)` 对称；dashboard/me_page 的 Divider 缺 endIndent → 补 `endIndent: 16`。新增 4 个精准度专项测试（雪花不命中雪碧/typo 容错保留/findExact 只精确/全角括号归一化）。**坑提醒：2 字短名编辑距离 1 无法区分"假阳性（雪花/雪碧）"与"typo（可东/可乐）"，取舍上禁用 2 字短名编辑距离（牺牲罕见 2 字 typo 容错换取防常见相近名误判）；反馈回流别名必须用精确匹配查库，绝不能用模糊匹配（否则反向错配永久污染别名表）。**
 
 8. **智能推荐算法 v3 五维评分 + addAlias 冲突检测**（`a680241`）：用户反馈"推荐冷门食物，不学习习惯，参考业界成熟方案优化"。WebSearch 调研业界（MyFitnessPal/Yazio/薄荷/Lifesum/Carbon Diet Coach），严谨筛选：弃用协同过滤（单机无用户群）、AI 生成食谱（离线 app）、替换建议（需建替代图谱留后续）；采用内容推荐+频次+约束过滤+时段感知+多样性（全离线，基于现有数据）。v3 五维：①冷门降权——常吃蛋白加权 *4，基础食材 *3，冷门 *1.5（直击"冷门霸榜"痛点，原 v2 全部 *4 致冷门高密度食物盖过常吃基础食材）；②基础食材白名单——硬编码 ~50 个中式家常食材关键词（鸡蛋/鸡胸/牛奶/燕麦/米饭/豆腐/苹果/西兰花…）命中 +3 底分，保证常见食物不沉底；③profile 约束过滤——素食/纯素/乳糖不耐/无麸质硬排除违规食物（按名称关键词），糖尿病高糖降权 *0.3，肾病极高蛋白降权 *0.5（软降权避免列表空）；④时段感知——MealLogRepository 新增 getMealTypeDistribution 学习每食物历史 mealType 分布（ratio>0.5 加 3 分），dashboard 按当前小时推断 mealType 传入；⑤多样性——排除今日已吃（已有）+ 昨日已吃降权 -2。addAlias 冲突检测（防反向错配第二道防线，findExact 是第一道）：写入前遍历全表，若别名已是其他食物的 name/alias 则拒绝写入，防止反馈回流把同一错误名绑多食物致永久错配。新增 9 个专项测试（冷门降权/白名单底分/素食过滤/乳糖过滤/时段感知/多样性 + addAlias 冲突检测 3 个）。**坑提醒：recommend() 新增 profile/mealType/yesterdayDate 全是可选参数，不传时退化到 v2 行为（向后兼容现有测试）；时段感知是数据驱动（学历史 mealType 分布）非硬编码"早餐食物"，样本<2 不返回避免单次误判；糖尿病/肾病用软降权而非硬排除，避免推荐列表空；addAlias 冲突检测遍历全表 O(n) 但在 addAlias 事务内，反馈回流低频调用可接受。**
+
+9. **界面 MD3 全面优化**（待提交）：用户反馈"所有界面检查是否最新 MD3 感觉、协调、美观，借鉴开源"。search agent 全面审查 14 文件识别 37 个问题（H/M/L 三级），WebSearch 调研 MD3 v6.1 规范 + 开源饮食 app（FoodYou/NutriScan 的 Material You + Macro Rings）。实施全 4 批：**第一批协调性**——insight SegmentedButton pin 到 AppBar.bottom（与 records_tab 统一，不随滚动消失）；weight 折线图按 insight 范式重写（左下边框+虚线网格+渐变填充+tooltip+统一 barWidth2.5+图例）；宏量营养素跨页统一用 MacroColors（蛋白=tertiary/脂肪=secondary/碳水=primary，新增 m3_widgets.MacroColors 类，替代 dashboard 的 onPrimaryContainer alpha + today_meals 的硬编码 0xFF4CAF50）；today_meals 卡片改 Card.outlined+12dp+padding16（统一 dashboard）；today_meals section header 改用扩展后的 SectionTitle(trailing:)（替代手写色块+标题+sum）；me/settings 分隔线改 cs.outlineVariant（替代 MD2 的 Theme.dividerColor）。**第二批 MD3 合规**——today_meals 编辑对话框"保存"改 FilledButton（原 TextButton 违反 MD3 主操作规范）；profile 特殊状况提示改 Card(tertiaryContainer)（替代手写 Container）；profile/settings emoji 警告改 Icon(warning_amber_rounded, cs.error)（emoji 跨平台渲染不一致且不跟随主题）；settings 选中态 check 色按色块亮度动态选黑/白（WCAG AA）；recognize 遮罩改 cs.scrim（替代硬编码 Colors.black54）+ 次要按钮改 OutlinedButton 形成主次层级；food_library 列表项补 chevron + 空态套 Card；me 错误态 Icon 补 cs.error；today_meals 反馈 IconButton 恢复 48dp 触摸目标。**第三批字体层级**——SectionTitle 改 titleSmall（原 labelLarge 语义偏标签）；批量替换硬编码 fontSize 为 textTheme（dashboard displaySmall/bodySmall/labelSmall、today_meals labelSmall、me titleMedium/bodySmall、insight bodyMedium）。**坑提醒：MacroColors 是 m3_widgets 新增的共享类，跨页配色必须用它而非各自硬编码，否则 dashboard/today_meals 颜色再次分裂；SectionTitle 新增 trailing 参数是可选的，现有 14 处调用不传 trailing 不受影响（向后兼容）；records_tab/insight 的 AppBar 用普通 AppBar+bottom 而非 SliverAppBar，因 IndexedStack/ListView 子页有自己滚动，SliverAppBar 需 CustomScrollView 重构成本大，权衡用 bottom pinned 已满足"切换器常驻"需求。**
 - 验证：`flutter analyze` No issues + `flutter test` 337 passed (3 skipped)。
 
 **识别智能化批次 1-3 修复清单**（本次 commit，用户选择"全部融入"）：
@@ -225,6 +227,14 @@
 - 新增 MealLogRepository.getMealTypeDistribution(days:60) 学习食物历史 mealType 分布，样本<2 丢弃
 - dashboard 按当前小时推断 mealType：5-10 breakfast / 11-13 lunch / 17-21 dinner / 其他 snack
 
+### 3.12 MD3 全面优化（4 批清单 + 开源参考，待提交）
+- 调研：MD3 v6.1 规范（圆角 4/8/12/16/28；Type Scale 15 档；Chip outlineVariant；Card filled/elevated/outlined 三变体；ColorScheme tertiary/secondary/primary 角色跨页配色）+ 开源饮食 app（FoodYou/NutriScan 的 Material You + Macro Rings）
+- 第一批协调性：insight SegmentedButton pin AppBar.bottom（与 records_tab 统一）；weight 折线图按 insight 范式重写（左下边框+虚线网格+渐变填充+tooltip+统一 barWidth2.5+图例）；宏量跨页用 MacroColors 统一（替代 dashboard onPrimaryContainer alpha + today_meals 硬编码 0xFF4CAF50）；today_meals Card.outlined+12dp+padding16；today_meals section header 用 SectionTitle(trailing:)；me/settings Divider 用 cs.outlineVariant
+- 第二批 MD3 合规：today_meals 编辑对话框"保存" FilledButton（原 TextButton 违反 MD3 主操作规范）；profile 特殊状况提示 Card(tertiaryContainer)（替代手写 Container）；profile/settings emoji 警告改 Icon(warning_amber_rounded, cs.error)（emoji 跨平台渲染不一致且不跟随主题）；settings 选中态 check 色按色块亮度动态选黑/白（WCAG AA）；recognize 遮罩 cs.scrim + 次要按钮 OutlinedButton 主次层级；food_library 列表补 chevron + 空态套 Card；me 错误态 Icon 补 cs.error；today_meals 反馈 IconButton 恢复 48dp 触摸目标
+- 第三批字体层级：SectionTitle 用 titleSmall（原 labelLarge 语义偏标签）；批量硬编码 fontSize 转 textTheme（dashboard displaySmall/bodySmall/labelSmall/titleMedium/bodyMedium、today_meals labelSmall、me titleMedium/bodySmall、insight bodyMedium height:1.6）
+- 权衡：records_tab/insight 用普通 AppBar+bottom 而非 SliverAppBar（IndexedStack/ListView 子页有自己滚动，SliverAppBar 需 CustomScrollView 重构成本大，bottom pinned 已满足"切换器常驻"需求）
+- 验证：flutter analyze lib/ No issues + flutter test 337 passed (3 skipped)
+
 ---
 
 ## 4. 已知陷阱（踩过的坑）
@@ -249,6 +259,12 @@
 18. **addAlias 写入前必须做全表冲突检测**：写入别名前遍历全表，若别名已是其他食物的 name/alias 则拒绝写入（防反向错配第二道防线）。findExactByNameOrAlias 是第一道（调用方用精确匹配查"正确菜"），addAlias 冲突检测是第二道。两道防线缺一不可——单靠 findExact 仍可能因调用方传错 foodItemId 而写入冲突别名
 19. **推荐算法 v3 冷门降权用动态蛋白权重**：常吃 *4 / 基础食材 *3 / 冷门 *1.5，三者区分决定排序。原 v2 全部 *4 致冷门高密度食物（蛋白粉等）盖过常吃基础食材（鸡蛋）。改权重必须同步 _scoreFood 里"非最缺宏量"分支的 0.4 系数（用 proteinWeight*0.4 保持比例）
 20. **recommend() 新增维度参数必须可选且向后兼容**：profile/mealType/yesterdayDate 全可选，不传时退化到 v2 行为。现有 6 个 v2 测试不传新参数仍全过。新增维度测试在独立 group 里显式传参验证
+
+21. **宏量营养素跨页配色必须用 MacroColors 共享类**：蛋白/脂肪/碳水三色在 `m3_widgets.MacroColors` 统一（蛋白=tertiary/脂肪=secondary/碳水=primary，跟随 seed 变化且色弱友好）。曾出现 dashboard 用 `onPrimaryContainer.alpha(0.x)`、today_meals 硬编码 `0xFF4CAF50` 致跨页颜色分裂。新增页面渲染三宏色必须用 `MacroColors.protein(cs)/fat(cs)/carb(cs)`，禁止再硬编码颜色值
+
+22. **SectionTitle.trailing 是可选参数，向后兼容现有调用**：扩展 SectionTitle 加 `trailing?:Widget` 用于显示分组小计（如 today_meals 餐次标题 trailing 显示 "xxx kcal"）。现有 14 处 `SectionTitle(text)` 调用不传 trailing 不受影响。需要 trailing 的页面复用同一组件而非另起炉灶（曾因 today_meals 手写"色块+标题+sum"破坏统一）
+
+23. **records_tab/insight 的 SegmentedButton 用 AppBar.bottom pinned 而非 SliverAppBar**：切换器需常驻顶部不随滚动消失。权衡：用普通 `AppBar(bottom: PreferredSize(...))` 而非 SliverAppBar，因 IndexedStack/ListView 子页有自己的滚动结构，SliverAppBar 需 CustomScrollView 重构成本大；AppBar.bottom pinned 已满足"切换器常驻"需求
 
 ---
 

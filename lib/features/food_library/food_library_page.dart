@@ -140,6 +140,8 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
                             ),
                             subtitle: Text(
                                 '${f.caloriesPer100g.toStringAsFixed(0)} kcal/100g · ${_sourceLabel(f.source)}'),
+                            // 可跳转编辑页，加 chevron 提示（与 me/settings/dashboard 全局约定一致）
+                            trailing: const Icon(Icons.chevron_right),
                             onTap: () async {
                               if (widget.pickForReuse) {
                                 Navigator.of(context).pop(f);
@@ -160,17 +162,24 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
     );
   }
 
-  /// 搜索无结果占位：图标 + 文案，与其他页空态风格一致。
+  /// 搜索无结果占位：套 Card 包裹 + 固定高度，与 insight/weight 图表空态统一。
   Widget _emptySearchHint(ColorScheme cs) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.search_off_rounded, size: 40, color: cs.onSurfaceVariant),
-          const SizedBox(height: 8),
-          Text('未找到相关食物',
-              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-        ],
+    final textTheme = Theme.of(context).textTheme;
+    return SizedBox(
+      height: 120,
+      child: Card(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.search_off_rounded, size: 40, color: cs.onSurfaceVariant),
+              const SizedBox(height: 8),
+              Text('未找到相关食物',
+                  style: textTheme.bodyMedium
+                      ?.copyWith(color: cs.onSurfaceVariant)),
+            ],
+          ),
+        ),
       ),
     );
   }

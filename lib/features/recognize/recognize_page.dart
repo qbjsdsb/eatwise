@@ -125,8 +125,9 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
                   icon: const Icon(Icons.camera_alt_rounded),
                   label: const Text('拍照'),
                 ),
-                const SizedBox(height: 16),
-                FilledButton.icon(
+                const SizedBox(height: 12),
+                // 次要入口用 OutlinedButton 与主入口"拍照"形成主次层级（MD3 视觉层级）
+                OutlinedButton.icon(
                   onPressed: _isRecognizing
                       ? null
                       : () => _pickAndRecognize(ImageSource.gallery),
@@ -136,12 +137,13 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
               ],
             ),
           ),
-          // 识别中遮罩：半透明 + 转圈 + 文案
+          // 识别中遮罩：用 cs.scrim（MD3 spec 遮罩色）替代硬编码 Colors.black54
           if (_isRecognizing)
             Container(
-              color: Colors.black54,
+              color: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.54),
               child: Center(
                 child: Card(
+                  elevation: 3,
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Column(

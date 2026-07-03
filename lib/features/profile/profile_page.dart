@@ -403,7 +403,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         final confirmed = await showDialog<bool>(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('⚠ 风险警告'),
+            title: Row(children: [
+              Icon(Icons.warning_amber_rounded,
+                  color: Theme.of(context).colorScheme.error, size: 22),
+              const SizedBox(width: 8),
+              const Text('风险警告'),
+            ]),
             content: Text(warnings.join('\n\n')),
             actions: [
               TextButton(
@@ -518,30 +523,28 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         break;
     }
     if (hints.isEmpty) return const SizedBox.shrink();
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: cs.tertiaryContainer.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-            color: cs.onTertiaryContainer.withValues(alpha: 0.2)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.info_outline,
-              size: 18, color: cs.onTertiaryContainer),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              hints.join('\n\n'),
-              style: TextStyle(
-                  fontSize: 12,
-                  color: cs.onTertiaryContainer,
-                  height: 1.5),
+    // 用 Card(color: tertiaryContainer) 替代手写 Container，与 settings 分组卡片同构
+    final textTheme = Theme.of(context).textTheme;
+    return Card(
+      color: cs.tertiaryContainer,
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.info_outline,
+                size: 18, color: cs.onTertiaryContainer),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                hints.join('\n\n'),
+                style: textTheme.bodySmall
+                    ?.copyWith(color: cs.onTertiaryContainer, height: 1.5),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

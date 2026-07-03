@@ -62,7 +62,9 @@ class _MePageState extends ConsumerState<MePage> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.error_outline, size: 48),
+                          Icon(Icons.error_outline,
+                              size: 48,
+                              color: Theme.of(context).colorScheme.error),
                           const SizedBox(height: 16),
                           const Text('数据加载失败'),
                           const SizedBox(height: 8),
@@ -82,6 +84,7 @@ class _MePageState extends ConsumerState<MePage> {
                   );
                 }
                 final p = snap.data!;
+                final textTheme = Theme.of(context).textTheme;
                 return Padding(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 8),
@@ -111,7 +114,7 @@ class _MePageState extends ConsumerState<MePage> {
                                 children: [
                                   Text(
                                     '${p.heightCm.toStringAsFixed(0)}cm · ${p.weightKg.toStringAsFixed(1)}kg · ${p.age}岁',
-                                    style: TextStyle(
+                                    style: textTheme.titleMedium?.copyWith(
                                       color: cs.onPrimaryContainer,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -119,18 +122,14 @@ class _MePageState extends ConsumerState<MePage> {
                                   const SizedBox(height: 4),
                                   Text(
                                     '${_genderLabel(p.gender)} · ${_goalLabel(p.goal)} · ${_activityLabel(p.activityLevel)}',
-                                    style: TextStyle(
-                                      color: cs.onPrimaryContainer,
-                                      fontSize: 12,
-                                    ),
+                                    style: textTheme.bodySmall
+                                        ?.copyWith(color: cs.onPrimaryContainer),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
                                     '每日目标 ${p.dailyCalorieTarget} kcal',
-                                    style: TextStyle(
-                                      color: cs.onPrimaryContainer,
-                                      fontSize: 12,
-                                    ),
+                                    style: textTheme.bodySmall
+                                        ?.copyWith(color: cs.onPrimaryContainer),
                                   ),
                                 ],
                               ),
@@ -210,7 +209,7 @@ class _MePageState extends ConsumerState<MePage> {
           height: 1,
           indent: 56,
           endIndent: 16,
-          color: Theme.of(context).dividerColor,
+          color: Theme.of(context).colorScheme.outlineVariant,
         ));
       }
     }

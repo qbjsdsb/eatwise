@@ -182,6 +182,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
 
   Widget _statusCard(DashboardData d) {
     final cs = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     final remain = d.target - d.cal;
     final overflow = remain < 0;
     final pct = d.target > 0 ? (d.cal / d.target).clamp(0.0, 1.0) : 0.0;
@@ -200,24 +201,22 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                       color: cs.onPrimaryContainer, size: 20),
                   const SizedBox(width: 8),
                   Text('今日还可摄入',
-                      style: TextStyle(
-                          color: cs.onPrimaryContainer, fontSize: 14)),
+                      style: textTheme.labelLarge?.copyWith(
+                          color: cs.onPrimaryContainer)),
                 ],
               ),
               const SizedBox(height: 4),
               Text(
                 overflow ? (-remain).toStringAsFixed(0) : remain.toStringAsFixed(0),
-                style: TextStyle(
+                style: textTheme.displaySmall?.copyWith(
                   color: overflow ? cs.error : cs.onPrimaryContainer,
-                  fontSize: 57,
-                  fontWeight: FontWeight.w300,
+                  fontWeight: FontWeight.w400,
                   height: 1.1,
                 ),
               ),
               Text('kcal · 已摄入 ${d.cal.toStringAsFixed(0)} / ${d.target}',
-                  style: TextStyle(
-                      color: cs.onPrimaryContainer.withValues(alpha: 0.8),
-                      fontSize: 12)),
+                  style: textTheme.bodySmall
+                      ?.copyWith(color: cs.onPrimaryContainer.withValues(alpha: 0.8))),
               const SizedBox(height: 12),
               ClipRRect(
                 borderRadius: BorderRadius.circular(4),
@@ -229,13 +228,15 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                 ),
               ),
               const SizedBox(height: 16),
-              // primaryContainer 背景上统一用 onPrimaryContainer 系色，
-              // 避免 tertiary/secondary 在深底上对比度不足；用不同明度区分三种宏量。
-              _miniMacro('蛋白', d.protein, d.proteinGoal, cs.onPrimaryContainer),
+              // 三宏用 MD3 三角色（tertiary/secondary/primary），跟随 seed 变化且色弱友好。
+              // primaryContainer 深底上用 onTertiaryContainer/onSecondaryContainer/onPrimaryContainer
+              // 保证对比度（容器色配对色），与 today_meals 跨页统一。
+              _miniMacro('蛋白', d.protein, d.proteinGoal,
+                  MacroColors.protein(cs), cs.onTertiaryContainer),
               _miniMacro('脂肪', d.fat, d.fatGoal,
-                  cs.onPrimaryContainer.withValues(alpha: 0.7)),
+                  MacroColors.fat(cs), cs.onSecondaryContainer),
               _miniMacro('碳水', d.carbs, d.carbGoal,
-                  cs.onPrimaryContainer.withValues(alpha: 0.5)),
+                  MacroColors.carb(cs), cs.onPrimaryContainer),
             ],
           ),
         ),
@@ -243,7 +244,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     );
   }
 
-  Widget _miniMacro(String label, double value, double goal, Color color) {
+  Widget _miniMacro(String label, double value, double goal, Color barColor, Color labelColor) {
+    final textTheme = Theme.of(context).textTheme;
     final pct = goal > 0 ? (value / goal).clamp(0.0, 1.0) : 0.0;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
@@ -252,14 +254,14 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           SizedBox(
               width: 40,
               child: Text(label,
-                  style: TextStyle(color: color, fontSize: 12))),
+                  style: textTheme.bodySmall?.copyWith(color: labelColor))),
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(2),
               child: LinearProgressIndicator(
                 value: pct,
-                backgroundColor: color.withValues(alpha: 0.12),
-                color: color,
+                backgroundColor: barColor.withValues(alpha: 0.12),
+                color: barColor,
                 minHeight: 6,
               ),
             ),
@@ -269,7 +271,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               child: Text(
                   '${value.toStringAsFixed(0)}/${goal.toStringAsFixed(0)}g',
                   textAlign: TextAlign.right,
-                  style: TextStyle(color: color, fontSize: 11))),
+                  style: textTheme.labelSmall?.copyWith(color: labelColor))),
         ],
       ),
     );
@@ -277,6 +279,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
 
   Widget _recommendationSection(DashboardData d) {
     final cs = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     return FutureBuilder<List<RecommendedFood>>(
       future: _recFuture,
       builder: (context, snap) {
@@ -305,8 +308,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                               : remain > 0
                                   ? '今日还可摄入 ${remain.toStringAsFixed(0)} kcal'
                                   : '今日热量已达标，推荐低卡食物',
-                          style: TextStyle(
-                              fontSize: 12, color: cs.onSurfaceVariant),
+                          style: textTheme.bodySmall
+                              ?.copyWith(color: cs.onSurfaceVariant),
                         ),
                       ),
                     ),
@@ -318,7 +321,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                         title: Text(rec.food.name),
                         subtitle: Text(
                             '${rec.food.caloriesPer100g.toStringAsFixed(0)} kcal/100g · 蛋白 ${rec.food.proteinPer100g.toStringAsFixed(1)}g',
-                            style: const TextStyle(fontSize: 11)),
+                            style: textTheme.labelSmall),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => _pushAndRefresh(
                             ManualEntryPage(initialName: rec.food.name)),
@@ -336,6 +339,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
 
   Widget _mealsSection(DashboardData d) {
     final cs = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     if (d.meals.isEmpty) {
       return Padding(
         padding: const EdgeInsets.all(32),
@@ -347,11 +351,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                   color: cs.onSurfaceVariant),
               const SizedBox(height: 16),
               Text('今日还没有记录',
-                  style: TextStyle(color: cs.onSurface)),
+                  style: textTheme.titleMedium?.copyWith(color: cs.onSurface)),
               const SizedBox(height: 8),
               Text('点下方拍照按钮开始记录',
-                  style: TextStyle(
-                      color: cs.onSurfaceVariant, fontSize: 13)),
+                  style: textTheme.bodyMedium
+                      ?.copyWith(color: cs.onSurfaceVariant)),
               const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed: () => context.push('/recognize'),
@@ -392,10 +396,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                         title: Text(d.foodNames[m.foodItemId] ?? '食物'),
                         subtitle: Text(
                             '${_mealLabel(mt)} · ${_formatTime(m.loggedAt)}',
-                            style: const TextStyle(fontSize: 11)),
+                            style: textTheme.labelSmall),
                         trailing: Text('${m.actualCalories.toStringAsFixed(0)} kcal',
-                            style: TextStyle(
-                                fontSize: 13, color: cs.onSurfaceVariant)),
+                            style: textTheme.bodyMedium
+                                ?.copyWith(color: cs.onSurfaceVariant)),
                       ),
                       // 只在非"最后一条记录"时显示分割线
                       if (!(m == groups[mt]!.last && mt == lastPresentMt))

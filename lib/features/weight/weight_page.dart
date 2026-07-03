@@ -154,7 +154,9 @@ class WeightPageState extends ConsumerState<WeightPage> {
       return const Center(child: Text('至少记录 2 次才能显示趋势图'));
     }
 
-    final colorScheme = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
     // 双轴技巧：fl_chart 0.70 不原生支持双 Y 轴。热量用真实值（左轴），
     // 体重按比例映射到热量轴范围；rightTitles 用 getTitlesWidget 反向映射
     // 显示体重刻度（社区常用双轴方案）。
@@ -180,78 +182,215 @@ class WeightPageState extends ConsumerState<WeightPage> {
     final wMin = minW - wPadding;
     final wMax = maxW + wPadding;
 
-    return LineChart(LineChartData(
-      gridData: const FlGridData(show: true),
-      borderData: FlBorderData(
-        show: true,
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      minX: 0,
-      maxX: (_logs.length - 1).toDouble(),
-      minY: 0,
-      maxY: calRange,
-      titlesData: FlTitlesData(
-        bottomTitles: const AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
-        ),
-        leftTitles: AxisTitles(
-          axisNameWidget: Text('kcal',
-              style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant)),
-          sideTitles: const SideTitles(
-            showTitles: true,
-            reservedSize: 40,
+    // Y 轴刻度间隔：热量轴 1/4 取整（刻度整齐不重叠，左右轴共用同一组刻度）
+    final yInterval = (calRange / 4).clamp(1.0, double.infinity).toDouble();
+    // 体重映射到热量轴范围后的 spots
+    final weightMappedSpots = weightSpots
+        .map((s) => FlSpot(s.x, (s.y - wMin) / (wMax - wMin) * calRange))
+        .toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // 图例：说明哪条线是热量、哪条线是体重
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _legendDot(cs.tertiary, '热量 (kcal)', textTheme),
+              const SizedBox(width: 16),
+              _legendDot(cs.primary, '体重 (kg)', textTheme),
+            ],
           ),
         ),
-        topTitles: const AxisTitles(
-          sideTitles: SideTitles(showTitles: false),
-        ),
-        rightTitles: AxisTitles(
-          axisNameWidget: Text('kg',
-              style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant)),
-          sideTitles: SideTitles(
-            showTitles: true,
-            reservedSize: 40,
-            // 双轴：右 Y 轴显示体重刻度。interval 用热量轴单位
-            //（getTitlesWidget 收到的 value 是热量轴值，按比例反推体重）
-            interval: (calRange / 4).clamp(1, double.infinity),
-            getTitlesWidget: (value, meta) {
-              // value 是热量轴（左 Y 轴）值，反向映射回体重轴值
-              final ratio = value / calRange;
-              final w = wMin + (wMax - wMin) * ratio;
-              return Text(w.toStringAsFixed(1),
-                  style: TextStyle(fontSize: 9, color: colorScheme.onSurfaceVariant));
-            },
-          ),
-        ),
-      ),
-      lineBarsData: [
-        // 热量（左轴，主）
-        LineChartBarData(
-          spots: calSpots,
-          isCurved: true,
-          color: colorScheme.tertiary,
-          barWidth: 2,
-          isStrokeCapRound: true,
-          dotData: const FlDotData(show: false),
-          belowBarData: BarAreaData(
-            show: true,
-            color: colorScheme.tertiary.withValues(alpha: 0.1),
-          ),
-        ),
-        // 体重（映射到主轴范围）
-        LineChartBarData(
-          spots: weightSpots
-              .map((s) => FlSpot(
-                  s.x, (s.y - wMin) / (wMax - wMin) * calRange))
-              .toList(),
-          isCurved: true,
-          color: colorScheme.primary,
-          barWidth: 3,
-          isStrokeCapRound: true,
-          dotData: const FlDotData(show: true),
+        Expanded(
+          child: LineChart(LineChartData(
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false, // 只留水平网格，去掉垂直线减少噪音
+              horizontalInterval: yInterval,
+              getDrawingHorizontalLine: (v) => FlLine(
+                color: cs.outlineVariant.withValues(alpha: 0.4),
+                strokeWidth: 1,
+                dashArray: [3, 3],
+              ),
+            ),
+            borderData: FlBorderData(
+              show: true,
+              // 只留左 + 下边框（现代图表风格）
+              border: Border(
+                left: BorderSide(color: cs.outlineVariant),
+                bottom: BorderSide(color: cs.outlineVariant),
+                top: BorderSide.none,
+                right: BorderSide.none,
+              ),
+            ),
+            minX: 0,
+            maxX: (_logs.length - 1).toDouble(),
+            minY: 0,
+            maxY: calRange,
+            titlesData: FlTitlesData(
+              bottomTitles: const AxisTitles(
+                sideTitles: SideTitles(showTitles: false),
+              ),
+              leftTitles: AxisTitles(
+                axisNameWidget: Text('kcal',
+                    style: textTheme.labelSmall
+                        ?.copyWith(color: cs.onSurfaceVariant)),
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: 40,
+                  interval: yInterval, // 固定间隔防重叠
+                  getTitlesWidget: (value, meta) {
+                    // 0 不显示（避免和 X 轴标签挤）
+                    if (value == 0) return const SizedBox.shrink();
+                    return Text('${value.round()}',
+                        style: textTheme.labelSmall
+                            ?.copyWith(color: cs.onSurfaceVariant));
+                  },
+                ),
+              ),
+              topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false)),
+              rightTitles: AxisTitles(
+                axisNameWidget: Text('kg',
+                    style: textTheme.labelSmall
+                        ?.copyWith(color: cs.onSurfaceVariant)),
+                sideTitles: SideTitles(
+                  showTitles: true,
+                  reservedSize: 40,
+                  // 双轴：右 Y 轴显示体重刻度。interval 用热量轴单位
+                  //（getTitlesWidget 收到的 value 是热量轴值，按比例反推体重）
+                  interval: yInterval,
+                  getTitlesWidget: (value, meta) {
+                    // value 是热量轴（左 Y 轴）值，反向映射回体重轴值
+                    final ratio = value / calRange;
+                    final w = wMin + (wMax - wMin) * ratio;
+                    return Text(w.toStringAsFixed(1),
+                        style: textTheme.labelSmall
+                            ?.copyWith(color: cs.onSurfaceVariant));
+                  },
+                ),
+              ),
+            ),
+            lineTouchData: LineTouchData(
+              // 触摸节点显示具体值 + 高亮指示线
+              touchTooltipData: LineTouchTooltipData(
+                getTooltipItems: (touchedSpots) {
+                  return touchedSpots.map((spot) {
+                    final idx = spot.spotIndex;
+                    final log = _logs[idx];
+                    // barIndex 0 = 热量，1 = 体重
+                    final valueText = spot.barIndex == 0
+                        ? '${_dailyCalories[log.date]?.round() ?? 0} kcal'
+                        : '${log.weightKg.toStringAsFixed(1)} kg';
+                    return LineTooltipItem(
+                      '${log.date}\n$valueText',
+                      TextStyle(
+                        color: cs.onInverseSurface,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        height: 1.4,
+                      ),
+                    );
+                  }).toList();
+                },
+              ),
+              getTouchedSpotIndicator: (barData, spotIndexes) {
+                return spotIndexes.map((index) {
+                  return TouchedSpotIndicatorData(
+                    FlLine(
+                      color: cs.outlineVariant.withValues(alpha: 0.5),
+                      strokeWidth: 1,
+                      dashArray: [3, 3],
+                    ),
+                    FlDotData(
+                      show: true,
+                      getDotPainter: (spot, percent, bar, index) =>
+                          FlDotCirclePainter(
+                        radius: 4,
+                        color: cs.surface,
+                        strokeWidth: 2,
+                        strokeColor: bar.color ?? cs.primary,
+                      ),
+                    ),
+                  );
+                }).toList();
+              },
+            ),
+            lineBarsData: [
+              // 热量（左轴，主）
+              LineChartBarData(
+                spots: calSpots,
+                isCurved: true,
+                curveSmoothness: 0.35,
+                color: cs.tertiary,
+                barWidth: 2.5,
+                isStrokeCapRound: true,
+                dotData: FlDotData(
+                  show: true,
+                  getDotPainter: (spot, _, __, ___) => FlDotCirclePainter(
+                    radius: 3,
+                    color: cs.tertiary,
+                    strokeWidth: 1.5,
+                    strokeColor: cs.surface,
+                  ),
+                ),
+                belowBarData: BarAreaData(
+                  show: true,
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      cs.tertiary.withValues(alpha: 0.18),
+                      cs.tertiary.withValues(alpha: 0.02),
+                    ],
+                  ),
+                ),
+              ),
+              // 体重（映射到主轴范围）
+              LineChartBarData(
+                spots: weightMappedSpots,
+                isCurved: true,
+                curveSmoothness: 0.35,
+                color: cs.primary,
+                barWidth: 2.5,
+                isStrokeCapRound: true,
+                dotData: FlDotData(
+                  show: true,
+                  getDotPainter: (spot, _, __, ___) => FlDotCirclePainter(
+                    radius: 3,
+                    color: cs.primary,
+                    strokeWidth: 1.5,
+                    strokeColor: cs.surface,
+                  ),
+                ),
+              ),
+            ],
+          )),
         ),
       ],
-    ));
+    );
+  }
+
+  /// 图例小色块 + 文案
+  Widget _legendDot(Color color, String label, TextTheme textTheme) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(4), // MD3 最小圆角
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(label, style: textTheme.labelSmall),
+      ],
+    );
   }
 
   Future<void> _save() async {

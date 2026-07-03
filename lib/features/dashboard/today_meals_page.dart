@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../ai/prompts.dart';
+import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/pending_recognition_repository.dart';
@@ -136,34 +137,15 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     );
   }
 
-  /// 餐次分组标题：带餐次小计热量，让用户一眼看到每餐总摄入
+  /// 餐次分组标题：用全局 SectionTitle + trailing 显示餐次小计热量
+  /// （复用共享组件，与 dashboard/me/settings 等页统一分组标题样式）
   Widget _buildSectionHeader(String label, List<MealLog> meals) {
     final cs = Theme.of(context).colorScheme;
     final sum = meals.fold(0.0, (s, m) => s + m.actualCalories);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 12, 4, 8),
-      child: Row(
-        children: [
-          Container(
-            width: 4,
-            height: 18,
-            decoration: BoxDecoration(
-              color: cs.primary,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(label, style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
-          )),
-          const SizedBox(width: 8),
-          Text('${sum.toStringAsFixed(0)} kcal',
-              style: TextStyle(
-                fontSize: 12,
-                color: cs.onSurfaceVariant,
-              )),
-        ],
-      ),
+    return SectionTitle(
+      label,
+      trailing: Text('${sum.toStringAsFixed(0)} kcal',
+          style: TextStyle(color: cs.onSurfaceVariant)),
     );
   }
 
@@ -192,26 +174,25 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
           );
         }
       },
-      child: Card(
+      // 用 MD3 Card.outlined 变体（替代手写 elevation:0 + outline），
+      // 圆角 12（MD3 medium）统一 dashboard，内 padding 16 统一 dashboard
+      child: Card.outlined(
         margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-        elevation: 0,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-          side: BorderSide(
-            color: cs.outlineVariant.withValues(alpha: 0.5),
-          ),
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
         ),
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           onTap: () => _showEditDialog(m),
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 缩略图
+                // 缩略图（圆角 8 = MD3 small）
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                   child: m.originalImagePath != null
                       ? Image.file(File(m.originalImagePath!),
                           width: 56,
@@ -264,28 +245,24 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
                         ],
                       ),
                       const SizedBox(height: 6),
-                      // 三大宏量营养素
+                      // 三大宏量营养素：用 MacroColors 跨页统一配色（蛋白=tertiary/脂肪=secondary/碳水=primary）
                       Row(
                         children: [
-                          _macroDot('蛋白',
-                              m.actualProteinG, const Color(0xFF4CAF50)),
+                          _macroDot('蛋白', m.actualProteinG, MacroColors.protein(cs)),
                           const SizedBox(width: 10),
-                          _macroDot('脂肪',
-                              m.actualFatG, const Color(0xFFFF9800)),
+                          _macroDot('脂肪', m.actualFatG, MacroColors.fat(cs)),
                           const SizedBox(width: 10),
-                          _macroDot('碳水',
-                              m.actualCarbsG, const Color(0xFF2196F3)),
+                          _macroDot('碳水', m.actualCarbsG, MacroColors.carb(cs)),
                         ],
                       ),
                     ],
                   ),
                 ),
-                // 反馈按钮
+                // 反馈按钮：恢复 48x48 触摸目标（MD3 可访问性要求）
                 if (m.recognitionConfidence != null)
                   IconButton(
                     icon: const Icon(Icons.feedback_outlined, size: 20),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
+                    tooltip: '识别反馈',
                     onPressed: () => _showFeedbackDialog(m),
                   ),
               ],
@@ -296,14 +273,15 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     );
   }
 
-  /// 小标签 chip：图标 + 文字
+  /// 小标签 chip：图标 + 文字（圆角 8 = MD3 small）
   Widget _chip(
       IconData icon, String text, Color bg, Color fg) {
+    final textTheme = Theme.of(context).textTheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
         color: bg.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -311,10 +289,8 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
           Icon(icon, size: 12, color: fg),
           const SizedBox(width: 3),
           Text(text,
-              style: TextStyle(
-                  fontSize: 11,
-                  color: fg,
-                  fontWeight: FontWeight.w500)),
+              style: textTheme.labelSmall
+                  ?.copyWith(color: fg, fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -322,6 +298,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
 
   /// 宏量营养素小圆点 + 数值
   Widget _macroDot(String label, double g, Color color) {
+    final textTheme = Theme.of(context).textTheme;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -332,8 +309,8 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         ),
         const SizedBox(width: 3),
         Text('$label ${g.toStringAsFixed(1)}g',
-            style: TextStyle(
-                fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            style: textTheme.labelSmall
+                ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ],
     );
   }
@@ -358,7 +335,8 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
             TextButton(
                 onPressed: () => Navigator.pop(ctx),
                 child: const Text('取消')),
-            TextButton(
+            // 主操作"保存"用 FilledButton（MD3 对话框规范：确认用 FilledButton）
+            FilledButton(
               onPressed: () =>
                   Navigator.pop(ctx, double.tryParse(servingCtrl.text)),
               child: const Text('保存')),
