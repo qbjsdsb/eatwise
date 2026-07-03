@@ -40,7 +40,7 @@ void main() {
     PathProviderPlatform.instance = _MemoryPathProvider(tempDir.path);
 
     mockStore = _MockSecureConfigStore();
-    // AppConfig.load() 调用 7 个 getter + settings_page._loadSettings 调用 2 个
+    // AppConfig.load() 调用 8 个 getter + settings_page._loadSettings 调用 2 个
     when(() => mockStore.getQwenApiKey()).thenAnswer((_) async => null);
     when(() => mockStore.getQwenBaseUrl()).thenAnswer((_) async => null);
     when(() => mockStore.getGlmApiKey()).thenAnswer((_) async => null);
@@ -48,6 +48,7 @@ void main() {
     when(() => mockStore.getSentryDsn()).thenAnswer((_) async => null);
     when(() => mockStore.getSentryEnabled()).thenAnswer((_) async => false);
     when(() => mockStore.getTdeeAutoCalib()).thenAnswer((_) async => true);
+    when(() => mockStore.getThemeSeed()).thenAnswer((_) async => 0xFF5B8C7B);
     when(() => mockStore.getCurrentMonthCount()).thenAnswer((_) async => 0);
     when(() => mockStore.getImageRetentionDays()).thenAnswer((_) async => 30);
   });

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/theme/theme_controller.dart';
 import 'features/backup/backup_page.dart';
 import 'features/dashboard/dashboard_page.dart';
 import 'features/dashboard/today_meals_page.dart';
@@ -11,15 +13,16 @@ import 'features/profile/profile_page.dart';
 import 'features/settings/settings_page.dart';
 import 'features/weight/weight_page.dart';
 
-class EatWiseApp extends StatelessWidget {
+class EatWiseApp extends ConsumerWidget {
   const EatWiseApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final seed = Color(ref.watch(themeSeedProvider));
     return MaterialApp.router(
       title: 'EatWise',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
+        colorScheme: ColorScheme.fromSeed(seedColor: seed),
         useMaterial3: true,
       ),
       routerConfig: _router,

@@ -9,6 +9,7 @@ import 'background/background_dispatcher.dart';
 import 'background/background_tasks.dart';
 import 'core/config/app_config.dart';
 import 'core/error/sentry_init.dart';
+import 'core/theme/theme_controller.dart';
 import 'data/backup/image_cleanup.dart';
 import 'data/database/database.dart';
 import 'features/offline/offline_queue_controller.dart';
@@ -19,6 +20,10 @@ void main() async {
   final container = ProviderContainer();
   // 先加载 appConfig（Sentry DSN / API key 都从这里读）
   await container.read(appConfigProvider.future);
+
+  // 初始化主题种子色（从 secure_storage 读出写入 provider，App 首帧即用正确色）
+  final config = await container.read(appConfigProvider.future);
+  container.read(themeSeedProvider.notifier).set(config.themeSeed);
 
   // T19: 初始化 workmanager（必须在 callbackDispatcher 定义之后）
   // workmanager 0.9.x: isInDebugMode 已废弃且无效，保留以兼容计划，用 ignore 抑制告警

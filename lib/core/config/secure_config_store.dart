@@ -73,6 +73,18 @@ class SecureConfigStore {
   // --- T48 图片保留期（0=永久保留，默认 30）---
   static const _imageRetentionDays = 'image_retention_days';
 
+  // --- 主题种子色（ARGB int 的十进制字符串，默认莫奈《睡莲》青绿 0xFF5B8C7B = 5999227）---
+  static const _themeSeed = 'theme_seed';
+
+  /// 读取主题种子色 ARGB int（默认莫奈《睡莲》青绿）
+  Future<int> getThemeSeed() async {
+    final v = await readRaw(_themeSeed);
+    return int.tryParse(v ?? '') ?? 0xFF5B8C7B;
+  }
+
+  Future<void> setThemeSeed(int argb) =>
+      writeRaw(_themeSeed, argb.toString());
+
   /// 读取图片保留期（0=永久保留，默认 30）
   Future<int> getImageRetentionDays() async {
     final v = await readRaw(_imageRetentionDays);

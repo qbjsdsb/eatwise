@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/theme/theme_controller.dart';
 import '../../data/backup/auto_backup.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
@@ -89,6 +90,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // --- 主题色 ---
+          _sectionHeader('主题色'),
+          _themePalette(),
+          const SizedBox(height: 16),
+
           // --- AI 模型配置 ---
           _sectionHeader('AI 模型配置'),
           TextField(
@@ -235,6 +241,54 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         padding: const EdgeInsets.only(top: 8, bottom: 12),
         child: Text(title, style: Theme.of(context).textTheme.titleMedium),
       );
+
+  /// 主题色色板：圆形色块网格，选中态带勾选，点选即时换肤 + 持久化。
+  Widget _themePalette() {
+    final current = ref.watch(themeSeedProvider);
+    return Wrap(
+      spacing: 16,
+      runSpacing: 12,
+      children: [
+        for (final (argb, name) in kThemePresets)
+          _colorDot(Color(argb), name, current == argb, () async {
+            // 即时换肤：更新 provider → App 重建
+            ref.read(themeSeedProvider.notifier).set(argb);
+            // 持久化到 secure_storage
+            await ref.read(secureConfigStoreProvider).setThemeSeed(argb);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('已切换主题：$name'), duration: const Duration(seconds: 1)),
+              );
+            }
+          }),
+      ],
+    );
+  }
+
+  Widget _colorDot(Color c, String name, bool selected, VoidCallback onTap) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(28),
+      onTap: onTap,
+      child: Tooltip(
+        message: name,
+        child: Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            color: c,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: selected ? Theme.of(context).colorScheme.onSurface : Colors.transparent,
+              width: 3,
+            ),
+          ),
+          child: selected
+              ? const Icon(Icons.check, color: Colors.white, size: 24)
+              : null,
+        ),
+      ),
+    );
+  }
 
   Future<void> _save() async {
     final store = ref.read(secureConfigStoreProvider);
