@@ -36,12 +36,12 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（识别智能化批次 1-3 已提交，未发布 release，等用户确认）
+**工作区状态**：clean（食物热量计算优化第一波已提交，未发布 release，等用户确认）
 **最近 commit**：
-- `feat: 识别智能化——图片预检+字段校验+营养素自洽+包装容量优先+反馈闭环` （批次 1-3）
+- `47fd22c` feat: 食物热量计算优化第一波——可食部分系数+组分份量交叉验证+液体密度换算（建议1+3+7）
+- `c2510cb` feat: 识别智能化——图片预检+字段校验+营养素自洽+包装容量优先+反馈闭环（批次 1-3）
 - `50d4cac` fix: 第四轮深度审查修复——主题色绿/常用食物无名/原图丢失/复合菜滑块/防重入
 - `baba3e1` feat: 项目分析与建议（prompt v1.5 + 反馈卡死修复 + 转手动入口）
-- `c015953` fix: 第三轮深度审查修复 + release 构建失败根因
 
 **已发布**：
 - v0.10.0 已发布（2026-07-03，第二次 release 成功，APK 已上传）
@@ -64,12 +64,33 @@
   - 下次 AI 识别返回错误名时，findByNameOrAlias 命中别名，直接返回正确菜营养数据
   - 6 个 addAlias 单元测试全过
 
-**验证**：flutter analyze No issues + flutter test 268 passed/3 skipped/0 failed
+**验证**：flutter analyze No issues + flutter test 302 passed/3 skipped/0 failed
+
+**食物热量计算优化第一波修复清单**（commit 47fd22c，等用户验收后发布 release）：
+- 建议 1 ediblePercent 可食部分系数：
+  - `nutrition_lookup.lookupSingleItem` 库命中分支 + `recognize_page._nutritionFromFoodItem` 反算点都加 `edibleFactor = (food.ediblePercent ?? 100).clamp(1,100) / 100`
+  - `effectiveG = servingG * edibleFactor`，反算用真实可食克数（如香蕉 65%、带骨排骨 50%）
+  - 复合菜 `lookupCompositeDish` 不乘（组分已是可食克数）
+  - 6 个专项测试（香蕉/排骨/null/100%/0% clamp/复合菜不乘）全过
+- 建议 7 复合菜组分份量交叉验证：
+  - `RecognitionValidationResult` 新增 `correctedComponents` 字段
+  - `sum(components.estimatedG)` 与 `estimatedWeightGMid` 偏差>15% 时按 mid 比例缩放
+  - `recognize_controller._validateAndMaybeRetry` 主菜 + 附加菜两条路径都覆盖（在校验后、查库前）
+  - 防除零（sumG=0/mid=0 不触发）+ 缩放后保留组分名
+  - 8 个专项测试全过
+- 建议 3 食物密度表 ml→g 换算：
+  - 新建 `lib/ai/food_density.dart`——14 个类别密度表（油 0.92/蜂蜜 1.42/烈酒 0.79 等）+ `densityOf`/`isLiquidCategory` 辅助函数
+  - prompt v1.7 新增 `food_category` 字段（water/carbonated/juice/milk/cream/oil/honey/sauce/alcohol/beer/wine/yogurt/soup/solid）
+  - `VisionRecognitionResult` 新增 `foodCategory` 字段 + `copyWith` 扩展 + fromJson 解析（向后兼容默认 solid）
+  - `recognize_controller._applyDensityConversion + _convertDensityForDish` 在校验前换算：仅对 `weight_source=package_label` + 液体类别换算，密度=1.0（水基）跳过
+  - 换算公式：`realPerUnitG = perUnitG * density`，`realMid = realPerUnitG * quantity`，区间 ±3%
+  - 20 个专项测试全过
 
 **未完成/待办**（按优先级）：
-1. ⬜ 用户验收测试（真机装 APK 验证识别智能化效果，等用户确认后发布 release）
-2. 🔧 批次 4（暂跳过，不在用户明确选择范围）：低置信度双模型验证 + 多候选选择 UI（成本高、延迟大，待用户确认是否需要）
-3. 🔧 重构性优化（风险较高，不阻塞当前版本）：
+1. ⬜ 用户验收测试（真机装 APK 验证第一波优化效果，等用户确认后发布 release）
+2. 🔧 第二波（待用户确认后启动）：建议 2（强制路径顺序：库命中→AI 整菜估算→OFF 云查→AI 兜底）+ 建议 4（餐前/餐后双拍对比 DietDelta 思路）
+3. 🔧 第三波（待用户确认后启动）：建议 6（接入 USDA FoodData Central API 替代部分 OFF 云查，免费但需 API key）
+4. 🔧 重构性优化（风险较高，不阻塞当前版本）：
    - 路由方式统一（GoRouter vs Navigator.push 混用）
    - 版本号从 PackageInfo 读取（替代硬编码）
    - dashboard/today_meals N+1 查询优化（getByIds）
@@ -97,16 +118,25 @@
 - nutrition_lookup.lookupSingleItem 过滤 componentsJson!=null 的记录（防 0 卡污染）
 - listAllForRecommendation 排除 source='ai_recognized'
 
-### 3.4 prompt 版本 v1.4
-- 合并 v1.3（多菜多份 quantity/unit/perUnitG）+ v1.1（营养字段 estimated_calories 等）
-- schema 新增 estimated_calories/protein_g/fat_g/carbs_g
+### 3.4 prompt 版本 v1.7
+- v1.4：合并 v1.3（多菜多份 quantity/unit/perUnitG）+ v1.1（营养字段 estimated_calories 等）
+- v1.6：包装容量优先（weight_source=package_label）+ 营养素自洽约束（4p+9f+4c≈cal，±5%）
+- v1.7：新增 food_category 字段（water/carbonated/juice/milk/cream/oil/honey/sauce/alcohol/beer/wine/yogurt/soup/solid），用于包装液体 ml→g 密度换算
+- 旧 prompt 响应无 food_category/weight_source 时默认 solid/ai_estimate（不换算、走视觉估算），向后兼容
 
-### 3.5 主题色
+### 3.5 per100g 反算 + 可食部分 + 密度换算三件套
+- per100g 反算公式：`caloriesPer100g * effectiveG / 100`
+- `effectiveG = servingG * edibleFactor`（建议 1）：edibleFactor 来自 FCT 数据 `ediblePercent` 字段（如香蕉 65%、带骨排骨 50%）
+- 复合菜组分克数已是可食克数，不乘 edibleFactor
+- 包装液体密度换算（建议 3）：`effectiveG = perUnitG * density * quantity`，仅 weight_source=package_label + 液体类别触发
+- 三件套叠加顺序：识别 → 密度换算（ml→g）→ 字段校验 → 组分交叉验证（mid 缩放）→ 查库反算（×edibleFactor）
+
+### 3.6 主题色
 - themeSeedProvider（NotifierProvider<int>）+ secure_config_store 持久化
 - 默认莫奈《睡莲》青绿 0xFF5B8C7B，12 色预设 kThemePresets
 - main.dart runApp 前快速读，首帧即用正确主题色避免闪烁
 
-### 3.6 启动流程（main.dart）
+### 3.7 启动流程（main.dart）
 - runZonedGuarded 包整个 main
 - 单一 ProviderContainer（UI 与初始化共用，不 dispose）
 - themeSeed 快速读 → initSentryAndRunApp（appConfig 失败降级跳过 Sentry）→ runApp
@@ -122,6 +152,8 @@
 4. **multi_dish_page take(5) 截断**：附加菜超 5 道静默丢弃，当前未提示用户（待优化）
 5. **滑块 max 与 perUnitG*20 边界**：perUnitG 极大/极小时滑块与步进器可能不同步（待优化）
 6. **测试 mock 需补 getThemeSeed stub**：AppConfig.load() 新增了 getThemeSeed() 调用，mock SecureConfigStore 的测试必须 stub
+7. **复合菜组分克数已是可食克数，不能再乘 ediblePercent**：`lookupCompositeDish` 反算时不要加 edibleFactor（与单品 `lookupSingleItem` 不同），否则双重缩放
+8. **密度换算只对 weight_source=package_label + 液体类别触发**：散装菜（ai_estimate）即使 foodCategory=milk 也不换算（视觉估算已是克数）；水基（密度=1.0）跳过避免无谓重建
 
 ---
 
