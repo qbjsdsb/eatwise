@@ -38,19 +38,33 @@
 
 **工作区状态**：clean
 **最近 commit**：
+- `c015953` fix: 第三轮深度审查修复 + release 构建失败根因
+- `cddc9ff` docs: 更新 HANDOFF 第2节——v0.10.0 发布完成
 - `bd66ef3` docs: 添加跨会话交接文档 + Trae 项目规则
 - `8e436cc` fix: 深度审查修复——数据丢失/污染 + 启动白屏 + 异常处理 + 一致性
 - `79f4cfd` fix: v0.10.0 合并收尾——修复致命崩溃 + 数据正确性 + 防重入 + 一致性
 
 **已发布**：
-- v0.10.0 tag 已推送（2026-07-03），release.yml workflow 已触发构建
+- v0.10.0 tag 已重新推送（2026-07-03，第二次），release.yml workflow 已触发构建
+- 第一次 release 因 colors.xml 空文件致 AAPT 解析崩溃，已修复
 - 分支 v0.10.0-m3-merge 已同步到远程
-- workflow 监控：https://github.com/qbjsdsb/eatwise/actions/runs/28648760728
-- v0.10.0 合并完成（v0.8.0 M3 + HEAD AI 估热 + 主题色 + Sentry + 应用名）
-- 两轮深度审查修复（启动白屏、数据丢失/污染、异常处理、一致性）
+- workflow 监控（第二次）：https://github.com/qbjsdsb/eatwise/actions/runs/28650741254
+- 三轮深度审查修复（启动白屏、数据丢失/污染、异常处理、一致性、Sentry 脱敏、事务原子性）
 - 发布前验证：flutter analyze No issues + flutter test 242 passed/3 skipped/0 failed
 - 版本号一致：pubspec 0.10.0+10 / sentry eatwise@0.10.0 / me_page 0.10.0 / settings_page v0.10.0
 - R8 禁用确认：isMinifyEnabled=false + isShrinkResources=false
+
+**第三轮审查修复清单**（commit c015953）：
+- release 根因：colors.xml 空文件 → 补 <resources> 根元素
+- 致命：offline_queue_controller cal==null 不再创建 0 卡 food_item（污染查库），改 markFailed
+- 严重：multi_dish_page 复合菜 insertMealLog 补 componentsSnapshotJson + 事务包裹
+- 严重：offline_queue_controller recordSuccess 包 try-catch + 复合菜全 miss+cal==null 不写 0 卡
+- 严重：sentry_scrub 补 event.message 脱敏 + event.request 丢弃（防 API key 泄露）
+- 严重：main.dart zone handler 补 Sentry.captureException
+- 严重：weight_page _save 补 catch + food_library _doSearch/_loadFrequent 补 try-catch
+- 警告：recognize_page 未命中弹窗条件补 componentHits.isEmpty
+- 警告：insertMealLog 加 foodItemId<=0 哨兵防御
+- 统一：multi_dish_page _encodeComponents 格式与 offline_queue_controller 一致
 
 **未完成/待办**（按优先级）：
 1. ⬜ 用户验收测试（真机装 APK 验证，等 release 构建完成下载）
