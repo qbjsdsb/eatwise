@@ -31,6 +31,7 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
   final _fatCtrl = TextEditingController();
   final _carbsCtrl = TextEditingController();
   late bool _customMode;
+  bool _busy = false; // 防重入：记录期间禁用按钮，避免双击重复写库
 
   @override
   void initState() {
@@ -99,7 +100,14 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                   decoration: const InputDecoration(labelText: '份量 (g)')),
               const SizedBox(height: 24),
               FilledButton(
-                  onPressed: _logFromLibrary, child: const Text('记录')),
+                  onPressed: _busy ? null : _logFromLibrary,
+                  child: _busy
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('记录')),
             ],
             const SizedBox(height: 16),
             TextButton(
@@ -157,9 +165,16 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
             ),
             const SizedBox(height: 24),
             FilledButton(
-                onPressed: _logCustom, child: const Text('存库并记录')),
+                onPressed: _busy ? null : _logCustom,
+                child: _busy
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('存库并记录')),
             TextButton(
-              onPressed: () => setState(() => _customMode = false),
+              onPressed: _busy ? null : () => setState(() => _customMode = false),
               child: const Text('返回搜库'),
             ),
           ],
@@ -169,37 +184,44 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
   }
 
   Future<void> _logFromLibrary() async {
+    if (_busy) return; // 防重入
     if (_selected == null) return;
     final serving = double.tryParse(_servingCtrl.text);
     if (serving == null || serving <= 0) {
       _showError('请输入有效的份量');
       return;
     }
-    final ratio = serving / 100;
-    final db = await ref.read(recognize.databaseProvider.future);
-    final mealRepo = MealLogRepository(db);
-    final now = DateTime.now();
-    final today =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    await mealRepo.insertMealLog(
-      date: today,
-      mealType: _mealType,
-      foodItemId: _selected!.id,
-      actualServingG: serving,
-      actualCalories: _selected!.caloriesPer100g * ratio,
-      actualProteinG: _selected!.proteinPer100g * ratio,
-      actualFatG: _selected!.fatPer100g * ratio,
-      actualCarbsG: _selected!.carbsPer100g * ratio,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-              '已记录 ${_selected!.name} ${serving.toStringAsFixed(0)}g')));
-      Navigator.of(context).pop();
+    setState(() => _busy = true);
+    try {
+      final ratio = serving / 100;
+      final db = await ref.read(recognize.databaseProvider.future);
+      final mealRepo = MealLogRepository(db);
+      final now = DateTime.now();
+      final today =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      await mealRepo.insertMealLog(
+        date: today,
+        mealType: _mealType,
+        foodItemId: _selected!.id,
+        actualServingG: serving,
+        actualCalories: _selected!.caloriesPer100g * ratio,
+        actualProteinG: _selected!.proteinPer100g * ratio,
+        actualFatG: _selected!.fatPer100g * ratio,
+        actualCarbsG: _selected!.carbsPer100g * ratio,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(
+                '已记录 ${_selected!.name} ${serving.toStringAsFixed(0)}g')));
+        Navigator.of(context).pop();
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _logCustom() async {
+    if (_busy) return; // 防重入
     if (_nameCtrl.text.isEmpty) {
       _showError('请输入食物名称');
       return;
@@ -218,48 +240,53 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
       _showError('请输入有效的份量');
       return;
     }
-    final db = await ref.read(recognize.databaseProvider.future);
-    final foodRepo = FoodItemRepository(db);
-    final mealRepo = MealLogRepository(db);
+    setState(() => _busy = true);
+    try {
+      final db = await ref.read(recognize.databaseProvider.future);
+      final foodRepo = FoodItemRepository(db);
+      final mealRepo = MealLogRepository(db);
 
-    // 先存库（source=manual，用 T9 新增的 insertManual 方法）
-    // 自动学习：若 modelDishName 非空且与用户输入 name 不同，存为 alias，
-    // 下次模型返回同名时自动命中（无需用户再手动录入）
-    final userInputName = _nameCtrl.text.trim();
-    final modelDishName = widget.modelDishName?.trim();
-    final aliases = (modelDishName != null &&
-            modelDishName.isNotEmpty &&
-            modelDishName != userInputName)
-        ? <String>[modelDishName]
-        : null;
+      // 先存库（source=manual，用 T9 新增的 insertManual 方法）
+      // 自动学习：若 modelDishName 非空且与用户输入 name 不同，存为 alias，
+      // 下次模型返回同名时自动命中（无需用户再手动录入）
+      final userInputName = _nameCtrl.text.trim();
+      final modelDishName = widget.modelDishName?.trim();
+      final aliases = (modelDishName != null &&
+              modelDishName.isNotEmpty &&
+              modelDishName != userInputName)
+          ? <String>[modelDishName]
+          : null;
 
-    final foodId = await foodRepo.insertManual(
-      name: userInputName,
-      caloriesPer100g: cal,
-      proteinPer100g: protein,
-      fatPer100g: fat,
-      carbsPer100g: carbs,
-      aliases: aliases,
-    );
+      final foodId = await foodRepo.insertManual(
+        name: userInputName,
+        caloriesPer100g: cal,
+        proteinPer100g: protein,
+        fatPer100g: fat,
+        carbsPer100g: carbs,
+        aliases: aliases,
+      );
 
-    final ratio = serving / 100;
-    final now = DateTime.now();
-    final today =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    await mealRepo.insertMealLog(
-      date: today,
-      mealType: _mealType,
-      foodItemId: foodId,
-      actualServingG: serving,
-      actualCalories: cal * ratio,
-      actualProteinG: protein * ratio,
-      actualFatG: fat * ratio,
-      actualCarbsG: carbs * ratio,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('已存库并记录 ${_nameCtrl.text}')));
-      Navigator.of(context).pop();
+      final ratio = serving / 100;
+      final now = DateTime.now();
+      final today =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      await mealRepo.insertMealLog(
+        date: today,
+        mealType: _mealType,
+        foodItemId: foodId,
+        actualServingG: serving,
+        actualCalories: cal * ratio,
+        actualProteinG: protein * ratio,
+        actualFatG: fat * ratio,
+        actualCarbsG: carbs * ratio,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('已存库并记录 ${_nameCtrl.text}')));
+        Navigator.of(context).pop();
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 

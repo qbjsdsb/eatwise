@@ -21,6 +21,7 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
   late final TextEditingController _proteinCtrl;
   late final TextEditingController _fatCtrl;
   late final TextEditingController _carbsCtrl;
+  bool _busy = false; // 防重入：保存期间禁用按钮，避免双击重复写库
 
   @override
   void initState() {
@@ -96,33 +97,53 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
           const SizedBox(height: 24),
           if (editable)
             FilledButton(
-                onPressed: _saveAll, child: const Text('保存全部修改')),
+                onPressed: _busy ? null : _saveAll,
+                child: _busy
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('保存全部修改')),
           if (!editable)
             FilledButton(
-                onPressed: _saveServingOnly,
-                child: const Text('保存默认份量')),
+                onPressed: _busy ? null : _saveServingOnly,
+                child: _busy
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('保存默认份量')),
         ],
       ),
     );
   }
 
   Future<void> _saveServingOnly() async {
+    if (_busy) return; // 防重入
     final serving = double.tryParse(_servingCtrl.text);
     if (serving == null || serving <= 0) {
       _showError('请输入有效的份量');
       return;
     }
-    final db = await ref.read(recognize.databaseProvider.future);
-    final repo = FoodItemRepository(db);
-    await repo.updateDefaultServing(widget.foodItem.id, serving);
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已保存默认份量')));
-      Navigator.of(context).pop();
+    setState(() => _busy = true);
+    try {
+      final db = await ref.read(recognize.databaseProvider.future);
+      final repo = FoodItemRepository(db);
+      await repo.updateDefaultServing(widget.foodItem.id, serving);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('已保存默认份量')));
+        Navigator.of(context).pop();
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _saveAll() async {
+    if (_busy) return; // 防重入
     final serving = double.tryParse(_servingCtrl.text);
     final cal = double.tryParse(_calCtrl.text);
     final protein = double.tryParse(_proteinCtrl.text);
@@ -136,20 +157,25 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
       _showError('热量/蛋白质/脂肪/碳水 必须为数字');
       return;
     }
-    final db = await ref.read(recognize.databaseProvider.future);
-    final repo = FoodItemRepository(db);
-    await repo.updateDefaultServing(widget.foodItem.id, serving);
-    await repo.updateNutrients(
-      id: widget.foodItem.id,
-      caloriesPer100g: cal,
-      proteinPer100g: protein,
-      fatPer100g: fat,
-      carbsPer100g: carbs,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已保存')));
-      Navigator.of(context).pop();
+    setState(() => _busy = true);
+    try {
+      final db = await ref.read(recognize.databaseProvider.future);
+      final repo = FoodItemRepository(db);
+      await repo.updateDefaultServing(widget.foodItem.id, serving);
+      await repo.updateNutrients(
+        id: widget.foodItem.id,
+        caloriesPer100g: cal,
+        proteinPer100g: protein,
+        fatPer100g: fat,
+        carbsPer100g: carbs,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('已保存')));
+        Navigator.of(context).pop();
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 

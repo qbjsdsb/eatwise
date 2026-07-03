@@ -30,6 +30,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   static const _costWarningThreshold = 5.0;  // 5 元/月提示
   int _imageRetentionDays = 30;  // T48 保留期
   bool _backupOverdue = false;  // T55：14 天未备份提示
+  bool _isSaving = false; // 防重入：保存期间禁用 FAB，避免双击重复写库
 
   @override
   void initState() {
@@ -221,7 +222,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               _groupCard([
                 ListTile(
                   leading: const LeadingIconContainer(Icons.info_outline_rounded),
-                  title: const Text('关于 EatWise'),
+                  title: const Text('关于慢慢吃'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: _showAbout,
                 ),
@@ -239,8 +240,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _save,
-        icon: const Icon(Icons.save),
+        onPressed: _isSaving ? null : _save,
+        icon: _isSaving
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.save),
         label: const Text('保存设置'),
       ),
     );
@@ -265,24 +272,35 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       );
 
   Future<void> _save() async {
-    final store = ref.read(secureConfigStoreProvider);
-    await store.setQwenApiKey(_qwenKeyCtrl.text.trim());
-    await store.setQwenBaseUrl(_qwenUrlCtrl.text.trim().isEmpty ? null : _qwenUrlCtrl.text.trim());
-    await store.setGlmApiKey(_glmKeyCtrl.text.trim());
-    await store.setGlmBaseUrl(_glmUrlCtrl.text.trim().isEmpty ? null : _glmUrlCtrl.text.trim());
-    await store.setSentryDsn(_sentryDsnCtrl.text.trim().isEmpty ? null : _sentryDsnCtrl.text.trim());
-    await store.setSentryEnabled(_sentryEnabled);
-    await store.setTdeeAutoCalib(_tdeeAutoCalib);
-    await store.setImageRetentionDays(_imageRetentionDays);
+    if (_isSaving) return; // 防重入
+    setState(() => _isSaving = true);
+    try {
+      final store = ref.read(secureConfigStoreProvider);
+      await store.setQwenApiKey(_qwenKeyCtrl.text.trim());
+      await store.setQwenBaseUrl(_qwenUrlCtrl.text.trim().isEmpty ? null : _qwenUrlCtrl.text.trim());
+      await store.setGlmApiKey(_glmKeyCtrl.text.trim());
+      await store.setGlmBaseUrl(_glmUrlCtrl.text.trim().isEmpty ? null : _glmUrlCtrl.text.trim());
+      await store.setSentryDsn(_sentryDsnCtrl.text.trim().isEmpty ? null : _sentryDsnCtrl.text.trim());
+      await store.setSentryEnabled(_sentryEnabled);
+      await store.setTdeeAutoCalib(_tdeeAutoCalib);
+      await store.setImageRetentionDays(_imageRetentionDays);
 
-    // 刷新 appConfigProvider：让依赖它的 qwenApiKeyProvider 等重新计算
-    // （reload() 只改实例字段，Riverpod 不感知 → 必须 invalidate）
-    ref.invalidate(appConfigProvider);
-    await ref.read(appConfigProvider.future);  // 触发重新 load
+      // 刷新 appConfigProvider：让依赖它的 qwenApiKeyProvider 等重新计算
+      // （reload() 只改实例字段，Riverpod 不感知 → 必须 invalidate）
+      ref.invalidate(appConfigProvider);
+      await ref.read(appConfigProvider.future);  // 触发重新 load
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('设置已保存')));
-      Navigator.of(context).pop();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('设置已保存')));
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      // secure_storage IO 失败等异常：提示用户，不静默卡死
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败：$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 

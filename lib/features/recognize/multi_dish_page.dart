@@ -360,10 +360,28 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
         final (cal, p, f, c) = _calcNutrition(i, dish);
 
         // 获取 foodItemId：单品用查库命中的 foodItemId，复合菜 upsert ai_recognized
+        // v1.4：单品若库未命中走 AI 兜底，foodItemId=0 是哨兵，写库前必须替换为真实 id
+        // （meal_log.food_item_id 是非空 FK，PRAGMA foreign_keys=ON 时 id=0 触发外键违规崩溃）
         int foodItemId;
         if (i == 0) {
           if (widget.mainSingle != null) {
-            foodItemId = widget.mainSingle!.foodItemId;
+            final n = widget.mainSingle!;
+            if (n.foodItemId == 0) {
+              // 哨兵：AI 兜底结果 → 创建 ai_recognized food_item
+              // per100g 基于 mid 份量反算（n.calories 对应 mid 份量，不能用 servingG）
+              final mid = dish.estimatedWeightGMid;
+              final per100 = mid > 0 ? 100.0 / mid : 0.0;
+              foodItemId = await foodRepo.upsertAiRecognized(
+                name: dish.dishName,
+                caloriesPer100g: n.calories * per100,
+                proteinPer100g: n.proteinG * per100,
+                fatPer100g: n.fatG * per100,
+                carbsPer100g: n.carbsG * per100,
+                confidence: dish.confidence,
+              );
+            } else {
+              foodItemId = n.foodItemId;
+            }
           } else {
             foodItemId = await foodRepo.upsertAiRecognized(
               name: dish.dishName,
@@ -378,7 +396,22 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
         } else {
           final item = widget.additionalItems[i - 1];
           if (item.singleNutrition != null) {
-            foodItemId = item.singleNutrition!.foodItemId;
+            final n = item.singleNutrition!;
+            if (n.foodItemId == 0) {
+              // 哨兵：附加菜 AI 兜底 → 创建 ai_recognized food_item
+              final mid = dish.estimatedWeightGMid;
+              final per100 = mid > 0 ? 100.0 / mid : 0.0;
+              foodItemId = await foodRepo.upsertAiRecognized(
+                name: dish.dishName,
+                caloriesPer100g: n.calories * per100,
+                proteinPer100g: n.proteinG * per100,
+                fatPer100g: n.fatG * per100,
+                carbsPer100g: n.carbsG * per100,
+                confidence: dish.confidence,
+              );
+            } else {
+              foodItemId = n.foodItemId;
+            }
           } else {
             foodItemId = await foodRepo.upsertAiRecognized(
               name: dish.dishName,

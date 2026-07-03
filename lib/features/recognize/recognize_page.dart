@@ -245,8 +245,10 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
                       final n = state.singleNutrition!;
                       if (n.foodItemId == 0) {
                         // v1.4：单品库未命中，AI 估算兜底 → 创建 ai_recognized food_item
-                        // （per100g 由实际份量反算，便于后续复用该食物）
-                        final per100 = servingG > 0 ? 100.0 / servingG : 0.0;
+                        // per100g 必须基于 AI 估算的 mid 份量反算（n.calories 对应 mid 份量），
+                        // 不能用 servingG（用户校准后的份量），否则密度会随用户调整反向偏差
+                        final mid = result.estimatedWeightGMid;
+                        final per100 = mid > 0 ? 100.0 / mid : 0.0;
                         foodItemId = await foodRepo.upsertAiRecognized(
                           name: result.dishName,
                           caloriesPer100g: n.calories * per100,
@@ -322,14 +324,17 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     VisionRecognitionResult result, {
     required String mealType,
     String? imagePath,
+    String? currentName,
   }) async {
     if (!mounted) return;
+    // currentName：用户改菜名重试后透传，让弹窗显示用户最新输入而非原始识别名
+    final displayName = currentName ?? result.dishName;
     final action = await showDialog<_NotFoundAction>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('未找到营养数据'),
         content: Text(
-          '识别菜名「${result.dishName}」在食物库中未命中。'
+          '识别菜名「$displayName」在食物库中未命中。'
           '可修改菜名重试，或转手动录入。',
         ),
         actions: [
@@ -355,8 +360,8 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => ManualEntryPage(
-            initialName: result.dishName,
-            modelDishName: result.dishName, // 自动学习：存为 alias，下次同名自动命中
+            initialName: displayName,
+            modelDishName: result.dishName, // 自动学习：原始识别名存为 alias，下次同名自动命中
           ),
         ),
       );
@@ -364,7 +369,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     }
 
     // 改菜名重试：模糊搜库 + 候选列表选择 + 5 级模糊兜底
-    final newDishName = await _promptNewDishName(result.dishName);
+    final newDishName = await _promptNewDishName(displayName);
     if (newDishName == null || newDishName.isEmpty || !mounted) return;
 
     final foodRepo = await ref.read(foodItemRepoProvider.future);
@@ -394,15 +399,14 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     }
 
     if (nutrition == null) {
-      // 仍未命中 → 再次弹窗引导（递归，透传 mealType/imagePath）
+      // 仍未命中 → 递归再弹窗，透传用户最新输入的菜名（currentName）
+      // 不再先弹 SnackBar（会被紧随的 Dialog 遮挡，用户看不到）
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('修改后的菜名仍未命中，请转手动录入')));
       await _showNotFoundDialog(
         result,
         mealType: mealType,
         imagePath: imagePath,
+        currentName: newDishName,
       );
       return;
     }

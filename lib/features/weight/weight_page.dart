@@ -25,6 +25,7 @@ class WeightPageState extends ConsumerState<WeightPage> {
   List<MealLog> _meals = []; // 30 天 meal_log（双轴图热量用）
   Map<String, double> _dailyCalories = {}; // 日期 → 当日总热量
   bool _loading = true;
+  bool _busy = false; // 防重入：记录期间禁用按钮，避免双击重复写库
 
   @override
   void initState() {
@@ -88,7 +89,16 @@ class WeightPageState extends ConsumerState<WeightPage> {
                 ),
               ),
               const SizedBox(width: 16),
-              FilledButton(onPressed: _save, child: const Text('记录')),
+              FilledButton(
+                onPressed: _busy ? null : _save,
+                child: _busy
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('记录'),
+              ),
             ],
           ),
           const SizedBox(height: 24),
@@ -235,6 +245,7 @@ class WeightPageState extends ConsumerState<WeightPage> {
   }
 
   Future<void> _save() async {
+    if (_busy) return; // 防重入
     if (_weightCtrl.text.isEmpty) return;
     final weight = double.tryParse(_weightCtrl.text);
     if (weight == null || weight <= 0) {
@@ -244,34 +255,39 @@ class WeightPageState extends ConsumerState<WeightPage> {
       );
       return;
     }
-    final db = await ref.read(recognize.databaseProvider.future);
-    final repo = WeightLogRepository(db);
-    final now = DateTime.now();
-    final today =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    await repo.insert(date: today, weightKg: weight);
-
-    // 触发 TDEE 自适应校准（Sprint 3 T22）
+    setState(() => _busy = true);
     try {
-      final config = await ref.read(appConfigProvider.future);
-      if (config.tdeeAutoCalib) {
-        final calibrator = TdeeCalibrator(db);
-        final result = await calibrator.runAndApply(enabled: true);
-        if (result.adjustmentKcal != 0 && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('TDEE 已调整：${result.reason}')),
-          );
-        }
-      }
-    } catch (_) {
-      // 校准失败不影响体重记录主流程
-    }
+      final db = await ref.read(recognize.databaseProvider.future);
+      final repo = WeightLogRepository(db);
+      final now = DateTime.now();
+      final today =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      await repo.insert(date: today, weightKg: weight);
 
-    _weightCtrl.clear();
-    await _load();
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已记录体重')));
+      // 触发 TDEE 自适应校准（Sprint 3 T22）
+      try {
+        final config = await ref.read(appConfigProvider.future);
+        if (config.tdeeAutoCalib) {
+          final calibrator = TdeeCalibrator(db);
+          final result = await calibrator.runAndApply(enabled: true);
+          if (result.adjustmentKcal != 0 && mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('TDEE 已调整：${result.reason}')),
+            );
+          }
+        }
+      } catch (_) {
+        // 校准失败不影响体重记录主流程
+      }
+
+      _weightCtrl.clear();
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('已记录体重')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 }

@@ -240,8 +240,8 @@ class _MePageState extends ConsumerState<MePage> {
   void _showAbout(BuildContext context) {
     showAboutDialog(
       context: context,
-      applicationName: 'EatWise',
-      applicationVersion: '1.0.0',
+      applicationName: '慢慢吃',
+      applicationVersion: '0.10.0',
       applicationLegalese: '拍照识别食物热量 + 营养记录 + AI 汇总建议',
     );
   }

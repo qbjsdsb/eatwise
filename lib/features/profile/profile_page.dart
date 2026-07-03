@@ -26,6 +26,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   double _activity = 1.375;
   String _goal = 'maintain';
   bool _loading = true;
+  bool _busy = false; // 防重入：保存期间禁用按钮，避免双击重复写库
 
   @override
   void initState() {
@@ -193,8 +194,14 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             ),
             const SizedBox(height: 24),
             FilledButton(
-              onPressed: _save,
-              child: const Text('保存并重算目标'),
+              onPressed: _busy ? null : _save,
+              child: _busy
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('保存并重算目标'),
             ),
           ],
         ),
@@ -203,103 +210,109 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   }
 
   Future<void> _save() async {
+    if (_busy) return; // 防重入
     if (!_formKey.currentState!.validate()) return;
-    final db = await ref.read(recognize.databaseProvider.future);
-    final repo = ProfileRepository(db);
+    setState(() => _busy = true);
+    try {
+      final db = await ref.read(recognize.databaseProvider.future);
+      final repo = ProfileRepository(db);
 
-    // 读取现有 profile，保留 tdeeAdjustmentKcal（校准累积值，不应被 goalRate 重算覆盖）
-    final existing = await repo.get();
+      // 读取现有 profile，保留 tdeeAdjustmentKcal（校准累积值，不应被 goalRate 重算覆盖）
+      final existing = await repo.get();
 
-    final height = double.parse(_heightCtrl.text);
-    final weight = double.parse(_weightCtrl.text);
-    final age = int.parse(_ageCtrl.text);
-    final bodyFat =
-        _bodyFatCtrl.text.isEmpty ? null : double.parse(_bodyFatCtrl.text);
-    final goalRate = double.tryParse(_goalRateCtrl.text) ?? 0;
-    // 枚举转换：String → Gender/Goal
-    final genderEnum =
-        _gender == 'male' ? Gender.male : Gender.female;
-    final goalEnum = _goal == 'cut'
-        ? Goal.cut
-        : _goal == 'bulk'
-            ? Goal.bulk
-            : Goal.maintain;
+      final height = double.parse(_heightCtrl.text);
+      final weight = double.parse(_weightCtrl.text);
+      final age = int.parse(_ageCtrl.text);
+      final bodyFat =
+          _bodyFatCtrl.text.isEmpty ? null : double.parse(_bodyFatCtrl.text);
+      final goalRate = double.tryParse(_goalRateCtrl.text) ?? 0;
+      // 枚举转换：String → Gender/Goal
+      final genderEnum =
+          _gender == 'male' ? Gender.male : Gender.female;
+      final goalEnum = _goal == 'cut'
+          ? Goal.cut
+          : _goal == 'bulk'
+              ? Goal.bulk
+              : Goal.maintain;
 
-    // 重算目标（MVP：始终用 mifflin，有体脂率时也用 mifflin 除非用户显式选 katch——Sprint 2 简化）
-    final bmr = NutritionCalculator.bmrMifflin(
-      weightKg: weight,
-      heightCm: height,
-      age: age,
-      gender: genderEnum,
-    );
-    final tdee = NutritionCalculator.tdee(bmr: bmr, activityLevel: _activity);
-    final target = NutritionCalculator.dailyCalorieTarget(
-      tdee: tdee,
-      goal: goalEnum,
-      tdeeAdjustmentKcal: existing.tdeeAdjustmentKcal, // Sprint 7：传真实校准累积值，不再硬编码 0
-      goalRateKgPerWeek: goalRate, // 联动重算：goalRate 影响每日目标热量
-      gender: genderEnum,
-    );
-    // 宏量目标密度（g/kg）：硬编码同 NutritionCalculator.macros 内部值
-    // 减脂/维持时 carbGPerKg=null（碳水填剩余，dashboard 读取时按剩余热量反算）
-    final proteinGPerKg =
-        goalEnum == Goal.cut ? 2.4 : goalEnum == Goal.bulk ? 1.8 : 1.4;
-    final fatGPerKg =
-        goalEnum == Goal.cut ? 0.9 : goalEnum == Goal.bulk ? 1.0 : 0.9;
-    final double? carbGPerKg = goalEnum == Goal.bulk ? 5.0 : null;
-
-    // 风险警告：goalRate 超阈值时弹窗，用户确认后继续保存
-    if (goalRate > 0) {
-      final warning = NutritionCalculator.validateGoalRate(
-        goalRateKgPerWeek: goalRate,
+      // 重算目标（MVP：始终用 mifflin，有体脂率时也用 mifflin 除非用户显式选 katch——Sprint 2 简化）
+      final bmr = NutritionCalculator.bmrMifflin(
         weightKg: weight,
+        heightCm: height,
+        age: age,
+        gender: genderEnum,
+      );
+      final tdee = NutritionCalculator.tdee(bmr: bmr, activityLevel: _activity);
+      final target = NutritionCalculator.dailyCalorieTarget(
+        tdee: tdee,
         goal: goalEnum,
+        tdeeAdjustmentKcal: existing.tdeeAdjustmentKcal, // Sprint 7：传真实校准累积值，不再硬编码 0
+        goalRateKgPerWeek: goalRate, // 联动重算：goalRate 影响每日目标热量
+        gender: genderEnum,
       );
-      if (warning != null) {
-        if (!mounted) return;
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('⚠ 风险警告'),
-            content: Text(warning),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                child: const Text('重新填写'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                child: const Text('我知道风险，继续'),
-              ),
-            ],
-          ),
+      // 宏量目标密度（g/kg）：硬编码同 NutritionCalculator.macros 内部值
+      // 减脂/维持时 carbGPerKg=null（碳水填剩余，dashboard 读取时按剩余热量反算）
+      final proteinGPerKg =
+          goalEnum == Goal.cut ? 2.4 : goalEnum == Goal.bulk ? 1.8 : 1.4;
+      final fatGPerKg =
+          goalEnum == Goal.cut ? 0.9 : goalEnum == Goal.bulk ? 1.0 : 0.9;
+      final double? carbGPerKg = goalEnum == Goal.bulk ? 5.0 : null;
+
+      // 风险警告：goalRate 超阈值时弹窗，用户确认后继续保存
+      if (goalRate > 0) {
+        final warning = NutritionCalculator.validateGoalRate(
+          goalRateKgPerWeek: goalRate,
+          weightKg: weight,
+          goal: goalEnum,
         );
-        if (confirmed != true) return; // 用户取消
+        if (warning != null) {
+          if (!mounted) return;
+          final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('⚠ 风险警告'),
+              content: Text(warning),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('重新填写'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('我知道风险，继续'),
+                ),
+              ],
+            ),
+          );
+          if (confirmed != true) return; // 用户取消
+        }
       }
-    }
 
-    await repo.update(
-      heightCm: height,
-      weightKg: weight,
-      bodyFatPct: bodyFat,
-      age: age,
-      gender: _gender, // String 写库
-      activityLevel: _activity,
-      goal: _goal, // String 写库
-      goalRateKgPerWeek: goalRate, // 新增：保存目标速率
-      formula: 'mifflin',
-      dailyCalorieTarget: target, // 联动重算后的目标热量
-      proteinGPerKg: proteinGPerKg,
-      fatGPerKg: fatGPerKg,
-      carbGPerKg: carbGPerKg,
-      // 不传 tdeeAdjustmentKcal：保留 DB 存储值，不被 goalRate 重算覆盖
-    );
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已保存，每日目标 $target kcal')),
+      await repo.update(
+        heightCm: height,
+        weightKg: weight,
+        bodyFatPct: bodyFat,
+        age: age,
+        gender: _gender, // String 写库
+        activityLevel: _activity,
+        goal: _goal, // String 写库
+        goalRateKgPerWeek: goalRate, // 新增：保存目标速率
+        formula: 'mifflin',
+        dailyCalorieTarget: target, // 联动重算后的目标热量
+        proteinGPerKg: proteinGPerKg,
+        fatGPerKg: fatGPerKg,
+        carbGPerKg: carbGPerKg,
+        // 不传 tdeeAdjustmentKcal：保留 DB 存储值，不被 goalRate 重算覆盖
       );
-      Navigator.of(context).pop();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已保存，每日目标 $target kcal')),
+        );
+        Navigator.of(context).pop();
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 }

@@ -14,6 +14,8 @@ import 'app.dart';
 import 'background/background_dispatcher.dart';
 import 'background/background_tasks.dart';
 import 'core/config/app_config.dart';
+import 'core/error/sentry_init.dart';
+import 'core/theme/theme_controller.dart';
 import 'data/backup/image_cleanup.dart';
 import 'data/database/database.dart';
 import 'features/offline/offline_queue_controller.dart';
@@ -42,11 +44,25 @@ void main() {
     // 单一 ProviderContainer：UI 与初始化共用，避免双容器导致监听被销毁
     final container = ProviderContainer();
 
-    // 先把 UI 跑起来（用户立即看到首页，初始化在后台进行）
-    runApp(UncontrolledProviderScope(
+    // 主题种子色：runApp 前快速读（轻量 secure_storage 单 key），首帧即用正确主题色，避免换肤闪烁
+    // 复用 secureConfigStoreProvider 实例（后续 appConfigProvider 也会用它），避免重复实例化
+    try {
+      final store = container.read(secureConfigStoreProvider);
+      final seed = await store.getThemeSeed();
+      container.read(themeSeedProvider.notifier).set(seed);
+    } catch (_) {
+      // 读取失败用默认色（莫奈《睡莲》青绿），不阻塞启动
+    }
+
+    // 用 Sentry 包裹 app（DSN 为空时 initSentryAndRunApp 直接返回原 app，跳过 Sentry）
+    final app = await initSentryAndRunApp(
       container: container,
-      child: const EatWiseApp(),
-    ));
+      app: UncontrolledProviderScope(
+        container: container,
+        child: const EatWiseApp(),
+      ),
+    );
+    runApp(app);
 
     // UI 起来后再异步初始化（失败降级继续，不阻塞已起来的 UI）
     // 关键：用同一个 container，不要 dispose（随 app 生命周期存活）
