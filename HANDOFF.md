@@ -36,8 +36,9 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（v0.11.0 已发布；v0.11.0 之后又提交了 2 个修复但**未发布**，等用户验收后再决定是否打 v0.11.1）
+**工作区状态**：clean（v0.11.0 已发布；v0.11.0 之后又提交了 3 个修复但**未发布**，等用户验收后再决定是否打 v0.11.1）
 **最近 commit**：
+- `fbcbf1e` fix: 修复 tab 页 dialog 按钮点击黑屏（嵌套 Navigator 误 pop 页面，未发布）
 - `b97eb89` style: 今日明细页卡片式重构（缩略图+营养素圆点+餐次小计，未发布）
 - `1f1fad0` fix: 校准页加多份识别警告横幅（避免一罐被识别成两罐时记录双倍克数，未发布）
 - `ec5d452` docs: 更新 HANDOFF——v0.11.0 已发布
@@ -54,9 +55,10 @@
   - workflow run: https://github.com/qbjsb/eatwise/actions/runs/28658030594（success）
 - v0.10.0 已发布（2026-07-03）
 
-**未发布的两个修复（v0.11.0 之后）**：
+**未发布的三个修复（v0.11.0 之后）**：
 1. **校准页多份识别警告**（`1f1fad0`）：用户反馈"一罐芬达显示两罐克数"。根因是 AI 偶发误判 quantity=2，校准页默认用 `estimatedWeightGMid`（已含 quantity 乘积）作初值，数量步进器在底部不显眼，用户未调整直接确认会写入双倍克数。修复方式：quantity>1 时在标题下方加 tertiaryContainer 警告横幅，提示用户检查数量。
 2. **今日明细页卡片式重构**（`b97eb89`）：用户反馈"明细界面不够美观"。ListTile → Card 卡片布局：56x56 圆角缩略图、份量/热量 chip、三大宏量营养素彩色圆点、餐次分组带竖条+小计热量。纯 UI 层重构，不动写入逻辑。
+3. **tab 页 dialog 按钮点击黑屏**（`fbcbf1e`）：用户反馈"识别准不准"的准/不准按钮、"关于"里的隐私政策按钮点击后黑屏，退出重进才恢复。根因：GoRouter 的 `StatefulShellRoute.indexedStack` 给每个 tab 配嵌套 Navigator，`showDialog` 默认 `useRootNavigator:true` 把 dialog push 到 root Navigator，但按钮 `Navigator.pop(context)` 用页面 context，`Navigator.of(context)` 找到 tab 嵌套 Navigator，把栈顶页面本身（MePage / RecordsTabPage）pop 掉了。修复 3 处（me_page._showPrivacy、today_meals_page._showEditDialog、today_meals_page._showFeedbackDialog 准/不准），统一改 `builder:(ctx)=>` + `Navigator.pop(ctx)`。**坑提醒：今后在 tab 页（dashboard/records/insight/me 分支下）写 dialog，关闭按钮必须用 dialog 的 ctx，不能用页面 context。**
 - 验证：`flutter analyze` No issues + `flutter test` 324 passed (3 skipped)。
 
 **识别智能化批次 1-3 修复清单**（本次 commit，用户选择"全部融入"）：
