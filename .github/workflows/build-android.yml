@@ -1,0 +1,171 @@
+name: Build Android APK
+
+# 触发条件：
+# 1. 手动触发（workflow_dispatch）—— 任意分支可手动跑，可选指定 release_tag 上传 APK
+# 2. 推送 v* tag —— 自动构建并把 APK 附加到对应 release
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: '附加 APK 到此 release tag（留空则只上传为 workflow artifact）'
+        required: false
+        type: string
+      target_platforms:
+        description: '目标平台（默认仅 arm64）'
+        required: false
+        default: 'android-arm64'
+        type: choice
+        options:
+          - android-arm64
+          - android-arm,android-arm64,android-x64
+  push:
+    tags:
+      - 'v*'
+
+# 防止同 tag/分支并发构建抢资源
+concurrency:
+  group: build-android-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write   # 上传 release asset 需要写权限
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Show toolchain versions
+        run: |
+          flutter --version
+          dart --version
+          java -version
+
+      - name: Cache pub dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            .dart_tool/
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.yaml', 'pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Verify generated code is up to date (build_runner)
+        run: |
+          dart run build_runner build --delete-conflicting-outputs
+          if ! git diff --exit-code -- lib/data/database/database.g.dart; then
+            echo "::error::database.g.dart 与 schema 不同步，请本地跑 'dart run build_runner build --delete-conflicting-outputs' 后重新提交"
+            git diff -- lib/data/database/database.g.dart
+            exit 1
+          fi
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test (exclude smoke)
+        run: flutter test --exclude-tags smoke
+
+      - name: Determine target platforms
+        id: platforms
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "targets=${{ inputs.target_platforms }}" >> "$GITHUB_OUTPUT"
+          else
+            # tag 推送默认只构建 arm64
+            echo "targets=android-arm64" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build APK (release)
+        run: |
+          # 从 pubspec 读 version（如 0.9.0+1），取 + 前作为 build-name（gradle 不接受 + 号）
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d '+' -f 1)
+          echo "build-name=$VERSION"
+          flutter build apk --release \
+            --target-platform "${{ steps.platforms.outputs.targets }}" \
+            --build-name="$VERSION" 2>&1 | tee build.log
+          # 校验产物存在
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          if [ ! -f "$APK" ]; then
+            echo "::error::APK 产物未生成: $APK"
+            exit 1
+          fi
+          ls -lh "$APK"
+
+      - name: Rename APK with version + short SHA
+        id: rename
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d '+' -f 1)
+          # 确定目标架构后缀
+          TARGETS="${{ steps.platforms.outputs.targets }}"
+          if [ "$TARGETS" = "android-arm64" ]; then
+            ARCH_TAG="arm64"
+          else
+            ARCH_TAG="fat"
+          fi
+          NEW_NAME="eatwise-v${VERSION}-${ARCH_TAG}-${SHORT_SHA}.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk "$NEW_NAME"
+          ls -lh "$NEW_NAME"
+          echo "apk_path=$NEW_NAME" >> "$GITHUB_OUTPUT"
+          echo "apk_name=$NEW_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.rename.outputs.apk_name }}
+          path: ${{ steps.rename.outputs.apk_path }}
+          retention-days: 90
+          if-no-files-found: error
+
+      - name: Attach APK to GitHub Release
+        # 条件：workflow_dispatch 显式提供 release_tag，或 push tag 触发
+        if: ${{ (github.event_name == 'workflow_dispatch' && inputs.release_tag != '') || github.event_name == 'push' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.release_tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "上传 ${{ steps.rename.outputs.apk_path }} 到 release $TAG"
+          # 用 GitHub CLI（已预装在 ubuntu-latest runner）
+          gh release upload "$TAG" "${{ steps.rename.outputs.apk_path }}" --clobber --repo "$GITHUB_REPOSITORY"
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.run_id }}
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 7
