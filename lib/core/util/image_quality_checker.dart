@@ -62,7 +62,7 @@ class ImageQualityChecker {
         final left = img.getLuminance(gray.getPixel(x - 1, y));
         final right = img.getLuminance(gray.getPixel(x + 1, y));
         final lap = up + down + left + right - 4 * center;
-        laplacianValues.add(lap);
+        laplacianValues.add(lap.toDouble());
       }
     }
 

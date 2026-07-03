@@ -117,6 +117,33 @@ class FoodItemRepository {
     return prev[n];
   }
 
+  /// 批次 3：给指定 food_item 添加别名（去重，事务包裹）
+  ///
+  /// 用于反馈闭环回流：用户点"识别不准"并填正确菜名后，把 AI 错误识别名
+  /// 作为正确菜的别名写入 aliasesJson。下次 AI 识别返回错误名时，
+  /// findByNameOrAlias 命中别名，直接返回正确菜的营养数据（无需用户再纠正）。
+  ///
+  /// 去重规则：归一化后与 name + 现有别名比较，已存在则跳过（幂等）。
+  Future<void> addAlias(int foodItemId, String alias) async {
+    final cleanAlias = alias.trim();
+    if (cleanAlias.isEmpty) return;
+    return _db.transaction(() async {
+      final item = await (_db.foodItems.select()
+            ..where((f) => f.id.equals(foodItemId)))
+          .getSingleOrNull();
+      if (item == null) return;
+      // 去重：已是 name 或已有别名则跳过（归一化比较，防大小写/空格差异）
+      if (_normalize(item.name) == _normalize(cleanAlias)) return;
+      final existing = _decodeAliases(item.aliasesJson);
+      if (existing.any((a) => _normalize(a) == _normalize(cleanAlias))) return;
+      final updated = [...existing, cleanAlias];
+      await (_db.foodItems.update()..where((f) => f.id.equals(foodItemId)))
+          .write(FoodItemsCompanion(
+        aliasesJson: Value(jsonEncode(updated)),
+      ));
+    });
+  }
+
   /// 插入或更新（去重键 name + source）
   /// 事务包裹：select-then-insert 原子化，防并发产生重复记录
   /// name 空串兜底为"未命名菜品"，避免 AI 返回空 dish_name 时落库空名记录污染列表

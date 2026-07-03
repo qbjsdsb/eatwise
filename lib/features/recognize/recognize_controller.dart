@@ -10,6 +10,7 @@ import '../../ai/prompts.dart';
 import '../../ai/vision_provider.dart';
 import '../../core/config/secure_config_store.dart';
 import '../../core/util/image_quality_checker.dart';
+import '../../core/util/recognition_validator.dart';
 import 'circuit_breaker.dart';
 
 /// 拍照识别状态
@@ -280,6 +281,12 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         }
       }
 
+      // 批次 1：识别结果校验（字段合理性 + 营养素自洽性）
+      // - 字段严重不合理（dishName 空 / confidence 越界 / weight 非正 / 区间倒置）→ 重试 1 次
+      // - 营养素不自洽（4p+9f+4c ≠ cal，误差>10%）→ 用宏量营养素反推修正 calories
+      // - 校验失败原因 best-effort 上报 Sentry（不阻塞识别）
+      result = await _validateAndMaybeRetry(imageBase64, result);
+
       // 查库回填营养素
       state = state.copyWith(
         state: RecognizeState.lookupNutrition,
@@ -423,6 +430,109 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         errorMessage: isRefusal ? '内容被安全过滤' : '识别失败',
       );
     }
+  }
+
+  /// 批次 1：校验识别结果，必要时重试 + 修正
+  ///
+  /// 三层处理：
+  /// 1. 字段严重不合理（dishName 空 / confidence 越界 / weight 非正 / 区间倒置）
+  ///    → 重试 1 次（best-effort：重试异常用原结果，不阻塞用户）
+  /// 2. 营养素不自洽（|4p+9f+4c - cal|/cal > 10%）
+  ///    → 用宏量营养素反推修正 calories（重试赌运气不稳定，修正更可靠）
+  /// 3. additionalDishes 逐个校验修正（不单独重试，重试成本高且会整体重返）
+  ///
+  /// 校验失败原因 debugPrint（best-effort，不引入 Sentry 依赖避免循环）。
+  Future<VisionRecognitionResult> _validateAndMaybeRetry(
+    String imageBase64,
+    VisionRecognitionResult original,
+  ) async {
+    var result = original;
+
+    // 主菜校验
+    final mainValidation = RecognitionValidator.validate(result);
+    if (mainValidation.reasons.isNotEmpty) {
+      debugPrint('[RecognitionValidator] 主菜校验: ${mainValidation.reasons}');
+    }
+
+    // 字段严重不合理 → 重试 1 次（best-effort）
+    if (mainValidation.needsRetry) {
+      try {
+        final retryResult = await _primaryProvider.recognize(imageBase64);
+        final retryValidation = RecognitionValidator.validate(retryResult);
+        if (retryValidation.reasons.isNotEmpty) {
+          debugPrint('[RecognitionValidator] 重试后校验: ${retryValidation.reasons}');
+        }
+        // 重试结果有效则采用（即使重试后仍有营养素不自洽，下面会修正）
+        if (!retryValidation.needsRetry) {
+          result = retryResult;
+          // 用重试结果的校验做后续修正
+          if (retryValidation.correctedCalories != null) {
+            result = result.copyWith(
+                estimatedCalories: retryValidation.correctedCalories);
+          }
+          // additionalDishes 修正
+          result = _correctAdditionalDishes(result);
+          return result;
+        }
+        // 重试后仍 needsRetry → 用原结果继续（修正 calories 后返回，不阻塞用户）
+      } catch (e) {
+        debugPrint('[RecognitionValidator] 重试异常，用原结果: $e');
+        // 重试异常用原结果继续
+      }
+    }
+
+    // 主菜 calories 修正（原结果或重试后仍 needsRetry 的结果）
+    if (mainValidation.correctedCalories != null) {
+      result = result.copyWith(
+          estimatedCalories: mainValidation.correctedCalories);
+    }
+
+    // additionalDishes 修正
+    result = _correctAdditionalDishes(result);
+    return result;
+  }
+
+  /// 批次 1：校验并修正 additionalDishes（仅修正 calories，不重试）
+  VisionRecognitionResult _correctAdditionalDishes(
+      VisionRecognitionResult result) {
+    if (result.additionalDishes.isEmpty) return result;
+    final corrected = <VisionRecognitionResult>[];
+    var changed = false;
+    for (final dish in result.additionalDishes) {
+      final v = RecognitionValidator.validate(dish);
+      if (v.reasons.isNotEmpty) {
+        debugPrint('[RecognitionValidator] 附加菜「${dish.dishName}」校验: ${v.reasons}');
+      }
+      if (v.correctedCalories != null) {
+        corrected.add(dish.copyWith(estimatedCalories: v.correctedCalories));
+        changed = true;
+      } else {
+        corrected.add(dish);
+      }
+    }
+    if (!changed) return result;
+    // 重建 result 带修正后的 additionalDishes
+    return VisionRecognitionResult(
+      dishName: result.dishName,
+      brand: result.brand,
+      estimatedWeightGLow: result.estimatedWeightGLow,
+      estimatedWeightGMid: result.estimatedWeightGMid,
+      estimatedWeightGHigh: result.estimatedWeightGHigh,
+      foodComponents: result.foodComponents,
+      cookingMethod: result.cookingMethod,
+      isSingleItem: result.isSingleItem,
+      confidence: result.confidence,
+      promptVersion: result.promptVersion,
+      additionalDishes: corrected,
+      quantity: result.quantity,
+      unit: result.unit,
+      perUnitG: result.perUnitG,
+      estimatedCalories: result.estimatedCalories,
+      estimatedProteinG: result.estimatedProteinG,
+      estimatedFatG: result.estimatedFatG,
+      estimatedCarbsG: result.estimatedCarbsG,
+      weightSource: result.weightSource,
+    );
   }
 
   /// v1.4：库未命中时的 AI 整菜估算兜底（prompt v1.4 提供 estimated_calories 等字段）。

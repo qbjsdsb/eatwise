@@ -25,6 +25,10 @@ class VisionRecognitionResult {
   final double? estimatedProteinG;
   final double? estimatedFatG;
   final double? estimatedCarbsG;
+  // v1.6：重量来源标记（批次 2 包装容量优先）
+  // package_label=读取包装标注净含量（最准），ai_estimate=AI 视觉估算
+  // 旧 prompt(v1.0-v1.5) 无此字段 → 默认 ai_estimate
+  final String weightSource;
 
   const VisionRecognitionResult({
     required this.dishName,
@@ -45,6 +49,7 @@ class VisionRecognitionResult {
     this.estimatedProteinG,
     this.estimatedFatG,
     this.estimatedCarbsG,
+    this.weightSource = 'ai_estimate',
   });
 
   /// 是否多菜（additionalDishes 非空）
@@ -53,8 +58,13 @@ class VisionRecognitionResult {
   /// 是否多份（quantity > 1）
   bool get isMultiQuantity => quantity > 1;
 
-  /// 复制并覆盖部分字段（用于改菜名重试后透传新菜名给校准页）
-  VisionRecognitionResult copyWith({String? dishName}) {
+  /// 复制并覆盖部分字段
+  /// - dishName：改菜名重试后透传新菜名给校准页
+  /// - estimatedCalories：营养素自洽校验失败时用修正值覆盖（批次 1）
+  VisionRecognitionResult copyWith({
+    String? dishName,
+    double? estimatedCalories,
+  }) {
     return VisionRecognitionResult(
       dishName: dishName ?? this.dishName,
       brand: brand,
@@ -70,10 +80,11 @@ class VisionRecognitionResult {
       quantity: quantity,
       unit: unit,
       perUnitG: perUnitG,
-      estimatedCalories: estimatedCalories,
+      estimatedCalories: estimatedCalories ?? this.estimatedCalories,
       estimatedProteinG: estimatedProteinG,
       estimatedFatG: estimatedFatG,
       estimatedCarbsG: estimatedCarbsG,
+      weightSource: weightSource,
     );
   }
 
@@ -128,6 +139,11 @@ class VisionRecognitionResult {
       estimatedProteinG: (json['estimated_protein_g'] as num?)?.toDouble(),
       estimatedFatG: (json['estimated_fat_g'] as num?)?.toDouble(),
       estimatedCarbsG: (json['estimated_carbs_g'] as num?)?.toDouble(),
+      // v1.6 weight_source 缺失时默认 ai_estimate（旧 prompt 兼容）
+      // 非法值兜底为 ai_estimate，避免下游 switch/if 链漏分支
+      weightSource: (json['weight_source'] as String?) == 'package_label'
+          ? 'package_label'
+          : 'ai_estimate',
     );
   }
 }

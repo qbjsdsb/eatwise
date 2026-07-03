@@ -353,6 +353,33 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         correctedServingG: correctedServingG,
         promptVersion: promptVersion,
       );
+
+      // 批次 3：反馈闭环回流——用户纠正菜名后，把 AI 错误识别名作为正确菜的别名
+      // 下次 AI 识别返回错误名时，findByNameOrAlias 命中别名，直接返回正确菜营养数据
+      // best-effort：失败不影响反馈记录（反馈已落库），仅放弃别名学习
+      if (!isCorrect && correctedDishName != null && correctedDishName.isNotEmpty) {
+        try {
+          final foodRepo = FoodItemRepository(db);
+          final aiName = _foodNames[m.foodItemId];
+          // AI 识别名有效且与纠正名不同（归一化比较）→ 加别名
+          if (aiName != null &&
+              aiName.isNotEmpty &&
+              !aiName.startsWith('食物 #') &&
+              aiName.trim().toLowerCase() !=
+                  correctedDishName.trim().toLowerCase()) {
+            // 查正确菜是否在库（findByNameOrAlias 5 级匹配）
+            final correctFood =
+                await foodRepo.findByNameOrAlias(correctedDishName);
+            // 在库且不是同一条记录 → 把错误名 A 作为正确菜 B 的别名
+            if (correctFood != null && correctFood.id != m.foodItemId) {
+              await foodRepo.addAlias(correctFood.id, aiName);
+            }
+          }
+        } catch (_) {
+          // best-effort：别名回流失败不影响反馈记录
+        }
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('已记录反馈')));

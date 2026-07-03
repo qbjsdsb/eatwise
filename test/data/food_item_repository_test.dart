@@ -143,4 +143,74 @@ void main() {
     expect(item.sourceVersion, 'manual');
     expect(item.caloriesPer100g, 200);
   });
+
+  // 批次 3：反馈闭环回流 aliasesJson 测试
+  group('addAlias 反馈闭环回流', () {
+    test('给无别名的 food_item 加别名，findByNameOrAlias 命中', () async {
+      // 正确菜"无糖可乐"在库，AI 错误识别为"可乐"
+      final correctId = await seedFood('无糖可乐');
+      // 把 AI 错误名"可乐"作为"无糖可乐"的别名
+      await repo.addAlias(correctId, '可乐');
+
+      // 下次 AI 识别返回"可乐"时，findByNameOrAlias 命中别名，返回"无糖可乐"
+      final hit = await repo.findByNameOrAlias('可乐');
+      expect(hit, isNotNull);
+      expect(hit!.id, correctId);
+      expect(hit.name, '无糖可乐');
+    });
+
+    test('重复加同一别名幂等（不重复写入）', () async {
+      final id = await seedFood('无糖可乐');
+      await repo.addAlias(id, '可乐');
+      await repo.addAlias(id, '可乐'); // 重复
+
+      final item = await repo.getById(id);
+      // aliasesJson 解析后应只有 1 个"可乐"（去重）
+      final aliases = item!.aliasesJson;
+      expect(aliases, isNotNull);
+      expect(aliases!.contains('可乐'), true);
+      // 不应出现两次
+      expect('可乐'.allMatches(aliases).length, 1);
+    });
+
+    test('加与 name 相同的别名跳过（防自引用）', () async {
+      final id = await seedFood('苹果');
+      await repo.addAlias(id, '苹果');
+
+      final item = await repo.getById(id);
+      // name 已是"苹果"，别名不应写入（避免冗余）
+      expect(item!.aliasesJson, isNull);
+    });
+
+    test('加空串跳过', () async {
+      final id = await seedFood('苹果');
+      await repo.addAlias(id, '');
+      await repo.addAlias(id, '   ');
+
+      final item = await repo.getById(id);
+      expect(item!.aliasesJson, isNull);
+    });
+
+    test('加多个不同别名都能命中', () async {
+      final id = await seedFood('无糖可乐');
+      await repo.addAlias(id, '可乐');
+      await repo.addAlias(id, '零度可乐');
+      await repo.addAlias(id, 'diet coke');
+
+      expect((await repo.findByNameOrAlias('可乐'))?.id, id);
+      expect((await repo.findByNameOrAlias('零度可乐'))?.id, id);
+      expect((await repo.findByNameOrAlias('diet coke'))?.id, id);
+    });
+
+    test('归一化去重（大小写/空格差异视为相同）', () async {
+      final id = await seedFood('苹果');
+      await repo.addAlias(id, 'Apple');
+      await repo.addAlias(id, ' apple '); // 归一化后同 "apple"，应跳过
+
+      final item = await repo.getById(id);
+      final aliases = item!.aliasesJson!;
+      // 只应有一个 Apple（大小写不敏感去重）
+      expect(aliases.toLowerCase().split('apple').length - 1, 1);
+    });
+  });
 }

@@ -36,46 +36,40 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean
+**工作区状态**：clean（识别智能化批次 1-3 已提交，未发布 release，等用户确认）
 **最近 commit**：
+- `feat: 识别智能化——图片预检+字段校验+营养素自洽+包装容量优先+反馈闭环` （批次 1-3）
 - `50d4cac` fix: 第四轮深度审查修复——主题色绿/常用食物无名/原图丢失/复合菜滑块/防重入
 - `baba3e1` feat: 项目分析与建议（prompt v1.5 + 反馈卡死修复 + 转手动入口）
 - `c015953` fix: 第三轮深度审查修复 + release 构建失败根因
-- `cddc9ff` docs: 更新 HANDOFF 第2节——v0.10.0 发布完成
-- `bd66ef3` docs: 添加跨会话交接文档 + Trae 项目规则
-- `8e436cc` fix: 深度审查修复——数据丢失/污染 + 启动白屏 + 异常处理 + 一致性
-- `79f4cfd` fix: v0.10.0 合并收尾——修复致命崩溃 + 数据正确性 + 防重入 + 一致性
 
 **已发布**：
 - v0.10.0 已发布（2026-07-03，第二次 release 成功，APK 已上传）
-- 分支 v0.10.0-m3-merge 已同步到远程
-- 四轮深度审查修复完成
-- 发布前验证：flutter analyze No issues + flutter test 242 passed/3 skipped/0 failed
+- 识别智能化批次 1-3 **未发布**（用户要求先告知，不发布 release）
 
-**第四轮审查修复清单**（commit 50d4cac，用户反馈驱动）：
-- 主题色绿根因：expressive→tonalSpot + secondaryContainer→primaryContainer + 默认色绿→紫
-- 常用食物无名根因：listFrequent 过滤0引用 + upsertAiRecognized 空串兜底 + Text兜底
-- 原图丢失：recognize_page 识别成功后持久化原图（避免临时缓存被清理致 broken image）
-- 复合菜主滑块无效：calibration_page 复合菜路径隐藏主份量 Slider
-- today_meals _load 补 try-catch-finally + _showEditDialog 补 _busy 防重入
-- multi_dish_page 转手动按钮补 _isRecording 防重入
-- prompt v1.5 示例 3 雪碧/美年达热量修正
+**识别智能化批次 1-3 修复清单**（本次 commit，用户选择"全部融入"）：
+- 批次 1 图片预检 + 字段校验：
+  - 新建 `lib/core/util/recognition_validator.dart`——字段合理性校验（dishName/confidence/weight/区间）+ 营养素自洽校验（4p+9f+4c≈cal，±10%）
+  - recognize_controller 集成校验：字段不合理→重试 1 次；营养素不自洽→自动用宏量营养素反推修正 calories
+  - 修复 image_quality_checker.dart 类型错误（laplacianValues num→double）
+  - 20 个校验器单元测试全过
+- 批次 2 prompt v1.6 + 包装容量优先：
+  - prompt v1.6：包装食品必须读取包装标签净含量（weight_source=package_label），不靠视觉估算
+  - 营养素自洽约束：要求 AI 用 4p+9f+4c 反算 calories，偏差<5%
+  - VisionRecognitionResult 新增 weightSource 字段 + fromJson 解析（向后兼容旧 prompt）
+  - 示例 1-3 加 weight_source 字段 + 自洽性标注
+- 批次 3 反馈闭环回流 aliasesJson：
+  - FoodItemRepository 新增 addAlias 方法（事务包裹 + 归一化去重）
+  - today_meals_page._showFeedbackDialog 加别名回流：用户纠正菜名后，把 AI 错误名作为正确菜的别名
+  - 下次 AI 识别返回错误名时，findByNameOrAlias 命中别名，直接返回正确菜营养数据
+  - 6 个 addAlias 单元测试全过
 
-**第三轮审查修复清单**（commit c015953）：
-- release 根因：colors.xml 空文件 → 补 <resources> 根元素
-- 致命：offline_queue_controller cal==null 不再创建 0 卡 food_item（污染查库），改 markFailed
-- 严重：multi_dish_page 复合菜 insertMealLog 补 componentsSnapshotJson + 事务包裹
-- 严重：offline_queue_controller recordSuccess 包 try-catch + 复合菜全 miss+cal==null 不写 0 卡
-- 严重：sentry_scrub 补 event.message 脱敏 + event.request 丢弃（防 API key 泄露）
-- 严重：main.dart zone handler 补 Sentry.captureException
-- 严重：weight_page _save 补 catch + food_library _doSearch/_loadFrequent 补 try-catch
-- 警告：recognize_page 未命中弹窗条件补 componentHits.isEmpty
-- 警告：insertMealLog 加 foodItemId<=0 哨兵防御
-- 统一：multi_dish_page _encodeComponents 格式与 offline_queue_controller 一致
+**验证**：flutter analyze No issues + flutter test 268 passed/3 skipped/0 failed
 
 **未完成/待办**（按优先级）：
-1. ⬜ 用户验收测试（真机装 APK 验证，等 release 构建完成下载）
-2. 🔧 重构性优化（风险较高，不阻塞当前版本）：
+1. ⬜ 用户验收测试（真机装 APK 验证识别智能化效果，等用户确认后发布 release）
+2. 🔧 批次 4（暂跳过，不在用户明确选择范围）：低置信度双模型验证 + 多候选选择 UI（成本高、延迟大，待用户确认是否需要）
+3. 🔧 重构性优化（风险较高，不阻塞当前版本）：
    - 路由方式统一（GoRouter vs Navigator.push 混用）
    - 版本号从 PackageInfo 读取（替代硬编码）
    - dashboard/today_meals N+1 查询优化（getByIds）
