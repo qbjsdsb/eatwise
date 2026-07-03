@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:eatwise/data/database/database.dart';
+import 'package:eatwise/core/util/date_format.dart';
 
 class WeightLogRepository {
   final EatWiseDatabase _db;
@@ -51,10 +52,8 @@ class WeightLogRepository {
   Future<List<WeightLog>> getRecent({int days = 30}) async {
     final now = DateTime.now();
     final start = now.subtract(Duration(days: days));
-    final startDate =
-        '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
-    final endDate =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final startDate = formatYmd(start);
+    final endDate = formatYmd(now);
     return getRange(startDate, endDate);
   }
 
@@ -63,10 +62,8 @@ class WeightLogRepository {
   Future<List<WeightLog>> getRangeForTdee({int days = 28}) async {
     final now = DateTime.now();
     final start = now.subtract(Duration(days: days));
-    final startDate =
-        '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
-    final endDate =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final startDate = formatYmd(start);
+    final endDate = formatYmd(now);
 
     final all = await (_db.weightLogs.select()
           ..where((w) => w.date.isBetweenValues(startDate, endDate))

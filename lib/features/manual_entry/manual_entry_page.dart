@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/util/date_format.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
@@ -58,16 +59,9 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'breakfast', label: Text('早餐')),
-              ButtonSegment(value: 'lunch', label: Text('午餐')),
-              ButtonSegment(value: 'dinner', label: Text('晚餐')),
-              ButtonSegment(value: 'snack', label: Text('加餐')),
-            ],
-            selected: {_mealType},
-            onSelectionChanged: (v) =>
-                setState(() => _mealType = v.first),
+          MealTypeSelector(
+            value: _mealType,
+            onChanged: (v) => setState(() => _mealType = v),
           ),
           const SizedBox(height: 16),
           if (!_customMode) ...[
@@ -197,9 +191,7 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
       final ratio = serving / 100;
       final db = await ref.read(recognize.databaseProvider.future);
       final mealRepo = MealLogRepository(db);
-      final now = DateTime.now();
-      final today =
-          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final today = todayYmd();
       await mealRepo.insertMealLog(
         date: today,
         mealType: _mealType,
@@ -272,9 +264,7 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
       );
 
       final ratio = serving / 100;
-      final now = DateTime.now();
-      final today =
-          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final today = todayYmd();
       await mealRepo.insertMealLog(
         date: today,
         mealType: _mealType,

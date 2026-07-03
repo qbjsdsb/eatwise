@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
+import '../../core/util/date_format.dart';
 import '../../data/seed/food_category_defaults.dart';
 import '../manual_entry/manual_entry_page.dart';
 import 'providers.dart';
@@ -365,9 +366,7 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
       final mealRepo = await ref.read(mealLogRepoProvider.future);
       final foodRepo = await ref.read(foodItemRepoProvider.future);
       final db = await ref.read(databaseProvider.future);
-      final now = DateTime.now();
-      final today =
-          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final today = todayYmd();
       final allDishes = [
         widget.mainDish,
         ...widget.additionalItems.take(5).map((e) => e.dish),

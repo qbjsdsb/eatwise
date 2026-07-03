@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
+import '../../core/widgets/m3_widgets.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../manual_entry/manual_entry_page.dart';
 
@@ -51,6 +52,12 @@ class _CalibrationPageState extends State<CalibrationPage> {
   late double _perUnitG;
   // 防重入：写入 meal_log 期间禁用按钮，避免双击重复记录
   bool _isRecording = false;
+  bool _dirty = false; // 用户是否拖过滑块（PopScope 未保存确认用）
+
+  void _markDirty() {
+    if (_dirty) return;
+    setState(() => _dirty = true);
+  }
 
   /// v1.3：动态滑块上限。多份场景 perUnitG×20 可能超 1000（如 5 碗米饭=1250g），
   /// 静态 max=1000 会被 clamp 致静默少算。perUnitG>0 时按 perUnitG×20 扩到上限 5000，
@@ -105,7 +112,15 @@ class _CalibrationPageState extends State<CalibrationPage> {
     final isMidConfidence =
         widget.recognitionResult.confidence >= 0.6 && widget.recognitionResult.confidence < 0.85;
 
-    return Scaffold(
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await confirmDiscardChanges(context) && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: const Text('校准份量'),
         actions: [
@@ -240,17 +255,20 @@ class _CalibrationPageState extends State<CalibrationPage> {
                         max: _sliderMax,
                         divisions: (_sliderMax / 10).round(),
                         label: '${_servingG.toStringAsFixed(0)} g',
-                        onChanged: (v) => setState(() {
-                          _servingG = v;
-                          _usedHistoryServing = false; // 用户手动调整后不再提示
-                          // v1.3：拖滑块反推数量（perUnitG > 0 时，保持数量与份量一致）
-                          if (_perUnitG > 0) {
-                            final q = (v / _perUnitG).round();
-                          if (q >= 1 && q <= 20 && q != _quantity) {
-                            _quantity = q;
+                        onChanged: (v) {
+                          setState(() {
+                            _servingG = v;
+                            _usedHistoryServing = false; // 用户手动调整后不再提示
+                            // v1.3：拖滑块反推数量（perUnitG > 0 时，保持数量与份量一致）
+                            if (_perUnitG > 0) {
+                              final q = (v / _perUnitG).round();
+                            if (q >= 1 && q <= 20 && q != _quantity) {
+                              _quantity = q;
+                            }
                           }
-                        }
-                      }),
+                          });
+                          _markDirty();
+                        },
                       ),
                     ], // end if singleNutrition != null
                     // v1.3：数量步进器（同物多份场景，仅单品 + perUnitG > 0 显示）
@@ -283,6 +301,7 @@ class _CalibrationPageState extends State<CalibrationPage> {
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -417,7 +436,10 @@ class _CalibrationPageState extends State<CalibrationPage> {
           max: 50,
           divisions: 50,
           label: '${_oilG.toStringAsFixed(0)} g',
-          onChanged: (v) => setState(() => _oilG = v),
+          onChanged: (v) {
+            setState(() => _oilG = v);
+            _markDirty();
+          },
         ),
       ],
     );
@@ -435,7 +457,10 @@ class _CalibrationPageState extends State<CalibrationPage> {
           max: (hit.estimatedG * 2).clamp(50, 1000),
           divisions: 50,
           label: '${serving.toStringAsFixed(0)} g',
-          onChanged: (v) => setState(() => _componentServings[index] = v),
+          onChanged: (v) {
+            setState(() => _componentServings[index] = v);
+            _markDirty();
+          },
         ),
       ],
     );
@@ -486,6 +511,7 @@ class _CalibrationPageState extends State<CalibrationPage> {
       _servingG = (_perUnitG * newQ).clamp(1.0, _sliderMax);
       _usedHistoryServing = false;
     });
+    _markDirty();
   }
 
   void _confirmOneClick() {
@@ -542,7 +568,10 @@ class _CalibrationPageState extends State<CalibrationPage> {
           componentsSnapshot: _buildSnapshotJson(),
         );
       }
-      if (mounted) Navigator.of(context).pop();
+      if (mounted) {
+        _dirty = false; // 清 dirty 让 PopScope 放行 programmatic pop
+        Navigator.of(context).pop();
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)

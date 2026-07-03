@@ -27,6 +27,7 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
   List<FoodItem> _searchResults = [];
   bool _searching = false; // 是否处于搜索模式（输入框非空）
   bool _searchLoading = false; // 搜索查询进行中（debounce + 异步查询期间）
+  bool _initialLoading = true; // 首屏常吃列表加载中（避免数据未到时误显"暂无常用食物"）
   // 搜索防抖 + 竞态保护：debounce 计时器 + 请求序列号
   Timer? _debounce;
   int _searchSeq = 0;
@@ -52,6 +53,8 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
       if (mounted) setState(() {});
     } catch (_) {
       // 加载失败保持空列表，UI 显示空态
+    } finally {
+      if (mounted) setState(() => _initialLoading = false);
     }
   }
 
@@ -120,8 +123,15 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
             Padding(
               padding: const EdgeInsets.all(16),
               child: Center(
-                  child: Text('暂无常用食物，去拍照识别或手动录入后会出现在这里',
-                      style: TextStyle(color: cs.onSurfaceVariant))),
+                  // 首屏加载中显示转圈，避免数据未到时误显"暂无常用食物"
+                  child: _initialLoading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Text('暂无常用食物，去拍照识别或手动录入后会出现在这里',
+                          style: TextStyle(color: cs.onSurfaceVariant))),
             ),
           Expanded(
             child: _searching && _searchLoading

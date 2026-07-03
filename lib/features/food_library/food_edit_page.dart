@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../recognize/providers.dart' as recognize;
@@ -22,6 +23,11 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
   late final TextEditingController _fatCtrl;
   late final TextEditingController _carbsCtrl;
   bool _busy = false; // 防重入：保存期间禁用按钮，避免双击重复写库
+  bool _dirty = false; // 用户是否改过任意字段（PopScope 未保存确认用）
+
+  void _markDirty() {
+    if (!_dirty) setState(() => _dirty = true);
+  }
 
   @override
   void initState() {
@@ -36,6 +42,12 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
     _fatCtrl = TextEditingController(text: f.fatPer100g.toStringAsFixed(1));
     _carbsCtrl =
         TextEditingController(text: f.carbsPer100g.toStringAsFixed(1));
+    // 任意 controller 变化标记 dirty（PopScope 拦截返回用）
+    _servingCtrl.addListener(_markDirty);
+    _calCtrl.addListener(_markDirty);
+    _proteinCtrl.addListener(_markDirty);
+    _fatCtrl.addListener(_markDirty);
+    _carbsCtrl.addListener(_markDirty);
   }
 
   @override
@@ -52,7 +64,15 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
   Widget build(BuildContext context) {
     final f = widget.foodItem;
     final editable = f.source == 'ai_recognized' || f.source == 'manual';
-    return Scaffold(
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await confirmDiscardChanges(context) && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(title: Text(f.name)),
       body: ListView(
         padding: const EdgeInsets.all(16),
@@ -117,6 +137,7 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
                     : const Text('保存默认份量')),
         ],
       ),
+    ),
     );
   }
 
@@ -135,6 +156,7 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('已保存默认份量')));
+        _dirty = false; // 清 dirty 让 PopScope 放行 programmatic pop
         Navigator.of(context).pop();
       }
     } catch (e) {
@@ -174,6 +196,7 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('已保存')));
+        _dirty = false; // 清 dirty 让 PopScope 放行 programmatic pop
         Navigator.of(context).pop();
       }
     } catch (e) {

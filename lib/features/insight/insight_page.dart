@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ai/glm_flash_provider.dart';
+import '../../core/util/date_format.dart';
 import '../../core/util/refresh_bus.dart';
 import '../../data/repositories/insight_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
@@ -57,19 +58,16 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       final weekday = now.weekday;
       final monday = now.subtract(Duration(days: weekday - 1));
       final sunday = monday.add(const Duration(days: 6));
-      _periodStart = _fmt(monday);
-      _periodEnd = _fmt(sunday);
+      _periodStart = formatYmd(monday);
+      _periodEnd = formatYmd(sunday);
     } else {
       // 本月 1 到月末
       final first = DateTime(now.year, now.month, 1);
       final last = DateTime(now.year, now.month + 1, 0);
-      _periodStart = _fmt(first);
-      _periodEnd = _fmt(last);
+      _periodStart = formatYmd(first);
+      _periodEnd = formatYmd(last);
     }
   }
-
-  String _fmt(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   /// 聚合当前周期数据（热量按日 + 体重序列 + 目标热量），供图表与 AI 生成共用。
   /// 结果同时写入 state 字段 _dailyCal/_dailyWeight/_targetCal，避免重复查询。
@@ -85,12 +83,12 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     final profile = await profileRepo.get();
 
     // 按日聚合热量（_periodStart ~ _periodEnd，周 7 天 / 月 28~31 天）
-    final start = DateTime.parse(_periodStart);
-    final end = DateTime.parse(_periodEnd);
+    final start = parseYmd(_periodStart);
+    final end = parseYmd(_periodEnd);
     final days = end.difference(start).inDays + 1;
     final dailyCal = <double>[];
     for (var i = 0; i < days; i++) {
-      final date = _fmt(start.add(Duration(days: i)));
+      final date = formatYmd(start.add(Duration(days: i)));
       final cal = meals
           .where((m) => m.date == date)
           .fold<double>(0, (s, m) => s + m.actualCalories);
@@ -192,7 +190,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
           content: TextField(
             controller: ctrl,
             maxLines: 10,
-            decoration: const InputDecoration(border: OutlineInputBorder()),
+            decoration: const InputDecoration(),
           ),
           actions: [
             TextButton(
@@ -372,7 +370,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     }
     final maxCal = _dailyCal.reduce((a, b) => a > b ? a : b);
     final avgCal = _dailyCal.reduce((a, b) => a + b) / _dailyCal.length;
-    final start = DateTime.parse(_periodStart);
+    final start = parseYmd(_periodStart);
 
     // Y 轴 interval：取 maxCal 的 1/4，向上取整到 50 的倍数（刻度整齐不重叠）
     final yInterval = ((maxCal * 1.2 / 4) / 50).ceil() * 50.0;

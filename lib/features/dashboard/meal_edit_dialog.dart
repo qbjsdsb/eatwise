@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/util/date_format.dart';
+import '../../core/util/food_name.dart';
 import '../../data/database/database.dart';
 import '../food_library/food_library_page.dart';
 
@@ -136,10 +138,6 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
     }
   }
 
-  /// 'YYYY-MM-DD' 格式化（DatePicker 选完的 DateTime 转字符串）
-  String _formatDate(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
-
   /// 跳食物库选食物（pickForReuse 模式，pop 返回 FoodItem）
   Future<void> _pickFood() async {
     final food = await Navigator.of(context).push<FoodItem>(
@@ -152,7 +150,7 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
       _newFood = food;
       _newFoodItemId = food.id;
       _foodName = food.name.trim().isEmpty
-          ? '食物 #${food.id}'
+          ? placeholderFoodName(food.id)
           : food.name.trim();
       // 换食物后清空 advanced override 标记（让重算逻辑生效）
       _nutritionOverridden = false;
@@ -248,7 +246,7 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
     Navigator.of(context).pop(MealEditResult(
       servingG: serving,
       mealType: _mealType,
-      date: _formatDate(_selectedDate),
+      date: formatYmd(_selectedDate),
       foodItemId: _newFoodItemId,
       calories: n.cal,
       proteinG: n.protein,
@@ -283,7 +281,6 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
                 child: InputDecorator(
                   decoration: const InputDecoration(
                     labelText: '食物',
-                    border: OutlineInputBorder(),
                     suffixIcon: Icon(Icons.swap_horiz),
                   ),
                   child: Text(
@@ -300,10 +297,7 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
                 controller: _servingCtrl,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(
-                  labelText: '份量 (g)',
-                  border: OutlineInputBorder(),
-                ),
+                decoration: const InputDecoration(labelText: '份量 (g)'),
               ),
               const SizedBox(height: 12),
               // 餐次切换器（SegmentedButton）
@@ -328,7 +322,7 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.calendar_today_outlined),
-                title: Text(_formatDate(_selectedDate)),
+                title: Text(formatYmd(_selectedDate)),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
                   final picked = await showDatePicker(
@@ -376,40 +370,28 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
                   controller: _calCtrl,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: '热量 (kcal)',
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: '热量 (kcal)'),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _proteinCtrl,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: '蛋白 (g)',
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: '蛋白 (g)'),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _fatCtrl,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: '脂肪 (g)',
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: '脂肪 (g)'),
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _carbsCtrl,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: '碳水 (g)',
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: '碳水 (g)'),
                 ),
               ],
             ],

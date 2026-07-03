@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/theme/theme_controller.dart';
+import '../../core/util/date_format.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/backup/auto_backup.dart';
 
@@ -31,10 +32,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   int _imageRetentionDays = 30;  // T48 保留期
   bool _backupOverdue = false;  // T55：14 天未备份提示
   bool _isSaving = false; // 防重入：保存期间禁用 FAB，避免双击重复写库
+  bool _dirty = false; // 用户是否改过任意字段（PopScope 未保存确认用）
+
+  /// 标记 dirty。加载期间（_loading=true）跳过，避免初始赋值触发误标记。
+  void _markDirty() {
+    if (_loading || _dirty) return;
+    setState(() => _dirty = true);
+  }
 
   @override
   void initState() {
     super.initState();
+    // controller 监听在 _loadSettings 之前注册；_markDirty 用 _loading 守门
+    _qwenKeyCtrl.addListener(_markDirty);
+    _qwenUrlCtrl.addListener(_markDirty);
+    _glmKeyCtrl.addListener(_markDirty);
+    _glmUrlCtrl.addListener(_markDirty);
+    _sentryDsnCtrl.addListener(_markDirty);
     _loadSettings();
   }
 
@@ -60,9 +74,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       _tdeeAutoCalib = config.tdeeAutoCalib;
 
       final lastBackup = await AutoBackup.lastBackupTime();
-      _lastBackupTime = lastBackup != null
-          ? '${lastBackup.year}-${lastBackup.month.toString().padLeft(2,'0')}-${lastBackup.day.toString().padLeft(2,'0')}'
-          : null;
+      _lastBackupTime = lastBackup != null ? formatYmd(lastBackup) : null;
 
       // T55：超过 14 天未备份提示（从未备份不提示，仅显示"从未"）
       if (lastBackup != null) {
@@ -90,14 +102,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final cs = Theme.of(context).colorScheme;
-    return Scaffold(
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await confirmDiscardChanges(context) && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
       body: CustomScrollView(
         slivers: [
           SliverAppBar.large(title: const Text('设置')),
           SliverList(
             delegate: SliverChildListDelegate([
               _sectionTitle('主题色'),
-              _groupCard([
+              GroupCard(children: [
                 Padding(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 12),
@@ -105,14 +125,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
               ]),
               _sectionTitle('AI 模型'),
-              _groupCard([
+              GroupCard(dividerIndent: 16, children: [
                 TextField(
                   controller: _qwenKeyCtrl,
                   decoration: const InputDecoration(
                       labelText: 'Qwen API Key', border: InputBorder.none),
                   obscureText: true,
                 ),
-                _divider(),
                 TextField(
                   controller: _qwenUrlCtrl,
                   decoration: InputDecoration(
@@ -120,14 +139,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       hintText: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
                       border: InputBorder.none),
                 ),
-                _divider(),
                 TextField(
                   controller: _glmKeyCtrl,
                   decoration: const InputDecoration(
                       labelText: 'GLM API Key', border: InputBorder.none),
                   obscureText: true,
                 ),
-                _divider(),
                 TextField(
                   controller: _glmUrlCtrl,
                   decoration: InputDecoration(
@@ -137,21 +154,25 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
               ]),
               _sectionTitle('监控与校准'),
-              _groupCard([
+              GroupCard(dividerIndent: 16, children: [
                 SwitchListTile(
                   title: const Text('启用 Sentry 上报'),
                   subtitle: const Text('崩溃和未处理异常自动上报（经脱敏）'),
                   value: _sentryEnabled,
-                  onChanged: (v) => setState(() => _sentryEnabled = v),
+                  onChanged: (v) {
+                    setState(() => _sentryEnabled = v);
+                    _markDirty();
+                  },
                 ),
-                _divider(),
                 SwitchListTile(
                   title: const Text('TDEE 自适应校准'),
                   subtitle: const Text('连续 4 周体重偏差 > 0.3 kg/周时自动微调每日目标'),
                   value: _tdeeAutoCalib,
-                  onChanged: (v) => setState(() => _tdeeAutoCalib = v),
+                  onChanged: (v) {
+                    setState(() => _tdeeAutoCalib = v);
+                    _markDirty();
+                  },
                 ),
-                _divider(),
                 TextField(
                   controller: _sentryDsnCtrl,
                   decoration: const InputDecoration(
@@ -159,7 +180,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
               ]),
               _sectionTitle('图片管理'),
-              _groupCard([
+              GroupCard(children: [
                 ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                   title: const Text('原图保留期'),
@@ -168,8 +189,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                     child: DropdownMenu<int>(
                       initialSelection: _imageRetentionDays,
                       expandedInsets: EdgeInsets.zero,
-                      onSelected: (v) =>
-                          setState(() => _imageRetentionDays = v ?? 30),
+                      onSelected: (v) {
+                        setState(() => _imageRetentionDays = v ?? 30);
+                        _markDirty();
+                      },
                       dropdownMenuEntries: const [
                         DropdownMenuEntry(value: 7, label: '7 天'),
                         DropdownMenuEntry(value: 30, label: '30 天（默认）'),
@@ -180,13 +203,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ),
               ]),
               _sectionTitle('使用情况'),
-              _groupCard([
+              GroupCard(children: [
                 ListTile(
                   leading: const LeadingIconContainer(Icons.analytics_outlined),
                   title: const Text('本月识别次数'),
                   trailing: Text('$_monthlyCount 次'),
                 ),
-                _divider(),
+                GroupCard.divider(context),
                 ListTile(
                   leading: const LeadingIconContainer(Icons.payments_outlined),
                   title: const Text('估算花费'),
@@ -212,7 +235,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
               ]),
               _sectionTitle('备份状态'),
-              _groupCard([
+              GroupCard(children: [
                 ListTile(
                   leading: const LeadingIconContainer(Icons.backup),
                   title: const Text('上次自动备份'),
@@ -239,14 +262,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
               ]),
               _sectionTitle('关于'),
-              _groupCard([
+              GroupCard(dividerIndent: 16, children: [
                 ListTile(
                   leading: const LeadingIconContainer(Icons.info_outline_rounded),
                   title: const Text('关于慢慢吃'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: _showAbout,
                 ),
-                _divider(),
                 ListTile(
                   leading: const LeadingIconContainer(Icons.privacy_tip_outlined),
                   title: const Text('隐私政策'),
@@ -270,26 +292,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             : const Icon(Icons.save),
         label: const Text('保存设置'),
       ),
+    ),
     );
   }
 
   Widget _sectionTitle(String text) => SectionTitle(text);
-
-  Widget _groupCard(List<Widget> children) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Card(
-        child: Column(children: children),
-      ),
-    );
-  }
-
-  Widget _divider() => Divider(
-        height: 1,
-        indent: 16,
-        endIndent: 16,
-        color: Theme.of(context).colorScheme.outlineVariant,
-      );
 
   Future<void> _save() async {
     if (_isSaving) return; // 防重入
@@ -312,6 +319,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('设置已保存')));
+        _dirty = false; // 清 dirty 让 PopScope 放行 programmatic pop
         Navigator.of(context).pop();
       }
     } catch (e) {

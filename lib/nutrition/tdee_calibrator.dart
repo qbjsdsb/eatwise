@@ -3,6 +3,7 @@ import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/data/repositories/weight_log_repository.dart';
 import 'package:eatwise/data/repositories/profile_repository.dart';
 import 'package:eatwise/features/profile/nutrition_calculator.dart';
+import 'package:eatwise/core/util/date_format.dart';
 
 /// TDEE 自适应校准
 /// 设计文档 5.5：
@@ -54,7 +55,7 @@ class TdeeCalibrator {
     // 用首尾差值 / 周数（简单线性，足够 MVP）
     final first = filtered.first;
     final last = filtered.last;
-    final daysDiff = DateTime.parse(last.date).difference(DateTime.parse(first.date)).inDays;
+    final daysDiff = parseYmd(last.date).difference(parseYmd(first.date)).inDays;
     if (daysDiff < minWeeks * 7 - 1) { // 至少接近 4 周
       return TdeeCalibrationResult(
         adjustmentKcal: 0,

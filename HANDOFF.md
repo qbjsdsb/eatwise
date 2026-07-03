@@ -36,8 +36,9 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（v0.12.0 已发布；P0/P1/P2 食物识别增强 + 全 editable 第一批体重/餐次已提交，未发布）
+**工作区状态**：clean（v0.12.0 已发布；P0/P1/P2 食物识别增强 + 全 editable 第一批 + UI/UX 审查修复 Phase 3 已提交，未发布）
 **最近 commit**：
+- `（本次）` feat: UI/UX 审查修复 Phase 3——公共抽象层 B1-B6 + 数据安全 A1-A4
 - `db80dfb` feat: 全 editable 第一批——体重记录可改值/改日期/删，餐次记录可改份量/营养/餐次/日期/换食物/高级覆盖
 - `79a0ae6` feat: 食物识别增强四层自我进化架构（P0/P1/P2，未发布）
 - `7d1e8bd` docs: HANDOFF 补全 v0.12.0 release workflow run URL + APK 大小
@@ -57,6 +58,21 @@
 - **哨兵防御扩展**：`updateMealLog` 加 `foodItemId != null && foodItemId <= 0` ArgumentError 校验（与 insertMealLog 一致，防 UI 把 0 哨兵写入非空 FK 字段）
 - **测试**：weight_log_repository 加 11 个测试（getById 2 + update 5 + delete 3 + 不存在 id 边界），meal_log_repository 加 9 个测试（date/mealType/foodItemId 部分更新 5 + 哨兵防御 4），全量 377 passed (3 skipped)
 - **文件**：新建 1（meal_edit_dialog.dart），修改 4（weight_log_repository/weight_page/meal_log_repository/today_meals_page）+ 2 测试文件
+
+**本次 UI/UX 审查修复 Phase 3（本次 commit，未发布）**：
+4 路并行 search agent 全面审查所有界面，识别 14 S 级 + 30+ M 级 + 10 L 级问题，分 6 批（A-F）渐进修复。本次完成公共抽象层（B1-B6）+ 数据安全（A1-A4）共 10 项。
+- **B1 date_format 公共工具**：新建 `lib/core/util/date_format.dart`——`parseYmd`（严格校验：regex + 月/日范围 + round-trip 检查，非法日期返回 null 不抛异常）+ `formatYmd`（DateTime → yyyy-MM-dd）；新增 5 个单元测试。替代各页散落的 `DateTime.parse` + 手写格式化，统一日期边界处理
+- **B2 food_name 公共工具**：新建 `lib/core/util/food_name.dart`——`placeholderFoodName(foodItemId)` 生成「未知食物#id」+ `isPlaceholderFoodName(name)` 判断；跨页统一食物名占位符（today_meals/dashboard/meal_edit_dialog 等），避免各页硬编码 `食物${id}` 字符串拼接不一致
+- **B3 EmptyState 组件**：`m3_widgets.dart` 新增 `EmptyState`（icon + title + 可选 subtitle + 可选 action button），MD3 间距（icon→title 16 / title→subtitle 8 / subtitle→button 16 / 外 padding 32）；替换 today_meals_page 和 dashboard_page 2 处内联空态实现，删除 `_buildEmptyState()` 私有方法
+- **B4 GroupCard 组件**：`m3_widgets.dart` 新增 `GroupCard`——`dividerIndent` 参数（null=不自动插分隔线，非 null=子项间自动插 Divider）+ 静态 `GroupCard.divider(context)` 手动插分隔线；替换 me_page（3 处）+ settings_page（7 处）共 10 处 `_groupCard` 调用，删除 4 个私有方法（`_groupCard`×2 / `_withDividers` / `_divider`）
+- **B5 MealTypeSelector 组件**：`m3_widgets.dart` 新增 `MealTypeSelector`——封装 SegmentedButton 固定 4 段（早餐/午餐/晚餐/加餐），value/onChanged 接口；替换 recognize_page + manual_entry_page 2 处内联 SegmentedButton（各 ~10 行），recognize_page 补 m3_widgets import
+- **B6 清理冗余 border: OutlineInputBorder()**：app.dart 的 `inputDecorationTheme`（L68-71）是全局主题单一源，6 文件 11 处冗余 `border: OutlineInputBorder()` 清除（meal_edit_dialog 6 / weight_page 2 / insight_page 1 / backup_page 1 / today_meals_page 2）；仅 app.dart 保留作全局定义
+- **A1 Undo SnackBar 乐观删除**：today_meals_page 餐次卡片 Dismissible 改乐观删除——先从 UI 移除 + 显示 4s 撤销 SnackBar，未撤销才实际从 DB 删除（`repo.deleteMealLog`）；删除失败回滚 `_load()` + 错误提示。比原"立即删 + SnackBar 提示"更宽容误操作
+- **A2 food_library 加载态**：food_library_page 加 `_initialLoading` 标志，`_loadFrequent` finally 块置 false；空态 UI 在 `_initialLoading` 时显示 CircularProgressIndicator（替代误导性的"暂无常用食物"文案），避免首屏加载期间显示假空态
+- **A3 PopScope 未保存确认**：`m3_widgets.dart` 新增 `confirmDiscardChanges(context)` 共享 dialog（继续编辑/放弃）；4 个编辑页（food_edit_page / profile_page / settings_page / calibration_page）加 `bool _dirty` + `_markDirty()` + controller listeners + `PopScope(canPop: !_dirty, onPopInvokedWithResult: ...)`；profile_page/settings_page 的 `_markDirty` 加 `_loading` 守卫防初始赋值误标 dirty；保存成功后 `_dirty = false` 再 Navigator.pop
+- **A4 RecognizePage 错误态重试入口**：recognize_page 加 `ImageSource? _lastSource` 记录最近选图来源；错误态 SnackBar 加"重试"按钮（6s 时长），点击重新调 `_pickAndRecognize(source)`；按错误类型智能判断可重试性——「操作太快」（限流 30s，重试只再触发限流）/「已转手动录入」（L3 已跳转）/「安全过滤」（同图结果不变）三类不显示重试，其余错误（压缩失败/模糊图/API 异常/入队失败）可重试
+- **验证**：flutter analyze No issues + flutter test 392 passed (3 skipped)
+- **文件**：新建 2（date_format.dart / food_name.dart）+ 2 测试文件，修改 12（m3_widgets / recognize_page / recognize_controller / multi_dish_page / calibration_page / today_meals_page / dashboard_page / meal_edit_dialog / food_library_page / food_edit_page / profile_page / settings_page / me_page / weight_page / insight_page / backup_page / manual_entry_page）
 
 **未完成/待办**（按优先级）：
 1. ⬜ 用户真机验收 v0.12.0（装 APK 验证：图标精致化效果 + MD3 全面优化 + 智能推荐 v3 + 深度审查修复 15 项）
@@ -368,6 +384,16 @@
 **第四批（待实施）：历史 InsightSummaries 查看页 + 份量校准回滚**
 - 现状：insight_summaries 只显示当前周期，历史 insight 无访问入口；meal_log 份量校准后无法回滚到 AI 原始估算
 - 计划：insight_page 加历史周期 SegmentedButton（weekly/monthly 切换 + 滚动历史），meal_log 加 estimatedServingGAiOriginal 字段记录 AI 原始值供回滚
+
+### 3.17 UI/UX 审查修复 Phase 3（公共抽象层 + 数据安全，本次 commit，未发布）
+4 路并行 search agent 全面审查所有界面，识别 14 S + 30+ M + 10 L 级问题，分 6 批（A-F）渐进修复。本次完成公共抽象层（B1-B6）+ 数据安全（A1-A4）共 10 项。
+- **公共抽象层模式**：把跨页重复的 UI 模式/工具函数提取到共享文件（m3_widgets.dart / core/util/），防止各页实现漂移。新增 4 个共享组件（EmptyState / GroupCard / MealTypeSelector / confirmDiscardChanges）+ 2 个工具（date_format / food_name）
+- **B6 主题单一源**：app.dart 的 `inputDecorationTheme` 是全局 OutlineInputBorder 定义，各页 TextField 不再重复声明 `border: OutlineInputBorder()`，改主题色只需改 app.dart 一处
+- **A1 乐观删除 + Undo**：Dismissible 先从 UI 移除 + 4s 撤销 SnackBar，未撤销才实际 DB delete。比"立即删 + SnackBar 提示"更宽容误操作。删除失败回滚 `_load()`
+- **A3 PopScope + _dirty 追踪**：编辑页加 `_dirty` 标志 + `_markDirty()` + controller listeners；`PopScope(canPop: !_dirty)` 拦截返回 + `confirmDiscardChanges` 共享 dialog。`_markDirty` 必须加 `_loading` 守卫——初始 `_loadXxx()` 异步赋值 controller.text 会触发 listener，若不守卫会误标 dirty 致首屏就拦截返回
+- **A4 错误态可重试性判断**：recognize_page 错误态 SnackBar 加"重试"按钮，按错误消息内容判断可重试性。「操作太快」/「已转手动录入」/「安全过滤」三类不显示重试（重试无意义或已跳转），其余错误可重试。用 `msg.contains(...)` 字符串匹配判断，因 controller 的错误文案是固定字符串
+- **权衡**：A4 用字符串匹配判断错误类型而非枚举，因 controller 已有的错误文案是固定中文字符串，改枚举需动 controller 状态结构，本次最小改动只动 recognize_page。后续若错误类型增多可重构为枚举
+- **验证**：flutter analyze No issues + flutter test 392 passed (3 skipped)
 
 ---
 

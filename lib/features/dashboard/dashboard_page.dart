@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/util/date_format.dart';
+import '../../core/util/food_name.dart';
 import '../../core/util/refresh_bus.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
@@ -58,12 +60,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     final profileRepo = ProfileRepository(db);
     final service = RecommendationService(foodRepo, mealRepo, profileRepo);
     final now = DateTime.now();
-    final today =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final today = todayYmd();
     // 推荐算法 v3：传 profile（偏好/健康过滤）+ mealType（时段感知）+ 昨日（多样性）
     final yesterday = now.subtract(const Duration(days: 1));
-    final yesterdayDate =
-        '${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}';
+    final yesterdayDate = formatYmd(yesterday);
     final profile = await profileRepo.get();
     final mealType = _currentMealType(now.hour);
     final remaining = await service.getDailyRemaining(today);
@@ -91,9 +91,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     final mealRepo = MealLogRepository(db);
     final profileRepo = ProfileRepository(db);
     final foodRepo = FoodItemRepository(db);
-    final now = DateTime.now();
-    final today =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final today = todayYmd();
     // 三查询无依赖，并行执行（原串行 await 总时间 = sum，并行后 = max）
     // 用"同时启动 + 分别 await"模式，类型安全且并行（Future.wait 因三类型不同会退化为 Object）
     final macrosFuture = mealRepo.getMacrosByDate(today);
@@ -112,7 +110,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
       }
       // 兜底：未命中的 id（理论不会，外键约束保证存在）显示占位名
       for (final id in uniqueIds) {
-        foodNames.putIfAbsent(id, () => '食物 #$id');
+        foodNames.putIfAbsent(id, () => placeholderFoodName(id));
       }
     }
     final proteinGoal = profile.proteinGPerKg * profile.weightKg;
@@ -338,35 +336,17 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   }
 
   Widget _mealsSection(DashboardData d) {
-    final cs = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     if (d.meals.isEmpty) {
-      return Padding(
-        padding: const EdgeInsets.all(32),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.restaurant_menu, size: 48,
-                  color: cs.onSurfaceVariant),
-              const SizedBox(height: 16),
-              Text('今日还没有记录',
-                  style: textTheme.titleMedium?.copyWith(color: cs.onSurface)),
-              const SizedBox(height: 8),
-              Text('点下方拍照按钮开始记录',
-                  style: textTheme.bodyMedium
-                      ?.copyWith(color: cs.onSurfaceVariant)),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: () => context.push('/recognize'),
-                icon: const Icon(Icons.camera_alt_rounded),
-                label: const Text('去拍照'),
-              ),
-            ],
-          ),
-        ),
+      return EmptyState(
+        icon: Icons.restaurant_menu,
+        title: '今日还没有记录',
+        subtitle: '点下方拍照按钮开始记录',
+        actionLabel: '去拍照',
+        onAction: () => context.push('/recognize'),
       );
     }
+    final cs = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
     final groups = <String, List<MealLog>>{};
     for (final m in d.meals) {
       groups.putIfAbsent(m.mealType, () => []).add(m);

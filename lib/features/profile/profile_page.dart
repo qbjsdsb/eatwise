@@ -32,10 +32,24 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   String _healthCondition = 'none';
   bool _loading = true;
   bool _busy = false; // 防重入：保存期间禁用按钮，避免双击重复写库
+  bool _dirty = false; // 用户是否改过任意字段（PopScope 未保存确认用）
+
+  /// 标记 dirty。加载期间（_loading=true）跳过，避免初始赋值触发误标记。
+  void _markDirty() {
+    if (_loading || _dirty) return;
+    setState(() => _dirty = true);
+  }
 
   @override
   void initState() {
     super.initState();
+    // controller 监听在 _loadProfile 之前注册；_markDirty 用 _loading 守门
+    // 确保初始赋值不触发 dirty（仅用户后续编辑才标记）
+    _heightCtrl.addListener(_markDirty);
+    _weightCtrl.addListener(_markDirty);
+    _ageCtrl.addListener(_markDirty);
+    _bodyFatCtrl.addListener(_markDirty);
+    _goalRateCtrl.addListener(_markDirty);
     _loadProfile();
   }
 
@@ -84,7 +98,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     if (_loading) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    return Scaffold(
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await confirmDiscardChanges(context) && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(title: const Text('个人档案')),
       body: Form(
         key: _formKey,
@@ -134,8 +156,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       initialSelection: _gender,
                       expandedInsets: EdgeInsets.zero,
                       label: const Text('性别'),
-                      onSelected: (v) =>
-                          setState(() => _gender = v ?? 'male'),
+                      onSelected: (v) {
+                        setState(() => _gender = v ?? 'male');
+                        _markDirty();
+                      },
                       dropdownMenuEntries: const [
                         DropdownMenuEntry(value: 'male', label: '男'),
                         DropdownMenuEntry(value: 'female', label: '女'),
@@ -165,8 +189,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   initialSelection: _activity,
                   expandedInsets: EdgeInsets.zero,
                   label: const Text('活动量'),
-                  onSelected: (v) =>
-                      setState(() => _activity = v ?? 1.375),
+                  onSelected: (v) {
+                    setState(() => _activity = v ?? 1.375);
+                    _markDirty();
+                  },
                   dropdownMenuEntries: const [
                     DropdownMenuEntry(
                         value: 1.2,
@@ -208,8 +234,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       initialSelection: _goal,
                       expandedInsets: EdgeInsets.zero,
                       label: const Text('目标'),
-                      onSelected: (v) =>
-                          setState(() => _goal = v ?? 'maintain'),
+                      onSelected: (v) {
+                        setState(() => _goal = v ?? 'maintain');
+                        _markDirty();
+                      },
                       dropdownMenuEntries: const [
                         DropdownMenuEntry(value: 'cut', label: '减脂'),
                         DropdownMenuEntry(value: 'bulk', label: '增肌'),
@@ -244,8 +272,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       initialSelection: _specialCondition,
                       expandedInsets: EdgeInsets.zero,
                       label: const Text('生理状态'),
-                      onSelected: (v) => setState(
-                          () => _specialCondition = v ?? 'none'),
+                      onSelected: (v) {
+                        setState(() => _specialCondition = v ?? 'none');
+                        _markDirty();
+                      },
                       dropdownMenuEntries: const [
                         DropdownMenuEntry(value: 'none', label: '无'),
                         DropdownMenuEntry(
@@ -263,8 +293,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       initialSelection: _healthCondition,
                       expandedInsets: EdgeInsets.zero,
                       label: const Text('健康状况'),
-                      onSelected: (v) => setState(
-                          () => _healthCondition = v ?? 'none'),
+                      onSelected: (v) {
+                        setState(() => _healthCondition = v ?? 'none');
+                        _markDirty();
+                      },
                       dropdownMenuEntries: const [
                         DropdownMenuEntry(value: 'none', label: '无'),
                         DropdownMenuEntry(
@@ -282,8 +314,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       initialSelection: _dietPreference,
                       expandedInsets: EdgeInsets.zero,
                       label: const Text('饮食偏好'),
-                      onSelected: (v) => setState(
-                          () => _dietPreference = v ?? 'none'),
+                      onSelected: (v) {
+                        setState(() => _dietPreference = v ?? 'none');
+                        _markDirty();
+                      },
                       dropdownMenuEntries: const [
                         DropdownMenuEntry(value: 'none', label: '无'),
                         DropdownMenuEntry(value: 'vegetarian', label: '蛋奶素'),
@@ -318,6 +352,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           ],
         ),
       ),
+    ),
     );
   }
 
@@ -455,6 +490,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('已保存，每日目标 $target kcal$suffix')),
         );
+        _dirty = false; // 清 dirty 让 PopScope 放行 programmatic pop
         Navigator.of(context).pop();
         // 通知 dashboard/records/insight 等监听 RefreshBus 的页面刷新
         RefreshBus.instance.notify();

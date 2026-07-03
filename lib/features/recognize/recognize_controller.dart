@@ -9,6 +9,7 @@ import '../../ai/nutrition_lookup.dart';
 import '../../ai/prompts.dart';
 import '../../ai/vision_provider.dart';
 import '../../core/config/secure_config_store.dart';
+import '../../core/util/date_format.dart';
 import '../../core/util/image_quality_checker.dart';
 import '../../core/util/recognition_post_processor.dart';
 import '../../core/util/recognition_validator.dart';
@@ -215,8 +216,7 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         // 直接走离线入队（与外层 catch 一致的入队逻辑）
         // xFile 经上文 if (xFile == null) return 已保证非空，无需重复判空
         if (_onOfflineEnqueue != null) {
-          final now = DateTime.now();
-          final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+          final today = todayYmd();
           try {
             await _onOfflineEnqueue(xFile.path, mealType, today, Prompts.version);
             state = state.copyWith(
@@ -391,9 +391,7 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
           xFile != null &&
           e is VisionRecognitionException &&
           e.retryable) {
-        final now = DateTime.now();
-        final today =
-            '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+        final today = todayYmd();
         try {
           await _onOfflineEnqueue(xFile.path, mealType, today, Prompts.version);
           state = state.copyWith(

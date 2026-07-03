@@ -8,6 +8,8 @@ import 'package:path_provider/path_provider.dart';
 import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
 import '../../core/config/app_config.dart';
+import '../../core/util/date_format.dart';
+import '../../core/widgets/m3_widgets.dart';
 import '../../data/repositories/pending_recognition_repository.dart';
 import '../../data/seed/food_category_defaults.dart';
 import '../manual_entry/manual_entry_page.dart';
@@ -27,6 +29,9 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
   RecognizeController? _controller;
   String _mealType = 'snack'; // Sprint 2 T0：餐次选择，默认加餐
   bool _isRecognizing = false; // 识别中遮罩：防重复点击 + 给用户反馈
+  // 最近一次选图来源（camera/gallery），用于错误态 SnackBar 的"重试"入口；
+  // null 表示尚未触发过识别（不应出现错误态，重试按钮也不会显示）
+  ImageSource? _lastSource;
 
   @override
   void dispose() {
@@ -106,16 +111,9 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
                 // Sprint 2 T0：餐次选择器（M3：DropdownButton → SegmentedButton）
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'breakfast', label: Text('早餐')),
-                      ButtonSegment(value: 'lunch', label: Text('午餐')),
-                      ButtonSegment(value: 'dinner', label: Text('晚餐')),
-                      ButtonSegment(value: 'snack', label: Text('加餐')),
-                    ],
-                    selected: {_mealType},
-                    onSelectionChanged: (v) =>
-                        setState(() => _mealType = v.first),
+                  child: MealTypeSelector(
+                    value: _mealType,
+                    onChanged: (v) => setState(() => _mealType = v),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -166,6 +164,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
 
   Future<void> _pickAndRecognize(ImageSource source) async {
     if (_isRecognizing) return; // 防重入
+    _lastSource = source; // 记录来源供错误态重试
     setState(() => _isRecognizing = true);
     try {
       final controller = await _ensureController();
@@ -306,7 +305,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
                     }
 
                     await mealRepo.insertMealLog(
-                      date: _todayLocalDate(),
+                      date: todayYmd(),
                       mealType:
                           state.mealType, // Sprint 2 T0：从 controller state 读餐次
                       foodItemId: foodItemId,
@@ -334,9 +333,32 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
         );
       } else if (state.state == RecognizeState.error) {
         if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('识别失败：${state.errorMessage}')));
+        final msg = state.errorMessage ?? '未知错误';
+        // 判断是否可重试：
+        // - 操作太快（限流 30s，立即重试只会再触发限流，需用户等待）
+        // - 已转手动录入（L3 已导航到 ManualEntryPage，重试无意义）
+        // - 安全过滤（内容被 AI 拒识，重试同图结果不变）
+        // 上述三类不显示重试按钮；其余错误（压缩失败/模糊图/API 异常/入队失败等）可重试
+        final source = _lastSource;
+        final canRetry = source != null &&
+            !msg.contains('操作太快') &&
+            !msg.contains('已转手动录入') &&
+            !msg.contains('安全过滤');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('识别失败：$msg'),
+            duration: const Duration(seconds: 6),
+            action: canRetry
+                ? SnackBarAction(
+                    label: '重试',
+                    onPressed: () {
+                      if (!mounted) return;
+                      _pickAndRecognize(source);
+                    },
+                  )
+                : null,
+          ),
+        );
       } else if (state.state == RecognizeState.queued) {
         // Sprint 2 T14：离线已入队提示
         if (!mounted) return;
@@ -472,7 +494,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
               }) async {
                 final mealRepo = await ref.read(mealLogRepoProvider.future);
                 await mealRepo.insertMealLog(
-                  date: _todayLocalDate(),
+                  date: todayYmd(),
                   mealType: mealType,
                   foodItemId: nutrition!.foodItemId,
                   actualServingG: servingG,
@@ -572,10 +594,6 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     }
   }
 
-  String _todayLocalDate() {
-    final now = DateTime.now();
-    return '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-  }
 }
 
 enum _NotFoundAction { cancel, retry, manual }

@@ -1,5 +1,6 @@
 import 'package:eatwise/data/database/database.dart';
 import 'package:drift/drift.dart';
+import 'package:eatwise/core/util/date_format.dart';
 
 class MealLogRepository {
   final EatWiseDatabase _db;
@@ -51,8 +52,7 @@ class MealLogRepository {
       int beforeDays) async {
     final cutoff =
         DateTime.now().subtract(Duration(days: beforeDays));
-    final cutoffDate =
-        '${cutoff.year}-${cutoff.month.toString().padLeft(2, '0')}-${cutoff.day.toString().padLeft(2, '0')}';
+    final cutoffDate = formatYmd(cutoff);
     final rows = await (_db.mealLogs.select()
           ..where((m) =>
               m.date.isSmallerThanValue(cutoffDate) &
@@ -173,8 +173,7 @@ class MealLogRepository {
   Future<Map<int, int>> getRecentFoodCounts({int days = 30}) async {
     final now = DateTime.now();
     final start = now.subtract(Duration(days: days));
-    final startDate =
-        '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
+    final startDate = formatYmd(start);
     final countRows = await _db.customSelect(
       'SELECT food_item_id, COUNT(id) AS cnt '
       'FROM meal_logs '
@@ -200,8 +199,7 @@ class MealLogRepository {
       {int days = 60}) async {
     final now = DateTime.now();
     final start = now.subtract(Duration(days: days));
-    final startDate =
-        '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
+    final startDate = formatYmd(start);
     final rows = await _db.customSelect(
       'SELECT food_item_id, meal_type, COUNT(id) AS cnt '
       'FROM meal_logs '

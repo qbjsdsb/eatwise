@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../ai/prompts.dart';
+import '../../core/util/date_format.dart';
+import '../../core/util/food_name.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
@@ -32,9 +34,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   @override
   void initState() {
     super.initState();
-    final now = DateTime.now();
-    _today =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    _today = todayYmd();
     _load();
   }
 
@@ -54,11 +54,11 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         final foods = await foodRepo.getByIds(uniqueIds);
         for (final food in foods) {
           final nm = food.name.trim();
-          names[food.id] = nm.isEmpty ? '食物 #${food.id}' : nm;
+          names[food.id] = nm.isEmpty ? placeholderFoodName(food.id) : nm;
         }
         // 兜底：未命中的 id（理论不会，外键约束保证存在）
         for (final id in uniqueIds) {
-          names.putIfAbsent(id, () => '食物 #$id');
+          names.putIfAbsent(id, () => placeholderFoodName(id));
         }
       }
       _meals = meals;
@@ -96,7 +96,13 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     return Scaffold(
       appBar: widget.embedded ? null : AppBar(title: const Text('今日记录')),
       body: _meals.isEmpty
-          ? _buildEmptyState()
+          ? EmptyState(
+              icon: Icons.restaurant_menu,
+              title: '今日暂无记录',
+              subtitle: '点下方拍照按钮开始记录',
+              actionLabel: '去拍照',
+              onAction: () => context.push('/recognize'),
+            )
           : ListView(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               children: [
@@ -108,33 +114,6 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
                   ],
               ],
             ),
-    );
-  }
-
-  /// 空态：图标 + 文案 + CTA（与 dashboard 空态一致）
-  Widget _buildEmptyState() {
-    final cs = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.restaurant_menu, size: 48, color: cs.onSurfaceVariant),
-            const SizedBox(height: 16),
-            Text('今日暂无记录', style: TextStyle(color: cs.onSurface)),
-            const SizedBox(height: 8),
-            Text('点下方拍照按钮开始记录',
-                style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () => context.push('/recognize'),
-              icon: const Icon(Icons.camera_alt_rounded),
-              label: const Text('去拍照'),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -161,10 +140,38 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
           padding: const EdgeInsets.only(right: 20),
           child: Icon(Icons.delete, color: cs.onErrorContainer)),
       onDismissed: (_) async {
+        // Undo 模式：先从 UI 移除（乐观），显示撤销 SnackBar；
+        // 若 4s 内未撤销则实际从 DB 删除。避免误删后无回头路。
+        final index = _meals.indexOf(m);
+        if (index < 0) return; // 已被移除（防重入）
+        setState(() => _meals.removeAt(index));
+        final messenger = ScaffoldMessenger.of(context);
+        var undone = false;
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+                '已删除 ${_foodNames[m.foodItemId] ?? placeholderFoodName(m.foodItemId)}'),
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: '撤销',
+              onPressed: () {
+                undone = true;
+                if (!mounted) return;
+                setState(() {
+                  // clamp 防越界（期间可能有其他增删导致 index 漂移）
+                  _meals.insert(index.clamp(0, _meals.length), m);
+                });
+              },
+            ),
+          ),
+        );
+        // 等待 SnackBar 时长；若未撤销则实际删除
+        await Future.delayed(const Duration(seconds: 4));
+        if (undone) return;
+        if (!mounted) return; // 页面已销毁，跳过删除（下次加载会重新出现）
         try {
           final repo = await ref.read(recognize.mealLogRepoProvider.future);
           await repo.deleteMealLog(m.id);
-          if (mounted) setState(() => _meals.remove(m));
         } catch (e) {
           // 删除失败：回滚 UI（重新加载）+ 提示
           if (!mounted) return;
@@ -221,7 +228,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _foodNames[m.foodItemId] ?? '食物 #${m.foodItemId}',
+                        _foodNames[m.foodItemId] ?? placeholderFoodName(m.foodItemId),
                         style: Theme.of(context)
                             .textTheme
                             .titleSmall
@@ -323,7 +330,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       context: context,
       builder: (ctx) => MealEditDialog(
         mealLog: m,
-        currentFoodName: _foodNames[m.foodItemId] ?? '食物 #${m.foodItemId}',
+        currentFoodName: _foodNames[m.foodItemId] ?? placeholderFoodName(m.foodItemId),
       ),
     );
     if (result == null) return;
@@ -404,8 +411,8 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
                 children: [
                   TextField(
                     controller: nameCtrl,
-                    decoration: const InputDecoration(
-                        labelText: '正确菜名', border: OutlineInputBorder()),
+                    decoration:
+                        const InputDecoration(labelText: '正确菜名'),
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -413,7 +420,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
                     decoration: const InputDecoration(
-                        labelText: '正确份量(g)', border: OutlineInputBorder()),
+                        labelText: '正确份量(g)'),
                   ),
                 ],
               ),
@@ -471,7 +478,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
           // AI 识别名有效且与纠正名不同（归一化比较）→ 加别名或创建新条目
           if (aiName != null &&
               aiName.isNotEmpty &&
-              !aiName.startsWith('食物 #') &&
+              !isPlaceholderFoodName(aiName) &&
               aiName.trim().toLowerCase() !=
                   correctedDishName.trim().toLowerCase()) {
             // 查正确菜是否在库：只用精确匹配（name/alias 归一化相等），

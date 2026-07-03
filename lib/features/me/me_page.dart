@@ -147,7 +147,7 @@ class _MePageState extends ConsumerState<MePage> {
           SliverList(
             delegate: SliverChildListDelegate([
               _sectionTitle('数据'),
-              _groupCard([
+              GroupCard(dividerIndent: 56, children: [
                 _listItem(
                   Icons.monitor_weight_rounded,
                   '体重记录',
@@ -160,7 +160,7 @@ class _MePageState extends ConsumerState<MePage> {
                 ),
               ]),
               _sectionTitle('偏好'),
-              _groupCard([
+              GroupCard(dividerIndent: 56, children: [
                 _listItem(
                   Icons.settings_rounded,
                   '设置',
@@ -168,7 +168,7 @@ class _MePageState extends ConsumerState<MePage> {
                 ),
               ]),
               _sectionTitle('关于'),
-              _groupCard([
+              GroupCard(dividerIndent: 56, children: [
                 _listItem(
                   Icons.info_outline_rounded,
                   '关于慢慢吃',
@@ -189,32 +189,6 @@ class _MePageState extends ConsumerState<MePage> {
   }
 
   Widget _sectionTitle(String text) => SectionTitle(text);
-
-  Widget _groupCard(List<Widget> children) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Card(
-        child: Column(children: _withDividers(children)),
-      ),
-    );
-  }
-
-  List<Widget> _withDividers(List<Widget> items) {
-    if (items.length <= 1) return items;
-    final result = <Widget>[];
-    for (var i = 0; i < items.length; i++) {
-      result.add(items[i]);
-      if (i < items.length - 1) {
-        result.add(Divider(
-          height: 1,
-          indent: 56,
-          endIndent: 16,
-          color: Theme.of(context).colorScheme.outlineVariant,
-        ));
-      }
-    }
-    return result;
-  }
 
   Widget _listItem(IconData icon, String title, VoidCallback onTap) {
     return ListTile(

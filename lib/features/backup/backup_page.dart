@@ -132,7 +132,6 @@ class _BackupPageState extends ConsumerState<BackupPage> {
             maxLines: 12,
             decoration: const InputDecoration(
               hintText: '粘贴之前导出的 JSON 文本',
-              border: OutlineInputBorder(),
             ),
           ),
           actions: [

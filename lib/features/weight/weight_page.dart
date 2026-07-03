@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/util/date_format.dart';
 import '../../core/util/refresh_bus.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
@@ -53,10 +54,8 @@ class WeightPageState extends ConsumerState<WeightPage> {
       final mealRepo = MealLogRepository(db);
       final now = DateTime.now();
       final startDate = now.subtract(const Duration(days: 30));
-      final startStr =
-          '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
-      final endStr =
-          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final startStr = formatYmd(startDate);
+      final endStr = formatYmd(now);
       _meals = await mealRepo.getRange(startStr, endStr);
       _dailyCalories = {};
       for (final m in _meals) {
@@ -92,10 +91,7 @@ class WeightPageState extends ConsumerState<WeightPage> {
                 child: TextField(
                   controller: _weightCtrl,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: '今日体重 (kg)',
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: '今日体重 (kg)'),
                 ),
               ),
               const SizedBox(width: 16),
@@ -404,9 +400,7 @@ class WeightPageState extends ConsumerState<WeightPage> {
     try {
       final db = await ref.read(recognize.databaseProvider.future);
       final repo = WeightLogRepository(db);
-      final now = DateTime.now();
-      final today =
-          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      final today = todayYmd();
       await repo.insert(date: today, weightKg: weight);
 
       // 同步 profile.weightKg：让 dashboard 宏量目标（proteinGPerKg * weightKg）
@@ -522,17 +516,14 @@ class WeightPageState extends ConsumerState<WeightPage> {
                   controller: weightCtrl,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: '体重 (kg)',
-                    border: OutlineInputBorder(),
-                  ),
+                  decoration: const InputDecoration(labelText: '体重 (kg)'),
                 ),
                 const SizedBox(height: 12),
                 // 日期选择器：点击行触发 DatePicker
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Icons.calendar_today_outlined),
-                  title: Text(_formatDate(selectedDate)),
+                  title: Text(formatYmd(selectedDate)),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () async {
                     final picked = await showDatePicker(
@@ -559,7 +550,7 @@ class WeightPageState extends ConsumerState<WeightPage> {
                     ctx,
                     _WeightEditResult(
                       weightKg: w,
-                      date: _formatDate(selectedDate),
+                      date: formatYmd(selectedDate),
                     ),
                   );
                 },
@@ -632,10 +623,6 @@ class WeightPageState extends ConsumerState<WeightPage> {
       }
     }
   }
-
-  /// 'YYYY-MM-DD' 格式化（DatePicker 选完的 DateTime 转字符串）
-  String _formatDate(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 }
 
 /// 编辑体重 dialog 返回结果
