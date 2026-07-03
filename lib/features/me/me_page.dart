@@ -249,9 +249,12 @@ class _MePageState extends ConsumerState<MePage> {
   Future<void> _showPrivacy() async {
     final text = await rootBundle.loadString('assets/privacy_policy.md');
     if (!mounted) return;
+    // 注意：dialog push 到 root Navigator（showDialog 默认 useRootNavigator:true），
+    // 关闭按钮必须用 dialog 自己的 ctx 来 pop；若用外层页面 context，
+    // Navigator.of(context) 会找到 tab 的嵌套 Navigator，把 MePage 本身 pop 掉 → 黑屏。
     await showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (ctx) => AlertDialog(
         title: const Text('隐私政策'),
         content: SizedBox(
           width: double.maxFinite,
@@ -259,7 +262,7 @@ class _MePageState extends ConsumerState<MePage> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(ctx),
             child: const Text('关闭'),
           ),
         ],

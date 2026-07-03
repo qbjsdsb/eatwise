@@ -339,9 +339,11 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         TextEditingController(text: m.actualServingG.toStringAsFixed(0));
     double? result;
     try {
+      // dialog 在 root Navigator，按钮必须用 dialog 的 ctx pop；
+      // 用页面 context 会 pop 掉 RecordsTabPage 嵌套 Navigator 栈顶 → 黑屏
       result = await showDialog<double>(
         context: context,
-        builder: (_) => AlertDialog(
+        builder: (ctx) => AlertDialog(
           title: const Text('编辑份量'),
           content: TextField(
               controller: servingCtrl,
@@ -349,11 +351,11 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
               decoration: const InputDecoration(labelText: '份量 (g)')),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(ctx),
                 child: const Text('取消')),
             TextButton(
               onPressed: () =>
-                  Navigator.pop(context, double.tryParse(servingCtrl.text)),
+                  Navigator.pop(ctx, double.tryParse(servingCtrl.text)),
               child: const Text('保存')),
           ],
         ),
@@ -410,16 +412,18 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         return;
       }
       if (!mounted) return;
+      // dialog 在 root Navigator，准/不准按钮必须用 dialog 的 ctx pop；
+      // 用页面 context 会 pop 掉 RecordsTabPage 嵌套 Navigator 栈顶 → 黑屏
       final isCorrect = await showDialog<bool>(
         context: context,
-        builder: (_) => AlertDialog(
+        builder: (ctx) => AlertDialog(
           title: const Text('识别准不准？'),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(context, true),
+                onPressed: () => Navigator.pop(ctx, true),
                 child: const Text('准')),
             TextButton(
-                onPressed: () => Navigator.pop(context, false),
+                onPressed: () => Navigator.pop(ctx, false),
                 child: const Text('不准')),
           ],
         ),
