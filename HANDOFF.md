@@ -36,12 +36,12 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（食物热量计算优化第一波已提交，未发布 release，等用户确认）
+**工作区状态**：clean（食物热量计算优化第一波+第二波已提交，未发布 release，等用户确认）
 **最近 commit**：
+- `62dd475` refactor: 提取 RecognitionPostProcessor 修复三路径行为分叉（第二波 2.0+2.1）
 - `47fd22c` feat: 食物热量计算优化第一波——可食部分系数+组分份量交叉验证+液体密度换算（建议1+3+7）
 - `c2510cb` feat: 识别智能化——图片预检+字段校验+营养素自洽+包装容量优先+反馈闭环（批次 1-3）
 - `50d4cac` fix: 第四轮深度审查修复——主题色绿/常用食物无名/原图丢失/复合菜滑块/防重入
-- `baba3e1` feat: 项目分析与建议（prompt v1.5 + 反馈卡死修复 + 转手动入口）
 
 **已发布**：
 - v0.10.0 已发布（2026-07-03，第二次 release 成功，APK 已上传）
@@ -64,7 +64,7 @@
   - 下次 AI 识别返回错误名时，findByNameOrAlias 命中别名，直接返回正确菜营养数据
   - 6 个 addAlias 单元测试全过
 
-**验证**：flutter analyze No issues + flutter test 302 passed/3 skipped/0 failed
+**验证**：flutter analyze No issues + flutter test 320 passed/3 skipped/0 failed
 
 **食物热量计算优化第一波修复清单**（commit 47fd22c，等用户验收后发布 release）：
 - 建议 1 ediblePercent 可食部分系数：
@@ -86,10 +86,27 @@
   - 换算公式：`realPerUnitG = perUnitG * density`，`realMid = realPerUnitG * quantity`，区间 ±3%
   - 20 个专项测试全过
 
+**第二波修复清单**（commit 62dd475，三路径一致性 + 重试 bug 修复）：
+- 提取 `lib/core/util/recognition_post_processor.dart`：
+  - `process()` 完整链路：密度换算 → 字段校验 → 营养素自洽修正 → 组分份量交叉验证 → additionalDishes 修正
+  - `applyDensityConversion` / `correctAdditionalDishes` 可单独调用
+  - 纯静态方法，不持有状态，不依赖 provider/imageBase64
+- 修复问题1（第一波盲区）：offline_queue_controller 后台回补完全没走校验链路
+  - 包装液体未做 ml→g 密度换算（500ml 油 mid=500 而非 460）
+  - 营养素不自洽未修正、组分份量不自洽未缩放
+  - 导致前后台行为分叉：同张图不同网络条件下热量不一致
+  - 修复：recognize 成功后调 `RecognitionPostProcessor.process(result)`
+- 修复问题2（重试跳过换算 bug）：recognize_controller._validateAndMaybeRetry
+  - 原代码重试成功后用未换算的 retryResult（油 500ml 重试后 mid 仍是 500 而非 460）
+  - 修复：首次 + 重试结果都走 `RecognitionPostProcessor.process`
+- controller 净减 98 行（4 个方法移到 PostProcessor，import + 简化调用）
+- 17 个 PostProcessor 单元测试 + 1 个离线回补密度换算专项测试，全过
+- 更新 1 个原有离线测试期望值（组分份量缩放后 actualServingG 180→250，新行为正确）
+
 **未完成/待办**（按优先级）：
-1. ⬜ 用户验收测试（真机装 APK 验证第一波优化效果，等用户确认后发布 release）
-2. 🔧 第二波（待用户确认后启动）：建议 2（强制路径顺序：库命中→AI 整菜估算→OFF 云查→AI 兜底）+ 建议 4（餐前/餐后双拍对比 DietDelta 思路）
-3. 🔧 第三波（待用户确认后启动）：建议 6（接入 USDA FoodData Central API 替代部分 OFF 云查，免费但需 API key）
+1. ⬜ 用户验收测试（真机装 APK 验证第一波+第二波优化效果，等用户确认后发布 release）
+2. 🔧 第三波（待用户确认后启动）：建议 6（接入 USDA FoodData Central API 替代部分 OFF 云查，免费但需 API key）—— 但需先评估 OFF 中文命中率，USDA 是英文 API 中文菜名需翻译层
+3. ⏸️ 建议 4 餐前/餐后双拍对比（DietDelta 思路）：用户明确暂不做
 4. 🔧 重构性优化（风险较高，不阻塞当前版本）：
    - 路由方式统一（GoRouter vs Navigator.push 混用）
    - 版本号从 PackageInfo 读取（替代硬编码）
@@ -129,7 +146,8 @@
 - `effectiveG = servingG * edibleFactor`（建议 1）：edibleFactor 来自 FCT 数据 `ediblePercent` 字段（如香蕉 65%、带骨排骨 50%）
 - 复合菜组分克数已是可食克数，不乘 edibleFactor
 - 包装液体密度换算（建议 3）：`effectiveG = perUnitG * density * quantity`，仅 weight_source=package_label + 液体类别触发
-- 三件套叠加顺序：识别 → 密度换算（ml→g）→ 字段校验 → 组分交叉验证（mid 缩放）→ 查库反算（×edibleFactor）
+- 三件套叠加顺序：识别 → **RecognitionPostProcessor.process**（密度换算→字段校验→营养素自洽→组分交叉验证→additionalDishes 修正）→ 查库反算（×edibleFactor）
+- 第二波关键：三条路径（前台识别/重试/离线回补）都走 PostProcessor.process，行为一致
 
 ### 3.6 主题色
 - themeSeedProvider（NotifierProvider<int>）+ secure_config_store 持久化
@@ -154,6 +172,7 @@
 6. **测试 mock 需补 getThemeSeed stub**：AppConfig.load() 新增了 getThemeSeed() 调用，mock SecureConfigStore 的测试必须 stub
 7. **复合菜组分克数已是可食克数，不能再乘 ediblePercent**：`lookupCompositeDish` 反算时不要加 edibleFactor（与单品 `lookupSingleItem` 不同），否则双重缩放
 8. **密度换算只对 weight_source=package_label + 液体类别触发**：散装菜（ai_estimate）即使 foodCategory=milk 也不换算（视觉估算已是克数）；水基（密度=1.0）跳过避免无谓重建
+9. **三路径必须走 RecognitionPostProcessor.process**：前台识别（recognize_controller）、重试结果、离线回补（offline_queue_controller）三条路径的 recognize 结果都必须经过 PostProcessor.process，否则行为分叉（第二波修复的关键约束）。重试结果若跳过 process 会导致密度换算被跳过（油 500ml 重试后 mid 仍是 500 而非 460）
 
 ---
 
@@ -197,6 +216,10 @@ lib/
 │   │   ├── app_config.dart            # AppConfig.load() + appConfigProvider
 │   │   └── secure_config_store.dart   # secure_storage 封装（含 themeSeed）
 │   ├── theme/theme_controller.dart    # themeSeedProvider + kThemePresets
+│   ├── util/
+│   │   ├── image_quality_checker.dart # 模糊图预检（批次 1）
+│   │   ├── recognition_validator.dart # 字段合理性 + 营养素自洽 + 组分交叉验证
+│   │   └── recognition_post_processor.dart # 三路径共用后处理（密度换算+校验修正，第二波）
 │   └── error/
 │       ├── sentry_init.dart           # initSentryAndRunApp（appConfig 失败降级）
 │       └── sentry_scrub.dart          # Sentry 脱敏
