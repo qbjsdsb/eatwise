@@ -112,8 +112,8 @@ void main() {
       await weightRepo.insert(date: fmt(now.subtract(const Duration(days: 6))), weightKg: 69.7);
       await weightRepo.insert(date: fmt(now), weightKg: 69.6);
 
-      // 设置 profile：cut + goalRate=-0.5（触发减脂校准）
-      await profileRepo.update(goal: 'cut', goalRateKgPerWeek: -0.5);
+      // 设置 profile：cut + goalRate=0.5（正值，模拟实际 UI 输入；runAndApply 内部转负）
+      await profileRepo.update(goal: 'cut', goalRateKgPerWeek: 0.5);
 
       final result = await calibrator.runAndApply(enabled: true);
       expect(result.adjustmentKcal, lessThan(0), reason: '应触发负 adjustment');
@@ -122,7 +122,7 @@ void main() {
       final profile = await profileRepo.get();
       expect(profile.tdeeAdjustmentKcal, lessThan(0), reason: 'tdeeAdjustmentKcal 应已写入');
 
-      // 用新 adjustment 重算期望值
+      // 用新 adjustment 重算期望值（profile 存正值 0.5，NutritionCalculator 用 >0 判断）
       final bmr = NutritionCalculator.bmrMifflin(
         weightKg: profile.weightKg,
         heightCm: profile.heightCm,
@@ -134,7 +134,7 @@ void main() {
         tdee: tdee,
         goal: Goal.cut,
         tdeeAdjustmentKcal: profile.tdeeAdjustmentKcal,
-        goalRateKgPerWeek: -0.5,
+        goalRateKgPerWeek: profile.goalRateKgPerWeek,
         gender: Gender.male,
       );
       expect(profile.dailyCalorieTarget, expectedTarget,
@@ -154,8 +154,8 @@ void main() {
       await weightRepo.insert(date: fmt(now.subtract(const Duration(days: 6))), weightKg: 68.5);
       await weightRepo.insert(date: fmt(now), weightKg: 68.0);
 
-      // 设置 profile：cut + goalRate=-0.5（与实际速率一致，偏差 0 → 不触发）
-      await profileRepo.update(goal: 'cut', goalRateKgPerWeek: -0.5);
+      // 设置 profile：cut + goalRate=0.5（正值，模拟实际 UI；runAndApply 转负后与实际 -0.5 一致，不触发）
+      await profileRepo.update(goal: 'cut', goalRateKgPerWeek: 0.5);
 
       final profileBefore = await profileRepo.get();
       final targetBefore = profileBefore.dailyCalorieTarget;

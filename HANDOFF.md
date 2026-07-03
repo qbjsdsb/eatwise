@@ -36,9 +36,10 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（v0.11.1 已发布；v0.11.1 之后又提交了 3 个修复但**未发布**）
+**工作区状态**：clean（v0.11.1 已发布；v0.11.1 之后又提交了 4 个修复但**未发布**）
 **最近 commit**：
-- （待提交）feat: 界面 MD3 全面优化（协调性+合规+字体层级，未发布）
+- （待提交）fix: 深度审查修复 15 项——TdeeCalibrator 符号/insertManual 别名冲突/酒精热量清零/JsonImporter FK+Sentry try-catch/NaN 校验/硬下限/markFailed 事务等（未发布）
+- `a8aa1f5` feat: 界面 MD3 全面优化（协调性+合规+字体层级，未发布）
 - `a680241` feat: 智能推荐算法 v3 五维评分 + addAlias 冲突检测（未发布）
 - `1064449` fix: 识别精准度修复+界面偏右修正（雪花啤酒→雪碧假阳性，未发布）
 - `52dc876` docs: 更新 HANDOFF——v0.11.1 已发布
@@ -81,7 +82,8 @@
 8. **智能推荐算法 v3 五维评分 + addAlias 冲突检测**（`a680241`）：用户反馈"推荐冷门食物，不学习习惯，参考业界成熟方案优化"。WebSearch 调研业界（MyFitnessPal/Yazio/薄荷/Lifesum/Carbon Diet Coach），严谨筛选：弃用协同过滤（单机无用户群）、AI 生成食谱（离线 app）、替换建议（需建替代图谱留后续）；采用内容推荐+频次+约束过滤+时段感知+多样性（全离线，基于现有数据）。v3 五维：①冷门降权——常吃蛋白加权 *4，基础食材 *3，冷门 *1.5（直击"冷门霸榜"痛点，原 v2 全部 *4 致冷门高密度食物盖过常吃基础食材）；②基础食材白名单——硬编码 ~50 个中式家常食材关键词（鸡蛋/鸡胸/牛奶/燕麦/米饭/豆腐/苹果/西兰花…）命中 +3 底分，保证常见食物不沉底；③profile 约束过滤——素食/纯素/乳糖不耐/无麸质硬排除违规食物（按名称关键词），糖尿病高糖降权 *0.3，肾病极高蛋白降权 *0.5（软降权避免列表空）；④时段感知——MealLogRepository 新增 getMealTypeDistribution 学习每食物历史 mealType 分布（ratio>0.5 加 3 分），dashboard 按当前小时推断 mealType 传入；⑤多样性——排除今日已吃（已有）+ 昨日已吃降权 -2。addAlias 冲突检测（防反向错配第二道防线，findExact 是第一道）：写入前遍历全表，若别名已是其他食物的 name/alias 则拒绝写入，防止反馈回流把同一错误名绑多食物致永久错配。新增 9 个专项测试（冷门降权/白名单底分/素食过滤/乳糖过滤/时段感知/多样性 + addAlias 冲突检测 3 个）。**坑提醒：recommend() 新增 profile/mealType/yesterdayDate 全是可选参数，不传时退化到 v2 行为（向后兼容现有测试）；时段感知是数据驱动（学历史 mealType 分布）非硬编码"早餐食物"，样本<2 不返回避免单次误判；糖尿病/肾病用软降权而非硬排除，避免推荐列表空；addAlias 冲突检测遍历全表 O(n) 但在 addAlias 事务内，反馈回流低频调用可接受。**
 
 9. **界面 MD3 全面优化**（`a8aa1f5`）：用户反馈"所有界面检查是否最新 MD3 感觉、协调、美观，借鉴开源"。search agent 全面审查 14 文件识别 37 个问题（H/M/L 三级），WebSearch 调研 MD3 v6.1 规范 + 开源饮食 app（FoodYou/NutriScan 的 Material You + Macro Rings）。实施全 4 批：**第一批协调性**——insight SegmentedButton pin 到 AppBar.bottom（与 records_tab 统一，不随滚动消失）；weight 折线图按 insight 范式重写（左下边框+虚线网格+渐变填充+tooltip+统一 barWidth2.5+图例）；宏量营养素跨页统一用 MacroColors（蛋白=tertiary/脂肪=secondary/碳水=primary，新增 m3_widgets.MacroColors 类，替代 dashboard 的 onPrimaryContainer alpha + today_meals 的硬编码 0xFF4CAF50）；today_meals 卡片改 Card.outlined+12dp+padding16（统一 dashboard）；today_meals section header 改用扩展后的 SectionTitle(trailing:)（替代手写色块+标题+sum）；me/settings 分隔线改 cs.outlineVariant（替代 MD2 的 Theme.dividerColor）。**第二批 MD3 合规**——today_meals 编辑对话框"保存"改 FilledButton（原 TextButton 违反 MD3 主操作规范）；profile 特殊状况提示改 Card(tertiaryContainer)（替代手写 Container）；profile/settings emoji 警告改 Icon(warning_amber_rounded, cs.error)（emoji 跨平台渲染不一致且不跟随主题）；settings 选中态 check 色按色块亮度动态选黑/白（WCAG AA）；recognize 遮罩改 cs.scrim（替代硬编码 Colors.black54）+ 次要按钮改 OutlinedButton 形成主次层级；food_library 列表项补 chevron + 空态套 Card；me 错误态 Icon 补 cs.error；today_meals 反馈 IconButton 恢复 48dp 触摸目标。**第三批字体层级**——SectionTitle 改 titleSmall（原 labelLarge 语义偏标签）；批量替换硬编码 fontSize 为 textTheme（dashboard displaySmall/bodySmall/labelSmall、today_meals labelSmall、me titleMedium/bodySmall、insight bodyMedium）。**坑提醒：MacroColors 是 m3_widgets 新增的共享类，跨页配色必须用它而非各自硬编码，否则 dashboard/today_meals 颜色再次分裂；SectionTitle 新增 trailing 参数是可选的，现有 14 处调用不传 trailing 不受影响（向后兼容）；records_tab/insight 的 AppBar 用普通 AppBar+bottom 而非 SliverAppBar，因 IndexedStack/ListView 子页有自己滚动，SliverAppBar 需 CustomScrollView 重构成本大，权衡用 bottom pinned 已满足"切换器常驻"需求。**
-- 验证：`flutter analyze` No issues + `flutter test` 337 passed (3 skipped)。
+
+10. **深度审查修复 15 项**（本次 commit）：用户要求"反复检查项目所有代码，最深度最深入找问题并严谨修复"。4 路并行 search agent 审查 features / ai+nutrition+data / core+main / test 四领域，识别 6 严重 + 10 中等 + 13 轻微 + 5 测试问题。修复 15 项（10 lib + 4 test + 1 HANDOFF）：**严重**——①`TdeeCalibrator.runAndApply` 符号约定冲突（`calibrate` 注释"减脂负/增肌正"但 profile.goalRateKgPerWeek 存正值，runAndApply 直传致减脂用户校准方向恒错，加 signedGoalRate 转换）；②`FoodItemRepository.insertManual` aliases 参数漏冲突检测（addAlias 有全表检测但 insertManual 漏，手动录入 AI 错误名可绑多食物致永久错配，复用 addAlias 全表遍历逻辑）；③`RecognitionValidator` 营养素自洽校验把酒精饮料热量清零（expected=4p+9f+4c 不含酒精 7kcal/g，啤酒 cal=150 但 expected=48 被强制清零，加 `expected>0` 守卫只在 expected 非零时校验）；④`JsonImporter` DELETE 序列漏 pending_recognitions（result_food_item_id 是 FK NO ACTION，DELETE food_items 前未清致真机导入 FK 阻塞）；⑤`JsonImporter` `as int` 强转崩溃（旧版备份缺字段时 `null as int` 抛 TypeError，新增 `_asInt`/`_asIntOrNull` 兜底，所有非空 int 字段全部替换）；⑥`SentryFlutter.init` 无 try-catch（初始化抛异常时 zone guard 只记日志不 runApp → 永久黑屏，加 try-catch 降级返回原 app）。**中等**——⑦`NutritionCalculator` gender=null 跳过硬下限（女性可能拿到 <1200 危险低目标，null 默认 1500 兜底）；⑧`PendingRecognitionRepository.markFailed` 非事务竞态（read-then-write 无事务，"立即重试"与 workmanager 并发时计数丢失，包 `_db.transaction`）；⑨`backup_page` 遮罩硬编码 Colors.black54（改 cs.scrim）；⑩`sentry_scrub` hex 正则只匹配小写（`[a-f0-9]` → `[a-fA-F0-9]`）；⑪版本号过时（me_page/settings_page 0.10.0 → 0.11.1）；⑫`RecognitionValidator` NaN 绕过校验（NaN<0=false NaN>1=false 通过 confidence/weight 校验，加 isNaN 显式判断）。**测试**——⑬`recommendation_service_test` 4 处假绿断言（`if (idx>=0)` 守卫让比较断言静默跳过，加 `expect(idx, greaterThanOrEqualTo(0))` 前置断言，薯片因 score=-17.35 被合理过滤是设计行为保留 if）；⑭`json_export_import_test` schema v2 三字段漏测（seedData 加 specialCondition/dietPreference/healthCondition，导入后断言）；⑮`meal_log_repository_test` 哨兵防御漏测（新增 foodItemId=0/-1 抛 ArgumentError + foodItemId=1 正常写入 3 个测试）。**坑提醒：TdeeCalibrator calibrate 算法期望"减脂负/增肌正"符号，但 profile.goalRateKgPerWeek 存正值（NutritionCalculator 用 >0 判断），runAndApply 必须按 goal 转换符号；JsonImporter DELETE 序列必须先子表后父表，pending_recognitions.result_food_item_id 是 FK 必须在 food_items 之前清；SentryFlutter.init 失败要降级返回原 app 保证 runApp 能执行（不能让初始化失败致永久黑屏）；RecognitionValidator 营养素自洽校验只在 expected>0 时执行，酒精/纤维/糖醇等非 Atwater 来源热量不能强制清零。**- 验证：`flutter analyze` No issues + `flutter test` 340 passed (3 skipped)。
 
 **识别智能化批次 1-3 修复清单**（本次 commit，用户选择"全部融入"）：
 - 批次 1 图片预检 + 字段校验：
@@ -235,6 +237,34 @@
 - 权衡：records_tab/insight 用普通 AppBar+bottom 而非 SliverAppBar（IndexedStack/ListView 子页有自己滚动，SliverAppBar 需 CustomScrollView 重构成本大，bottom pinned 已满足"切换器常驻"需求）
 - 验证：flutter analyze lib/ No issues + flutter test 337 passed (3 skipped)
 
+### 3.13 深度审查修复 15 项（本次 commit，未发布）
+- 审查方法：4 路并行 search agent 分领域逐文件核对（features / ai+nutrition+data / core+main / test）
+- 严重问题修复（S1-S6）：
+  - S1 `TdeeCalibrator.runAndApply` 符号转换——calibrate 算法期望"减脂负/增肌正"但 profile.goalRateKgPerWeek 存正值，runAndApply 加 `signedGoalRate = goal=='cut' ? -rate : goal=='bulk' ? rate : 0` 转换
+  - S2 `FoodItemRepository.insertManual` aliases 冲突检测——复用 addAlias 全表遍历逻辑，剔除已是其他食物 name/alias 的别名（防手动录入 AI 错误名绑多食物永久错配）
+  - S3+S5 `RecognitionValidator` 营养素自洽加 `expected>0` 守卫——酒精饮料（7kcal/g 不在 Atwater 4p+9f+4c）/纤维/糖醇等非 Atwater 来源热量不能强制清零
+  - S4 `JsonImporter` DELETE 序列加 pending_recognitions——`pending_recognitions.result_food_item_id` 是 FK NO ACTION，必须在 DELETE food_items 之前清
+  - S4+ `JsonImporter` `as int` 强转改 `_asInt`/`_asIntOrNull` 兜底——旧版备份缺字段 `null as int` 抛 TypeError
+  - S6 `SentryFlutter.init` 包 try-catch 降级——失败时返回原 app（不包 SentryWidget）保证 runApp 能执行
+- 中等问题修复（M1-M10 + core L2/L3）：
+  - `NutritionCalculator` gender=null 默认 1500 硬下限（避免女性拿到 <1200 危险低目标）
+  - `PendingRecognitionRepository.markFailed` 包 `_db.transaction`（防"立即重试"与 workmanager 并发计数丢失）
+  - `backup_page` 遮罩 `Colors.black54` → `cs.scrim.withValues(alpha:0.54)`
+  - `sentry_scrub` hex 正则 `[a-f0-9]` → `[a-fA-F0-9]`（大写 hex 也脱敏）
+  - `RecognitionValidator` confidence/estimatedWeightGMid 加 isNaN 显式判断（NaN 绕过 <0/>1 校验）
+  - me_page/settings_page 版本号 0.10.0 → 0.11.1
+- 测试修复（test S1/S3/S4）：
+  - `recommendation_service_test` 4 处 `if (idx>=0)` 守卫加 `expect(idx, greaterThanOrEqualTo(0))` 前置断言（防假绿）
+  - `json_export_import_test` seedData 加 schema v2 三字段断言（防导出导入漏字段）
+  - `meal_log_repository_test` 新增 foodItemId=0/-1 哨兵防御测试（防外键约束违规崩溃）
+- 暂不修复（需设计调整）：
+  - NutritionLookup 3x OFF 云查（需重构查库逻辑）
+  - RecognitionPostProcessor correctAdditionalDishes needsRetry 丢弃（需改 process 返回结构）
+  - RecognitionPostProcessor macros 不修正（需扩展 copyWith）
+  - image_quality_checker 未用 isolate（需顶层函数重构）
+  - main.dart zone guard 不 runApp（需确认兜底策略）
+- 验证：flutter analyze lib/ test/ No issues + flutter test 340 passed (3 skipped)
+
 ---
 
 ## 4. 已知陷阱（踩过的坑）
@@ -265,6 +295,22 @@
 22. **SectionTitle.trailing 是可选参数，向后兼容现有调用**：扩展 SectionTitle 加 `trailing?:Widget` 用于显示分组小计（如 today_meals 餐次标题 trailing 显示 "xxx kcal"）。现有 14 处 `SectionTitle(text)` 调用不传 trailing 不受影响。需要 trailing 的页面复用同一组件而非另起炉灶（曾因 today_meals 手写"色块+标题+sum"破坏统一）
 
 23. **records_tab/insight 的 SegmentedButton 用 AppBar.bottom pinned 而非 SliverAppBar**：切换器需常驻顶部不随滚动消失。权衡：用普通 `AppBar(bottom: PreferredSize(...))` 而非 SliverAppBar，因 IndexedStack/ListView 子页有自己的滚动结构，SliverAppBar 需 CustomScrollView 重构成本大；AppBar.bottom pinned 已满足"切换器常驻"需求
+
+24. **TdeeCalibrator calibrate 算法期望"减脂负/增肌正"符号**：但 `profile.goalRateKgPerWeek` 存正值（NutritionCalculator.dailyCalorieTarget 用 `>0` 判断 deficit/surplus）。`runAndApply` 必须按 goal 转换符号：cut 取负、bulk 取正、maintain 取 0，否则减脂用户校准方向恒错。改 calibrate 算法或改 profile 存储都会破坏多处依赖，符号转换在 runAndApply 边界处做最稳
+
+25. **JsonImporter DELETE 序列必须先子表后父表**：`pending_recognitions.result_food_item_id` 是 FK NO ACTION，DELETE food_items 之前必须先清 pending_recognitions，否则 FK 阻塞致真机导入失败。当前序列：recognition_feedbacks → insight_summaries → weight_logs → pending_recognitions → meal_logs → food_items → profiles。新增带 FK 的表必须同步更新 DELETE 序列
+
+26. **SentryFlutter.init 失败必须降级返回原 app**：初始化抛异常时 zone guard 只记日志不 runApp → 永久黑屏。`initSentryAndRunApp` 必须 try-catch 包 SentryFlutter.init，失败时返回原 app（不包 SentryWidget）保证调用方 runApp 能执行。Sentry 是可观测性工具，初始化失败不应阻塞 app 启动
+
+27. **RecognitionValidator 营养素自洽校验只在 expected>0 时执行**：`expected = 4*protein + 9*fat + 4*carbs` 不含酒精（7kcal/g）、纤维、糖醇等非 Atwater 来源热量。若 expected==0 但 cal>0（如啤酒 cal=150 expected=48 实际 expected 来自 p/f/c 微量），强制清零会丢数据。校验器只在 `expected > 0` 时校验自洽性，expected==0 保留 AI 的 calories
+
+28. **RecognitionValidator confidence/weight 必须显式判 NaN**：Dart 中 `NaN < 0 = false`、`NaN > 1 = false`、`NaN <= 0 = false`，AI 返回非数值字符串被 `double.tryParse` 解析为 NaN 时会绕过 `[0,1]` / `>0` 区间校验。校验器必须显式 `if (value.isNaN || value < 0 || value > 1)` 判断
+
+29. **测试断言不能用 `if (idx >= 0)` 守卫包裹比较断言**：`indexWhere` 返回 -1 时 `if (idx >= 0)` 守卫让内部比较断言静默跳过 → 测试通过不代表功能正确（假绿）。应在比较前显式 `expect(idx, greaterThanOrEqualTo(0), reason: '...')` 前置断言确保元素在列表中，再执行比较。例外：被设计行为过滤的元素（如推荐算法超标场景 score<=0 的食物）保留 if 守卫，但其他元素必须强制断言
+
+30. **insertManual aliases 参数必须做冲突检测**：addAlias 有全表冲突检测（陷阱 18）但 insertManual 的 aliases 参数路径曾漏掉。手动录入时若用户输入 AI 错误名作别名，可绑多食物致永久错配（与反馈回流 addAlias 同风险）。insertManual 必须复用 addAlias 全表遍历逻辑，剔除已是其他食物 name/alias 的别名
+
+31. **JsonImporter 不要用 `as int` 强转可空字段**：旧版备份 JSON 缺字段时 `null as int` 抛 TypeError 致整个导入失败。所有非空 int 字段必须用 `_asInt(v) => (v as num).toInt()` 兜底（num 兼容 int/double），可空字段用 `_asIntOrNull(v) => v == null ? null : (v as num).toInt()`。导出 JSON 是跨版本兼容的关键入口，类型强转是常见崩溃源
 
 ---
 

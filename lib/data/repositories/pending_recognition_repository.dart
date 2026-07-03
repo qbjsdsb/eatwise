@@ -79,21 +79,26 @@ class PendingRecognitionRepository {
       );
       return;
     }
-    final current = await (_db.pendingRecognitions.select()
-          ..where((p) => p.id.equals(id)))
-        .getSingleOrNull();
-    if (current == null) return; // 记录已被删除（并发场景），无需标记失败
-    await (_db.pendingRecognitions.update()..where((p) => p.id.equals(id)))
-        .write(
-      PendingRecognitionsCompanion(
-        // retryCount 当前为 0/1/2 时下次还重试；当前为 2 时（即将变 3）标记 failed
-        status: current.retryCount >= 2
-            ? const Value('failed')
-            : const Value('pending'),
-        retryCount: Value(current.retryCount + 1),
-        errorMessage: Value(errorMessage),
-      ),
-    );
+    // 包事务：read-then-write 原子化，防"立即重试"与后台 workmanager 并发时
+    // 两者都读到 retryCount=2 都写 +1（本应一方写 failed），导致计数丢失 + 本应
+    // failed 的任务继续重试浪费 API 配额
+    await _db.transaction(() async {
+      final current = await (_db.pendingRecognitions.select()
+            ..where((p) => p.id.equals(id)))
+          .getSingleOrNull();
+      if (current == null) return; // 记录已被删除（并发场景），无需标记失败
+      await (_db.pendingRecognitions.update()..where((p) => p.id.equals(id)))
+          .write(
+        PendingRecognitionsCompanion(
+          // retryCount 当前为 0/1/2 时下次还重试；当前为 2 时（即将变 3）标记 failed
+          status: current.retryCount >= 2
+              ? const Value('failed')
+              : const Value('pending'),
+          retryCount: Value(current.retryCount + 1),
+          errorMessage: Value(errorMessage),
+        ),
+      );
+    });
   }
 
   /// 统计 pending 数量（UI 角标用）

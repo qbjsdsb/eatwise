@@ -81,8 +81,8 @@ String? _scrubString(String? input) {
   // 注意：计划原文用 raw 字符串 r'...\'..' 无法转义单引号（Dart raw 串不支持 \），
   // 改用普通字符串 + 转义，正则语义完全一致：/[^\s"'<>]+\.(jpg|jpeg|png|webp)/
   var result = input.replaceAll(RegExp('/[^\\s"\'<>]+\\.(jpg|jpeg|png|webp)'), '[path]');
-  // 32+ 位 hex/key 模式
-  result = result.replaceAll(RegExp(r'[a-f0-9]{32,}'), '[redacted]');
+  // 32+ 位 hex/key 模式（大小写都匹配：SHA256/UUID 去横线/JWT 签名常含大写）
+  result = result.replaceAll(RegExp(r'[a-fA-F0-9]{32,}'), '[redacted]');
   // sk- 开头的 API key
   result = result.replaceAll(RegExp(r'sk-[a-zA-Z0-9]+'), '[redacted]');
   return result;

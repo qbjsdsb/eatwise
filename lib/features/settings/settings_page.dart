@@ -353,7 +353,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('慢慢吃 v0.10.0'),
+            const Text('慢慢吃 v0.11.1'),
             const SizedBox(height: 8),
             const Text('拍照识别食物热量 + 营养记录 + AI 汇总建议'),
             const SizedBox(height: 8),

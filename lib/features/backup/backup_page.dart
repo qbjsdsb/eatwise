@@ -68,7 +68,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           // 进行中遮罩：防重复点击 + 给用户反馈
           if (_busy)
             Container(
-              color: Colors.black54,
+              color: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.54),
               child: Center(
                 child: Card(
                   child: Padding(

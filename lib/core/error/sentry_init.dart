@@ -29,20 +29,29 @@ Future<Widget> initSentryAndRunApp({
     return app;
   }
 
-  await SentryFlutter.init(
-    (options) {
-      options.dsn = dsn;
-      options.beforeSend = scrubBeforeSend;
-      // 采样率：个人自用全采（1.0），无需抽样
-      options.tracesSampleRate = 1.0;
-      // Release 版本配合 --split-debug-info 解符号
-      options.release = const String.fromEnvironment('SENTRY_RELEASE',
-          defaultValue: 'eatwise@0.10.0');
-    },
-    appRunner: () {},
-  );
+  // try-catch 包裹 SentryFlutter.init：若初始化抛异常（DSN 格式错/插件未就绪/
+  // 版本不兼容），降级返回原 app 不阻塞 runApp，避免永久黑屏（zone guard 只记
+  // 日志不会 runApp，用户将看到黑屏）
+  try {
+    await SentryFlutter.init(
+      (options) {
+        options.dsn = dsn;
+        options.beforeSend = scrubBeforeSend;
+        // 采样率：个人自用全采（1.0），无需抽样
+        options.tracesSampleRate = 1.0;
+        // Release 版本配合 --split-debug-info 解符号
+        // TODO: 后续从 PackageInfo 读取版本号替代硬编码（HANDOFF 待办）
+        options.release = const String.fromEnvironment('SENTRY_RELEASE',
+            defaultValue: 'eatwise@0.11.1');
+      },
+      appRunner: () {},
+    );
+  } catch (e, st) {
+    debugPrint('SentryFlutter.init 失败，跳过 Sentry：$e\n$st');
+    return app; // 降级：返回原 app（不包 SentryWidget），保证 runApp 能执行
+  }
 
-  // SentryFlutter.init 已在内部 runApp，但为统一返回 widget，这里返回 app
-  // 注意：调用方需用 SentryWidget 包裹 app
+  // SentryFlutter.init 仅初始化 SDK（appRunner 为空，不内部 runApp）。
+  // 调用方 main.dart 负责 runApp，这里返回已包 SentryWidget 的 app。
   return SentryWidget(child: app);
 }

@@ -87,9 +87,9 @@ class NutritionCalculator {
         raw = (tdeeWithSpecial + tdeeAdjustmentKcal).round();
         break;
     }
-    // 硬下限
-    if (gender == Gender.female && raw < 1200) raw = 1200;
-    if (gender == Gender.male && raw < 1500) raw = 1500;
+    // 硬下限（gender=null 时按更保守的 1500 兜底，避免女性拿到 <1200 的危险低目标）
+    final floor = gender == Gender.female ? 1200 : 1500;
+    if (raw < floor) raw = floor;
     return raw;
   }
 

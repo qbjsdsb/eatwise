@@ -32,19 +32,23 @@ class RecognitionValidator {
       needsRetry = true;
     }
 
-    // 2. confidence 在 [0, 1]
-    if (result.confidence < 0 || result.confidence > 1) {
-      reasons.add('confidence 越界: ${result.confidence}');
+    // 2. confidence 在 [0, 1]（NaN 也视为越界：NaN<0=false, NaN>1=false 会漏过，
+    //    显式 isNaN 判断防 AI 返回非数值字符串解析为 NaN 时通过校验）
+    final conf = result.confidence;
+    if (conf.isNaN || conf < 0 || conf > 1) {
+      reasons.add('confidence 越界: $conf');
       needsRetry = true;
     }
 
-    // 3. estimatedWeightGMid > 0
-    if (result.estimatedWeightGMid <= 0) {
-      reasons.add('estimated_weight_g_mid 非正: ${result.estimatedWeightGMid}');
+    // 3. estimatedWeightGMid > 0（NaN 同理显式判断）
+    final mid = result.estimatedWeightGMid;
+    if (mid.isNaN || mid <= 0) {
+      reasons.add('estimated_weight_g_mid 非正: $mid');
       needsRetry = true;
     }
 
     // 4. 区间不倒置（low <= mid <= high），允许相等（单品 per_unit_g*quantity 精确值）
+    //    NaN 比较全为 false 会漏过，已在上面校验 mid，low/high 的 NaN 由 fromJson 兜底
     if (result.estimatedWeightGLow > result.estimatedWeightGMid ||
         result.estimatedWeightGHigh < result.estimatedWeightGMid) {
       reasons.add('重量区间倒置: low=${result.estimatedWeightGLow}, '
@@ -62,11 +66,12 @@ class RecognitionValidator {
       final carbs = result.estimatedCarbsG ?? 0;
       final expected = 4 * protein + 9 * fat + 4 * carbs;
       // calories 为 0 但有宏量营养素 → 瞎算，修正
-      // calories > 0 但偏差超 ±10% → 修正
+      // calories > 0 但偏差超 ±10% → 修正（仅当 expected > 0 才修正，
+      //   expected=0 时可能是酒精饮料/纤维等非 Atwater 来源，强制清零会丢热量）
       if (cal <= 0 && expected > 0) {
         reasons.add('calories=0 但宏量营养素之和=$expected，修正为 $expected');
         correctedCalories = expected;
-      } else if (cal > 0) {
+      } else if (cal > 0 && expected > 0) {
         final diff = (expected - cal).abs();
         final ratio = diff / cal;
         if (ratio > _calorieTolerance) {
@@ -75,6 +80,8 @@ class RecognitionValidator {
           correctedCalories = expected;
         }
       }
+      // expected == 0 且 cal > 0：可能是酒精饮料（7 kcal/g 不在 Atwater 系数内）、
+      // 糖醇、膳食纤维等，无法用宏量校验，保留 AI 的 calories 不修正
     }
 
     // 建议 7：复合菜组分份量交叉验证

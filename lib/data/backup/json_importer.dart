@@ -31,10 +31,13 @@ class JsonImporter {
     // 用 transaction 包裹：DELETE + 批量 INSERT 原子化，中途失败回滚避免半库
     // PRAGMA foreign_keys 在事务外设置无效，故用批量 DELETE 顺序（先子后父）规避级联
     final result = await _db.transaction(() async {
-      // 清空 6 表（顺序：先子表后父表，避免外键约束冲突）
+      // 清空 7 表（顺序：先子表后父表，避免外键约束冲突）
+      // pending_recognitions.result_food_item_id 是 FK（NO ACTION），
+      // 必须在 DELETE food_items 之前清空，否则 FK 阻塞致导入失败
       await _db.customStatement('DELETE FROM recognition_feedbacks;');
       await _db.customStatement('DELETE FROM insight_summaries;');
       await _db.customStatement('DELETE FROM weight_logs;');
+      await _db.customStatement('DELETE FROM pending_recognitions;');
       await _db.customStatement('DELETE FROM meal_logs;');
       await _db.customStatement('DELETE FROM food_items;');
       await _db.customStatement('DELETE FROM profiles;');
@@ -138,32 +141,32 @@ class JsonImporter {
 
   ProfilesCompanion _profileFromJson(Map<String, dynamic> j) =>
       ProfilesCompanion.insert(
-        id: Value(j['id'] as int),
+        id: Value(_asInt(j['id'])),
         heightCm: _asDouble(j['heightCm']),
         weightKg: _asDouble(j['weightKg']),
         bodyFatPct: Value(_asDoubleOrNull(j['bodyFatPct'])),
-        age: j['age'] as int,
+        age: _asInt(j['age']),
         gender: j['gender'] as String,
         activityLevel: _asDouble(j['activityLevel']),
         goal: j['goal'] as String,
         goalRateKgPerWeek: _asDouble(j['goalRateKgPerWeek']),
         formula: j['formula'] as String,
-        dailyCalorieTarget: j['dailyCalorieTarget'] as int,
+        dailyCalorieTarget: _asInt(j['dailyCalorieTarget']),
         proteinGPerKg: _asDouble(j['proteinGPerKg']),
         fatGPerKg: _asDouble(j['fatGPerKg']),
         carbGPerKg: Value(_asDoubleOrNull(j['carbGPerKg'])),
-        tdeeAdjustmentKcal: Value(j['tdeeAdjustmentKcal'] as int),
+        tdeeAdjustmentKcal: Value(_asIntOrNull(j['tdeeAdjustmentKcal']) ?? 0),
         // 特殊人群适配（schema v2 新增）：旧版本 JSON 无此字段时 `as String?` 得 null，
         // 写入 DB nullable 列等同默认值（视为 'none'），向后兼容
         specialCondition: Value(j['specialCondition'] as String?),
         dietPreference: Value(j['dietPreference'] as String?),
         healthCondition: Value(j['healthCondition'] as String?),
-        updatedAt: j['updatedAt'] as int,
+        updatedAt: _asInt(j['updatedAt']),
       );
 
   FoodItemsCompanion _foodItemFromJson(Map<String, dynamic> j) =>
       FoodItemsCompanion.insert(
-        id: Value(j['id'] as int), // 保留原 ID（外键依赖）
+        id: Value(_asInt(j['id'])), // 保留原 ID（外键依赖）
         name: j['name'] as String,
         defaultServingG: _asDouble(j['defaultServingG']),
         caloriesPer100g: _asDouble(j['caloriesPer100g']),
@@ -177,15 +180,15 @@ class JsonImporter {
         confidence: Value(_asDoubleOrNull(j['confidence'])),
         componentsJson: Value(j['componentsJson'] as String?),
         thumbnailPath: Value(j['thumbnailPath'] as String?),
-        createdAt: j['createdAt'] as int,
+        createdAt: _asInt(j['createdAt']),
       );
 
   MealLogsCompanion _mealLogFromJson(Map<String, dynamic> j) =>
       MealLogsCompanion.insert(
-        id: Value(j['id'] as int),
+        id: Value(_asInt(j['id'])),
         date: j['date'] as String,
         mealType: j['mealType'] as String,
-        foodItemId: j['foodItemId'] as int,
+        foodItemId: _asInt(j['foodItemId']),
         actualServingG: _asDouble(j['actualServingG']),
         actualCalories: _asDouble(j['actualCalories']),
         actualProteinG: _asDouble(j['actualProteinG']),
@@ -194,36 +197,36 @@ class JsonImporter {
         originalImagePath: Value(j['originalImagePath'] as String?),
         recognitionConfidence: Value(_asDoubleOrNull(j['recognitionConfidence'])),
         componentsSnapshotJson: Value(j['componentsSnapshotJson'] as String?),
-        loggedAt: j['loggedAt'] as int,
+        loggedAt: _asInt(j['loggedAt']),
       );
 
   WeightLogsCompanion _weightLogFromJson(Map<String, dynamic> j) =>
       WeightLogsCompanion.insert(
-        id: Value(j['id'] as int),
+        id: Value(_asInt(j['id'])),
         date: j['date'] as String,
         weightKg: _asDouble(j['weightKg']),
       );
 
   InsightSummariesCompanion _insightFromJson(Map<String, dynamic> j) =>
       InsightSummariesCompanion.insert(
-        id: Value(j['id'] as int),
+        id: Value(_asInt(j['id'])),
         periodType: j['periodType'] as String,
         periodStart: j['periodStart'] as String,
         periodEnd: j['periodEnd'] as String,
         summaryText: j['summaryText'] as String,
-        isEdited: Value(j['isEdited'] as int),
-        generatedAt: j['generatedAt'] as int,
+        isEdited: Value(_asIntOrNull(j['isEdited']) ?? 0),
+        generatedAt: _asInt(j['generatedAt']),
       );
 
   RecognitionFeedbacksCompanion _feedbackFromJson(Map<String, dynamic> j) =>
       RecognitionFeedbacksCompanion.insert(
-        id: Value(j['id'] as int),
-        mealLogId: j['mealLogId'] as int,
-        isCorrect: j['isCorrect'] as int,
+        id: Value(_asInt(j['id'])),
+        mealLogId: _asInt(j['mealLogId']),
+        isCorrect: _asInt(j['isCorrect']),
         correctedDishName: Value(j['correctedDishName'] as String?),
         correctedServingG: Value(_asDoubleOrNull(j['correctedServingG'])),
         promptVersion: j['promptVersion'] as String,
-        createdAt: j['createdAt'] as int,
+        createdAt: _asInt(j['createdAt']),
       );
 
   /// JSON 数值类型安全转换：JSON 数字可能是 int 或 double，直接 `as double` 会在 int 时抛 _TypeError
@@ -231,6 +234,13 @@ class JsonImporter {
 
   /// 可空版本
   double? _asDoubleOrNull(dynamic v) => v == null ? null : (v as num).toDouble();
+
+  /// int 安全转换：JSON 数字可能是 int 或 double，直接 `as int` 会在 double 时抛 _TypeError；
+  /// 旧版备份缺字段时 null 会抛 _TypeError，用 _asIntOrNull 兜底
+  int _asInt(dynamic v) => (v as num).toInt();
+
+  /// 可空 int（旧版备份缺字段兜底用）
+  int? _asIntOrNull(dynamic v) => v == null ? null : (v as num).toInt();
 }
 
 /// 图片失效检测结果（换机场景：图片未随 JSON 迁移）

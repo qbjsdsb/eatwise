@@ -251,4 +251,69 @@ void main() {
       expect(await repo.getMedianServing(foodId), 1550);
     });
   });
+
+  // 哨兵防御测试（HANDOFF 硬约束 2：foodItemId=0 是哨兵，写库前必须替换为真实 id）
+  group('哨兵防御（foodItemId=0 拒绝写入）', () {
+    test('foodItemId=0 抛 ArgumentError（防外键约束违规崩溃）', () {
+      expect(
+        () => repo.insertMealLog(
+          date: '2026-07-02',
+          mealType: 'breakfast',
+          foodItemId: 0, // 哨兵值
+          actualServingG: 100,
+          actualCalories: 50,
+          actualProteinG: 1.0,
+          actualFatG: 0.2,
+          actualCarbsG: 13.5,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('foodItemId=-1 抛 ArgumentError（负值同样拒绝）', () {
+      expect(
+        () => repo.insertMealLog(
+          date: '2026-07-02',
+          mealType: 'breakfast',
+          foodItemId: -1,
+          actualServingG: 100,
+          actualCalories: 50,
+          actualProteinG: 1.0,
+          actualFatG: 0.2,
+          actualCarbsG: 13.5,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('foodItemId=1（真实 id）正常写入', () async {
+      // 先插入一条食物拿到真实 id
+      final foodId = await db.into(db.foodItems).insert(
+            FoodItemsCompanion.insert(
+              name: '苹果',
+              defaultServingG: 100,
+              caloriesPer100g: 52,
+              proteinPer100g: 0.3,
+              fatPer100g: 0.2,
+              carbsPer100g: 13.8,
+              source: 'manual',
+              sourceVersion: 'test',
+              createdAt: 0,
+            ),
+          );
+      await repo.insertMealLog(
+        date: '2026-07-02',
+        mealType: 'breakfast',
+        foodItemId: foodId,
+        actualServingG: 100,
+        actualCalories: 52,
+        actualProteinG: 0.3,
+        actualFatG: 0.2,
+        actualCarbsG: 13.8,
+      );
+      final meals = await repo.getMealsByDate('2026-07-02');
+      expect(meals.length, 1);
+      expect(meals.first.foodItemId, foodId);
+    });
+  });
 }

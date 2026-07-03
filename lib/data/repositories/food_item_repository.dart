@@ -345,6 +345,10 @@ class FoodItemRepository {
   /// 手动录入新食物（source='manual'）
   /// T10 手动录入页"查不到→自定义→存库"用
   /// aliases：可选别名列表（如模型返回的原始菜名，用于自动学习，下次识别同名自动命中）
+  ///
+  /// 冲突检测（与 addAlias 一致，防反向错配）：写入前遍历全表，剔除已是其他食物
+  /// name/alias 的别名。否则同一 AI 错误名会绑到多个食物，findByNameOrAlias 精确
+  /// 命中第一个 → 永久错配无法自愈。
   Future<int> insertManual({
     required String name,
     required double caloriesPer100g,
@@ -354,6 +358,27 @@ class FoodItemRepository {
     double defaultServingG = 100,
     List<String>? aliases,
   }) async {
+    // aliases 冲突检测：剔除已是其他食物 name/alias 的别名（与 addAlias 第二道防线一致）
+    List<String>? safeAliases;
+    if (aliases != null && aliases.isNotEmpty) {
+      final normalizedSelf = _normalize(name);
+      final all = await _db.foodItems.select().get();
+      final occupied = <String>{};
+      for (final other in all) {
+        occupied.add(_normalize(other.name));
+        for (final a in _decodeAliases(other.aliasesJson)) {
+          occupied.add(_normalize(a));
+        }
+      }
+      safeAliases = aliases
+          .where((a) {
+            final n = _normalize(a);
+            // 跳过与自身 name 相同的（自引用防护）+ 已被占用的（冲突检测）
+            return n != normalizedSelf && !occupied.contains(n);
+          })
+          .toList();
+      if (safeAliases.isEmpty) safeAliases = null;
+    }
     return _db.into(_db.foodItems).insert(FoodItemsCompanion.insert(
           name: name,
           defaultServingG: defaultServingG,
@@ -361,8 +386,9 @@ class FoodItemRepository {
           proteinPer100g: proteinPer100g,
           fatPer100g: fatPer100g,
           carbsPer100g: carbsPer100g,
-          aliasesJson: Value(
-              aliases == null || aliases.isEmpty ? null : jsonEncode(aliases)),
+          aliasesJson: Value(safeAliases == null || safeAliases.isEmpty
+              ? null
+              : jsonEncode(safeAliases)),
           source: 'manual',
           sourceVersion: 'manual',
           createdAt: DateTime.now().millisecondsSinceEpoch,

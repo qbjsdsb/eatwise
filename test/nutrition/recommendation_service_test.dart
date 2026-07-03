@@ -118,8 +118,11 @@ void main() {
       // 白菜（17kcal）应排在薯片（547kcal）前面
       final cabbageIdx = recs.indexWhere((e) => e.food.name == '白菜');
       final chipsIdx = recs.indexWhere((e) => e.food.name == '薯片');
+      // 前置断言：白菜必须在推荐列表中（低热量超标时优先推荐）
+      expect(cabbageIdx, greaterThanOrEqualTo(0), reason: '白菜应在推荐列表中');
+      // 薯片在超标场景 score<=0 被过滤是设计行为（高热量惩罚生效）；
+      // 若未被过滤则在列表中，白菜应排在前面
       if (chipsIdx >= 0) {
-        // 薯片可能被过滤（score<=0），如果存在则白菜应在前面
         expect(cabbageIdx, lessThan(chipsIdx));
       }
     });
@@ -189,9 +192,10 @@ void main() {
       final eggIdx = recs.indexWhere((e) => e.food.name == '鸡蛋');
       final coldIdx = recs.indexWhere((e) => e.food.name == '某冷门蛋制品');
       expect(eggIdx, greaterThanOrEqualTo(0));
-      if (coldIdx >= 0) {
-        expect(eggIdx, lessThan(coldIdx));
-      }
+      // 前置断言：冷门蛋制品也应在列表中（同营养 score>0，只是降权），
+      // 避免 if 守卫静默跳过比较断言（假绿测试）
+      expect(coldIdx, greaterThanOrEqualTo(0), reason: '冷门蛋制品应在推荐列表中');
+      expect(eggIdx, lessThan(coldIdx));
     });
 
     test('profile 素食过滤：vegetarian 排除肉类', () async {
@@ -241,11 +245,12 @@ void main() {
       final dinnerEggIdx = dinnerRecs.indexWhere((e) => e.food.name == '鸡蛋');
       // 早餐时段鸡蛋应存在（加了时段分）
       expect(breakfastEggIdx, greaterThanOrEqualTo(0));
+      // 前置断言：晚餐时段鸡蛋也应在列表中（基础食材 +3 底分，limit=10 足够），
+      // 避免 if 守卫静默跳过得分比较断言（假绿测试）
+      expect(dinnerEggIdx, greaterThanOrEqualTo(0), reason: '晚餐时段鸡蛋应在推荐列表中');
       // 早餐时段鸡蛋得分应高于晚餐时段（时段加分）
-      if (dinnerEggIdx >= 0) {
-        expect(breakfastRecs[breakfastEggIdx].score,
-            greaterThan(dinnerRecs[dinnerEggIdx].score));
-      }
+      expect(breakfastRecs[breakfastEggIdx].score,
+          greaterThan(dinnerRecs[dinnerEggIdx].score));
     });
 
     test('多样性：昨日已吃食物降权', () async {
@@ -263,11 +268,13 @@ void main() {
         remaining: r, limit: 10, yesterdayDate: '2026-07-01');
       final eggIdxA = withoutYesterday.indexWhere((e) => e.food.name == '鸡蛋');
       final eggIdxB = withYesterday.indexWhere((e) => e.food.name == '鸡蛋');
-      if (eggIdxA >= 0 && eggIdxB >= 0) {
-        // 昨日已吃时鸡蛋得分应更低（降权 -2）
-        expect(withYesterday[eggIdxB].score,
-            lessThan(withoutYesterday[eggIdxA].score));
-      }
+      // 前置断言：两次推荐鸡蛋都应在列表中（基础食材 +3 底分），
+      // 避免 if 守卫静默跳过降权比较断言（假绿测试）
+      expect(eggIdxA, greaterThanOrEqualTo(0), reason: '无昨日参数时鸡蛋应在列表');
+      expect(eggIdxB, greaterThanOrEqualTo(0), reason: '有昨日参数时鸡蛋应在列表');
+      // 昨日已吃时鸡蛋得分应更低（降权 -2）
+      expect(withYesterday[eggIdxB].score,
+          lessThan(withoutYesterday[eggIdxA].score));
     });
   });
 }

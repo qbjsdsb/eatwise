@@ -105,9 +105,17 @@ class TdeeCalibrator {
     final weights = await weightRepo.getRangeForTdee(days: minWeeks * 7);
     final profile = await profileRepo.get();
 
+    // calibrate 算法期望"减脂负值/增肌正值/维持0"（与实际体重变化速率同符号比较），
+    // 但 profile.goalRateKgPerWeek 存的是正值（NutritionCalculator.dailyCalorieTarget
+    // 用 >0 判断计算 deficit/surplus）。需按 goal 转换符号：减脂取负、增肌取正、维持0
+    final signedGoalRate = profile.goal == 'cut'
+        ? -profile.goalRateKgPerWeek.abs()
+        : profile.goal == 'bulk'
+            ? profile.goalRateKgPerWeek.abs()
+            : 0.0;
     final result = calibrate(
       weights: weights,
-      goalRateKgPerWeek: profile.goalRateKgPerWeek,
+      goalRateKgPerWeek: signedGoalRate,
     );
 
     if (result.adjustmentKcal != 0) {

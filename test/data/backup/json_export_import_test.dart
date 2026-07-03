@@ -67,6 +67,15 @@ void main() {
             createdAt: 4000,
           ),
         );
+    // schema v2 三字段（HANDOFF 陷阱 12：导出导入必须同步）
+    // 数据库 onCreate 已插入 id=1 的默认 profile，直接 update
+    await (db.update(db.profiles)..where((p) => p.id.equals(1))).write(
+          const ProfilesCompanion(
+            specialCondition: Value('pregnancy'),
+            dietPreference: Value('vegetarian'),
+            healthCondition: Value('diabetes'),
+          ),
+        );
   }
 
   test('导出 → 导入后数据一致（6 表条数 + 关键字段）', () async {
@@ -91,6 +100,10 @@ void main() {
     // 关键字段：profile 体重、food 名称、meal_log 份量、weight 体重、insight 文本、feedback 标记
     final profile = await (dstDb.profiles.select()..limit(1)).getSingle();
     expect(profile.weightKg, 70);
+    // schema v2 三字段（HANDOFF 陷阱 12：导出导入必须同步，曾漏导出致恢复丢数据）
+    expect(profile.specialCondition, 'pregnancy');
+    expect(profile.dietPreference, 'vegetarian');
+    expect(profile.healthCondition, 'diabetes');
 
     final food = await (dstDb.foodItems.select()..limit(1)).getSingle();
     expect(food.name, '苹果');
