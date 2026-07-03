@@ -94,13 +94,12 @@ void main() {
     );
 
     final frequent = await repo.listFrequent(limit: 3);
-    expect(frequent.length, 3);
+    // 仅返回被 meal_log 引用过的食物（橙子 0 引用不出现）
+    expect(frequent.length, 2);
     // 苹果引用 3 次排第一
     expect(frequent.first.name, '苹果');
     // 香蕉引用 1 次排第二
     expect(frequent[1].name, '香蕉');
-    // 橙子引用 0 次排第三（同 0 次按 name ASC）
-    expect(frequent[2].name, '橙子');
   });
 
   test('updateDefaultServing 更新默认份量', () async {

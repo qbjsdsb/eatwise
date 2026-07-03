@@ -173,6 +173,12 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       if (state.state == RecognizeState.done &&
           state.recognitionResult != null) {
         if (!mounted) return;
+        // 持久化原图：image_picker 临时缓存会被系统清理，复制到 app 私有目录避免 broken image
+        // （与离线入队 _persistImage 一致，回写 state.imagePath 让后续 meal_log 引用持久路径）
+        if (state.imagePath != null) {
+          final persistent = await _persistImage(state.imagePath!);
+          controller.updateImagePath(persistent);
+        }
         // v1.2 一桌多菜：additionalItems 非空 → 跳多菜列表页（每菜可校准+合并记录）
         if (state.additionalItems.isNotEmpty) {
           if (!mounted) return;
@@ -184,7 +190,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
                 mainComposite: state.compositeNutrition,
                 additionalItems: state.additionalItems,
                 mealType: state.mealType,
-                imagePath: state.imagePath,
+                imagePath: controller.current.imagePath,
               ),
             ),
           );
@@ -198,7 +204,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
           await _showNotFoundDialog(
             state.recognitionResult!,
             mealType: state.mealType,
-            imagePath: state.imagePath,
+            imagePath: controller.current.imagePath,
           );
           return;
         }
@@ -289,7 +295,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
                       actualProteinG: protein,
                       actualFatG: fat,
                       actualCarbsG: carbs,
-                      originalImagePath: state.imagePath,
+                      originalImagePath: controller.current.imagePath,
                       recognitionConfidence: result.confidence,
                       componentsSnapshotJson: componentsSnapshot,
                     );

@@ -2,17 +2,17 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// 主题种子色控制器（ARGB int）。
-/// 默认莫奈《睡莲》青绿 #5B8C7B。
+/// 默认 M3 基线紫 #6750A4（中性，避免绿色作为隐式兜底误导"切色没生效"）。
 /// main.dart 启动时从 secure_storage 读出后调用 set()；
 /// 设置页点选色板时调用 set() 并持久化，App 实时重建换肤。
 class ThemeNotifier extends Notifier<int> {
   @override
-  int build() => 0xFF5B8C7B; // 莫奈《睡莲》青绿
+  int build() => 0xFF6750A4; // M3 基线紫（中性兜底，非绿色）
 
-  /// 设置主题种子色。非法值（0/负数/alpha=0 全透明）忽略，
+  /// 设置主题种子色。非法值（0/负数/alpha=0 全透明/超 32 位）忽略，
   /// 避免 Color(argb) 得到透明/异常色导致 UI 不可见。
   void set(int argb) {
-    if (argb <= 0 || (argb >> 24) == 0) return; // ARGB 高 8 位 alpha 必须非 0
+    if (argb <= 0 || (argb >> 24) == 0 || argb > 0xFFFFFFFF) return;
     state = argb;
   }
 }

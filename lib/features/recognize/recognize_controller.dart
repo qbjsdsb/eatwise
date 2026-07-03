@@ -135,6 +135,12 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   @visibleForTesting
   SecureConfigStore? get secureConfigStoreForTest => _secureConfigStore;
 
+  /// 更新 state.imagePath 为持久化路径（避免 image_picker 临时缓存被系统清理后图片丢失）
+  /// 由 recognize_page 在识别成功后调用：把临时路径复制到 app 私有目录，再回写 state
+  void updateImagePath(String persistentPath) {
+    state = state.copyWith(imagePath: persistentPath);
+  }
+
   /// 拍照入口
   /// Sprint 2 T0：新增 mealType 参数（breakfast/lunch/dinner/snack）
   /// Sprint 2 T14：网络异常时若有 onOfflineEnqueue 则入队，否则报错

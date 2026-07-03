@@ -20,7 +20,9 @@ class AppConfig {
   late String sentryDsn;
   late bool sentryEnabled;
   late bool tdeeAutoCalib;
-  late int themeSeed; // ARGB int，默认莫奈《睡莲》青绿
+  // 注：主题色 themeSeed 由 themeSeedProvider + SecureConfigStore 单独管理，
+  // 不放入 AppConfig 避免双源不同步（设置页切色只更 themeSeedProvider + 写 storage，
+  // 不重载 appConfig）
 
   /// 从 secure_storage 加载全部配置（App 启动时调用一次）
   /// --dart-define 作为 fallback：若 secure_storage 无值则用 define 值并回写 storage
@@ -37,7 +39,6 @@ class AppConfig {
         const String.fromEnvironment('SENTRY_DSN', defaultValue: '');
     sentryEnabled = await _store.getSentryEnabled();
     tdeeAutoCalib = await _store.getTdeeAutoCalib();
-    themeSeed = await _store.getThemeSeed();
 
     // 首次注入：若 secure_storage 为空但 define 有值，回写 storage（后续不再依赖 define）
     if ((await _store.getQwenApiKey()) == null && qwenApiKey.isNotEmpty) {

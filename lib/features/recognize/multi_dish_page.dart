@@ -95,9 +95,12 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
         actions: [
           // 识别不准？转手动录入（避免用户被迫记录错误识别结果）
           TextButton.icon(
-            onPressed: () => Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const ManualEntryPage()),
-            ),
+            onPressed: _isRecording
+                ? null
+                : () => Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                          builder: (_) => const ManualEntryPage()),
+                    ),
             icon: const Icon(Icons.edit_outlined),
             label: const Text('转手动'),
           ),

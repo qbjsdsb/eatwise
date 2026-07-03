@@ -161,38 +161,41 @@ class _CalibrationPageState extends State<CalibrationPage> {
                                     Theme.of(context).colorScheme.error)),
                       ),
                     const SizedBox(height: 24),
-                    Text('份量：${_servingG.toStringAsFixed(0)} g'
-                        '${widget.singleNutrition != null ? " (估算 ${widget.recognitionResult.estimatedWeightGLow.toStringAsFixed(0)}-${widget.recognitionResult.estimatedWeightGHigh.toStringAsFixed(0)} g)" : ""}'),
-                    if (_usedHistoryServing)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4),
-                        child: Text(
-                          '📊 已按你历史记录的中位数预填份量',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .primary),
+                    // 复合菜：份量由各组分滑块累加，主滑块无效故隐藏，避免"调了没反应"困惑
+                    if (widget.singleNutrition != null) ...[
+                      Text('份量：${_servingG.toStringAsFixed(0)} g'
+                          ' (估算 ${widget.recognitionResult.estimatedWeightGLow.toStringAsFixed(0)}-${widget.recognitionResult.estimatedWeightGHigh.toStringAsFixed(0)} g)'),
+                      if (_usedHistoryServing)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            '📊 已按你历史记录的中位数预填份量',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .primary),
+                          ),
                         ),
-                      ),
-                    Slider(
-                      value: _servingG,
-                      min: 0,
-                      max: _sliderMax,
-                      divisions: (_sliderMax / 10).round(),
-                      label: '${_servingG.toStringAsFixed(0)} g',
-                      onChanged: (v) => setState(() {
-                        _servingG = v;
-                        _usedHistoryServing = false; // 用户手动调整后不再提示
-                        // v1.3：拖滑块反推数量（perUnitG > 0 时，保持数量与份量一致）
-                        if (_perUnitG > 0) {
-                          final q = (v / _perUnitG).round();
+                      Slider(
+                        value: _servingG,
+                        min: 0,
+                        max: _sliderMax,
+                        divisions: (_sliderMax / 10).round(),
+                        label: '${_servingG.toStringAsFixed(0)} g',
+                        onChanged: (v) => setState(() {
+                          _servingG = v;
+                          _usedHistoryServing = false; // 用户手动调整后不再提示
+                          // v1.3：拖滑块反推数量（perUnitG > 0 时，保持数量与份量一致）
+                          if (_perUnitG > 0) {
+                            final q = (v / _perUnitG).round();
                           if (q >= 1 && q <= 20 && q != _quantity) {
                             _quantity = q;
                           }
                         }
                       }),
-                    ),
+                      ),
+                    ], // end if singleNutrition != null
                     // v1.3：数量步进器（同物多份场景，仅单品 + perUnitG > 0 显示）
                     _buildQuantityStepper(),
                     const SizedBox(height: 24),

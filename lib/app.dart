@@ -27,12 +27,14 @@ class EatWiseApp extends ConsumerWidget {
       title: '慢慢吃',
       theme: _theme(ColorScheme.fromSeed(
         seedColor: seed,
-        dynamicSchemeVariant: DynamicSchemeVariant.expressive,
+        // tonalSpot：secondary/tertiary 紧跟 primary 色相，切色后整体跟随
+        // （expressive 会对 secondary 做色相旋转致大面积绿色，与"切色"预期不符）
+        dynamicSchemeVariant: DynamicSchemeVariant.tonalSpot,
       )),
       darkTheme: _theme(ColorScheme.fromSeed(
         seedColor: seed,
         brightness: Brightness.dark,
-        dynamicSchemeVariant: DynamicSchemeVariant.expressive,
+        dynamicSchemeVariant: DynamicSchemeVariant.tonalSpot,
       )),
       themeMode: ThemeMode.system,
       routerConfig: _router,

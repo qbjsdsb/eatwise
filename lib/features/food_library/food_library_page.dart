@@ -135,7 +135,9 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
                           return ListTile(
                             leading: const LeadingIconContainer(
                                 Icons.restaurant_rounded),
-                            title: Text(f.name),
+                            title: Text(
+                              f.name.trim().isEmpty ? '未命名食物' : f.name,
+                            ),
                             subtitle: Text(
                                 '${f.caloriesPer100g.toStringAsFixed(0)} kcal/100g · ${_sourceLabel(f.source)}'),
                             onTap: () async {

@@ -5,8 +5,8 @@ import 'package:flutter/material.dart';
 /// ListTile 的 leading 图标容器：40×40 圆形 tonal 色块 + 20px 图标。
 ///
 /// 全 App 列表项 leading 统一用此组件，避免有的页面用裸 Icon、有的手写 Container。
-/// 默认 secondaryContainer 配色，可传 [containerColor]/[iconColor] 自定义
-/// （如餐次用 tertiaryContainer、推荐用 secondaryContainer）。
+/// 默认 primaryContainer 配色（跟随 seed 色相），可传 [containerColor]/[iconColor] 自定义。
+/// 不用 secondaryContainer——tonalSpot 下虽跟随 primary，但显式 primary 系更稳定。
 class LeadingIconContainer extends StatelessWidget {
   const LeadingIconContainer(
     this.icon, {
@@ -26,10 +26,10 @@ class LeadingIconContainer extends StatelessWidget {
       width: 40,
       height: 40,
       decoration: BoxDecoration(
-        color: containerColor ?? cs.secondaryContainer,
+        color: containerColor ?? cs.primaryContainer,
         shape: BoxShape.circle,
       ),
-      child: Icon(icon, size: 20, color: iconColor ?? cs.onSecondaryContainer),
+      child: Icon(icon, size: 20, color: iconColor ?? cs.onPrimaryContainer),
     );
   }
 }

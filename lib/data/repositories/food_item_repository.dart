@@ -119,6 +119,7 @@ class FoodItemRepository {
 
   /// 插入或更新（去重键 name + source）
   /// 事务包裹：select-then-insert 原子化，防并发产生重复记录
+  /// name 空串兜底为"未命名菜品"，避免 AI 返回空 dish_name 时落库空名记录污染列表
   Future<int> upsertAiRecognized({
     required String name,
     required double caloriesPer100g,
@@ -128,9 +129,10 @@ class FoodItemRepository {
     double? confidence,
     String? componentsJson,
   }) async {
+    final cleanName = name.trim().isEmpty ? '未命名菜品' : name.trim();
     return _db.transaction(() async {
       final existing = await (_db.foodItems.select()
-            ..where((f) => f.name.equals(name) & f.source.equals('ai_recognized')))
+            ..where((f) => f.name.equals(cleanName) & f.source.equals('ai_recognized')))
           .getSingleOrNull();
 
       if (existing != null) {
@@ -148,7 +150,7 @@ class FoodItemRepository {
       }
 
       return _db.into(_db.foodItems).insert(FoodItemsCompanion.insert(
-            name: name,
+            name: cleanName,
             defaultServingG: 100,
             caloriesPer100g: caloriesPer100g,
             proteinPer100g: proteinPer100g,
@@ -180,11 +182,8 @@ class FoodItemRepository {
 
   /// 查询常用食物（按 meal_log 引用次数降序，取 top N）
   /// 用于食物库首页"常吃"列表
-  /// 两步查询：typed food_items + 引用次数，Dart 层合并排序（避免 raw SQL 列名匹配问题）
+  /// 仅返回被 meal_log 引用过的食物（refCount > 0），避免种子库 0 引用项混入
   Future<List<FoodItem>> listFrequent({int limit = 20}) async {
-    final allFoods = await _db.foodItems.select().get();
-    if (allFoods.isEmpty) return [];
-
     // 查 meal_logs 引用次数（GROUP BY food_item_id）
     final refCounts = <int, int>{};
     final countRows = await _db.customSelect(
@@ -196,15 +195,23 @@ class FoodItemRepository {
     for (final row in countRows) {
       refCounts[row.read<int>('food_item_id')] = row.read<int>('cnt');
     }
+    if (refCounts.isEmpty) return [];
 
-    // 合并 + 排序（引用次数降序，同次数按 name 升序）+ 截断
-    allFoods.sort((a, b) {
+    // 仅查被引用过的 food_items（避免全表载入 0 引用种子项）
+    final referencedIds = refCounts.keys.toList();
+    final foods = await (_db.foodItems.select()
+          ..where((f) => f.id.isIn(referencedIds)))
+        .get();
+    if (foods.isEmpty) return [];
+
+    // 排序（引用次数降序，同次数按 name 升序）+ 截断
+    foods.sort((a, b) {
       final cntA = refCounts[a.id] ?? 0;
       final cntB = refCounts[b.id] ?? 0;
       if (cntA != cntB) return cntB.compareTo(cntA);
       return a.name.compareTo(b.name);
     });
-    return allFoods.take(limit).toList();
+    return foods.take(limit).toList();
   }
 
   /// 更新默认份量

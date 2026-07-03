@@ -26,6 +26,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   List<MealLog> _meals = [];
   Map<int, String> _foodNames = {};
   bool _loading = true;
+  bool _busy = false; // 编辑/删除防重入
 
   @override
   void initState() {
@@ -40,21 +41,29 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   void refresh() => _load();
 
   Future<void> _load() async {
-    final mealRepo = await ref.read(recognize.mealLogRepoProvider.future);
-    final meals = await mealRepo.getMealsByDate(_today);
-    // 批量反查食物名
-    final db = await ref.read(recognize.databaseProvider.future);
-    final foodRepo = FoodItemRepository(db);
-    final names = <int, String>{};
-    for (final m in meals) {
-      if (!names.containsKey(m.foodItemId)) {
-        final food = await foodRepo.getById(m.foodItemId);
-        names[m.foodItemId] = food?.name ?? '食物 #${m.foodItemId}';
+    try {
+      final mealRepo = await ref.read(recognize.mealLogRepoProvider.future);
+      final meals = await mealRepo.getMealsByDate(_today);
+      // 批量反查食物名
+      final db = await ref.read(recognize.databaseProvider.future);
+      final foodRepo = FoodItemRepository(db);
+      final names = <int, String>{};
+      for (final m in meals) {
+        if (!names.containsKey(m.foodItemId)) {
+          final food = await foodRepo.getById(m.foodItemId);
+          final nm = food?.name ?? '';
+          names[m.foodItemId] = nm.trim().isEmpty ? '食物 #${m.foodItemId}' : nm;
+        }
       }
+      _meals = meals;
+      _foodNames = names;
+    } catch (_) {
+      // 加载失败保持空列表，避免 _loading 永久 true 卡死
+      _meals = [];
+      _foodNames = {};
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
-    _meals = meals;
-    _foodNames = names;
-    if (mounted) setState(() => _loading = false);
   }
 
   @override
@@ -177,6 +186,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   }
 
   Future<void> _showEditDialog(MealLog m) async {
+    if (_busy) return; // 防重入
     final servingCtrl =
         TextEditingController(text: m.actualServingG.toStringAsFixed(0));
     double? result;
@@ -204,29 +214,40 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       servingCtrl.dispose();
     }
     if (result == null || result <= 0) return;
-    final repo = await ref.read(recognize.mealLogRepoProvider.future);
-    if (m.actualServingG <= 0) {
-      // 原份量异常（≤0），无法按比例重算 → 直接用新份量，营养素保持原值
-      await repo.updateMealLog(
-        id: m.id,
-        actualServingG: result,
-        actualCalories: m.actualCalories,
-        actualProteinG: m.actualProteinG,
-        actualFatG: m.actualFatG,
-        actualCarbsG: m.actualCarbsG,
-      );
-    } else {
-      final ratio = result / m.actualServingG;
-      await repo.updateMealLog(
-        id: m.id,
-        actualServingG: result,
-        actualCalories: m.actualCalories * ratio,
-        actualProteinG: m.actualProteinG * ratio,
-        actualFatG: m.actualFatG * ratio,
-        actualCarbsG: m.actualCarbsG * ratio,
-      );
+    if (!mounted) return;
+    setState(() => _busy = true);
+    try {
+      final repo = await ref.read(recognize.mealLogRepoProvider.future);
+      if (m.actualServingG <= 0) {
+        // 原份量异常（≤0），无法按比例重算 → 直接用新份量，营养素保持原值
+        await repo.updateMealLog(
+          id: m.id,
+          actualServingG: result,
+          actualCalories: m.actualCalories,
+          actualProteinG: m.actualProteinG,
+          actualFatG: m.actualFatG,
+          actualCarbsG: m.actualCarbsG,
+        );
+      } else {
+        final ratio = result / m.actualServingG;
+        await repo.updateMealLog(
+          id: m.id,
+          actualServingG: result,
+          actualCalories: m.actualCalories * ratio,
+          actualProteinG: m.actualProteinG * ratio,
+          actualFatG: m.actualFatG * ratio,
+          actualCarbsG: m.actualCarbsG * ratio,
+        );
+      }
+      if (mounted) _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('保存失败：$e')));
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
-    if (mounted) _load();
   }
 
   Future<void> _showFeedbackDialog(MealLog m) async {
