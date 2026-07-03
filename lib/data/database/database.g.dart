@@ -177,6 +177,39 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
     type: DriftSqlType.int,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _specialConditionMeta = const VerificationMeta(
+    'specialCondition',
+  );
+  @override
+  late final GeneratedColumn<String> specialCondition = GeneratedColumn<String>(
+    'special_condition',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _dietPreferenceMeta = const VerificationMeta(
+    'dietPreference',
+  );
+  @override
+  late final GeneratedColumn<String> dietPreference = GeneratedColumn<String>(
+    'diet_preference',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _healthConditionMeta = const VerificationMeta(
+    'healthCondition',
+  );
+  @override
+  late final GeneratedColumn<String> healthCondition = GeneratedColumn<String>(
+    'health_condition',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -195,6 +228,9 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
     carbGPerKg,
     tdeeAdjustmentKcal,
     updatedAt,
+    specialCondition,
+    dietPreference,
+    healthCondition,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -346,6 +382,33 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
     } else if (isInserting) {
       context.missing(_updatedAtMeta);
     }
+    if (data.containsKey('special_condition')) {
+      context.handle(
+        _specialConditionMeta,
+        specialCondition.isAcceptableOrUnknown(
+          data['special_condition']!,
+          _specialConditionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('diet_preference')) {
+      context.handle(
+        _dietPreferenceMeta,
+        dietPreference.isAcceptableOrUnknown(
+          data['diet_preference']!,
+          _dietPreferenceMeta,
+        ),
+      );
+    }
+    if (data.containsKey('health_condition')) {
+      context.handle(
+        _healthConditionMeta,
+        healthCondition.isAcceptableOrUnknown(
+          data['health_condition']!,
+          _healthConditionMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -419,6 +482,18 @@ class $ProfilesTable extends Profiles with TableInfo<$ProfilesTable, Profile> {
         DriftSqlType.int,
         data['${effectivePrefix}updated_at'],
       )!,
+      specialCondition: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}special_condition'],
+      ),
+      dietPreference: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}diet_preference'],
+      ),
+      healthCondition: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}health_condition'],
+      ),
     );
   }
 
@@ -445,6 +520,9 @@ class Profile extends DataClass implements Insertable<Profile> {
   final double? carbGPerKg;
   final int tdeeAdjustmentKcal;
   final int updatedAt;
+  final String? specialCondition;
+  final String? dietPreference;
+  final String? healthCondition;
   const Profile({
     required this.id,
     required this.heightCm,
@@ -462,6 +540,9 @@ class Profile extends DataClass implements Insertable<Profile> {
     this.carbGPerKg,
     required this.tdeeAdjustmentKcal,
     required this.updatedAt,
+    this.specialCondition,
+    this.dietPreference,
+    this.healthCondition,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -486,6 +567,15 @@ class Profile extends DataClass implements Insertable<Profile> {
     }
     map['tdee_adjustment_kcal'] = Variable<int>(tdeeAdjustmentKcal);
     map['updated_at'] = Variable<int>(updatedAt);
+    if (!nullToAbsent || specialCondition != null) {
+      map['special_condition'] = Variable<String>(specialCondition);
+    }
+    if (!nullToAbsent || dietPreference != null) {
+      map['diet_preference'] = Variable<String>(dietPreference);
+    }
+    if (!nullToAbsent || healthCondition != null) {
+      map['health_condition'] = Variable<String>(healthCondition);
+    }
     return map;
   }
 
@@ -511,6 +601,15 @@ class Profile extends DataClass implements Insertable<Profile> {
           : Value(carbGPerKg),
       tdeeAdjustmentKcal: Value(tdeeAdjustmentKcal),
       updatedAt: Value(updatedAt),
+      specialCondition: specialCondition == null && nullToAbsent
+          ? const Value.absent()
+          : Value(specialCondition),
+      dietPreference: dietPreference == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dietPreference),
+      healthCondition: healthCondition == null && nullToAbsent
+          ? const Value.absent()
+          : Value(healthCondition),
     );
   }
 
@@ -536,6 +635,9 @@ class Profile extends DataClass implements Insertable<Profile> {
       carbGPerKg: serializer.fromJson<double?>(json['carbGPerKg']),
       tdeeAdjustmentKcal: serializer.fromJson<int>(json['tdeeAdjustmentKcal']),
       updatedAt: serializer.fromJson<int>(json['updatedAt']),
+      specialCondition: serializer.fromJson<String?>(json['specialCondition']),
+      dietPreference: serializer.fromJson<String?>(json['dietPreference']),
+      healthCondition: serializer.fromJson<String?>(json['healthCondition']),
     );
   }
   @override
@@ -558,6 +660,9 @@ class Profile extends DataClass implements Insertable<Profile> {
       'carbGPerKg': serializer.toJson<double?>(carbGPerKg),
       'tdeeAdjustmentKcal': serializer.toJson<int>(tdeeAdjustmentKcal),
       'updatedAt': serializer.toJson<int>(updatedAt),
+      'specialCondition': serializer.toJson<String?>(specialCondition),
+      'dietPreference': serializer.toJson<String?>(dietPreference),
+      'healthCondition': serializer.toJson<String?>(healthCondition),
     };
   }
 
@@ -578,6 +683,9 @@ class Profile extends DataClass implements Insertable<Profile> {
     Value<double?> carbGPerKg = const Value.absent(),
     int? tdeeAdjustmentKcal,
     int? updatedAt,
+    Value<String?> specialCondition = const Value.absent(),
+    Value<String?> dietPreference = const Value.absent(),
+    Value<String?> healthCondition = const Value.absent(),
   }) => Profile(
     id: id ?? this.id,
     heightCm: heightCm ?? this.heightCm,
@@ -595,6 +703,15 @@ class Profile extends DataClass implements Insertable<Profile> {
     carbGPerKg: carbGPerKg.present ? carbGPerKg.value : this.carbGPerKg,
     tdeeAdjustmentKcal: tdeeAdjustmentKcal ?? this.tdeeAdjustmentKcal,
     updatedAt: updatedAt ?? this.updatedAt,
+    specialCondition: specialCondition.present
+        ? specialCondition.value
+        : this.specialCondition,
+    dietPreference: dietPreference.present
+        ? dietPreference.value
+        : this.dietPreference,
+    healthCondition: healthCondition.present
+        ? healthCondition.value
+        : this.healthCondition,
   );
   Profile copyWithCompanion(ProfilesCompanion data) {
     return Profile(
@@ -628,6 +745,15 @@ class Profile extends DataClass implements Insertable<Profile> {
           ? data.tdeeAdjustmentKcal.value
           : this.tdeeAdjustmentKcal,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      specialCondition: data.specialCondition.present
+          ? data.specialCondition.value
+          : this.specialCondition,
+      dietPreference: data.dietPreference.present
+          ? data.dietPreference.value
+          : this.dietPreference,
+      healthCondition: data.healthCondition.present
+          ? data.healthCondition.value
+          : this.healthCondition,
     );
   }
 
@@ -649,7 +775,10 @@ class Profile extends DataClass implements Insertable<Profile> {
           ..write('fatGPerKg: $fatGPerKg, ')
           ..write('carbGPerKg: $carbGPerKg, ')
           ..write('tdeeAdjustmentKcal: $tdeeAdjustmentKcal, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('specialCondition: $specialCondition, ')
+          ..write('dietPreference: $dietPreference, ')
+          ..write('healthCondition: $healthCondition')
           ..write(')'))
         .toString();
   }
@@ -672,6 +801,9 @@ class Profile extends DataClass implements Insertable<Profile> {
     carbGPerKg,
     tdeeAdjustmentKcal,
     updatedAt,
+    specialCondition,
+    dietPreference,
+    healthCondition,
   );
   @override
   bool operator ==(Object other) =>
@@ -692,7 +824,10 @@ class Profile extends DataClass implements Insertable<Profile> {
           other.fatGPerKg == this.fatGPerKg &&
           other.carbGPerKg == this.carbGPerKg &&
           other.tdeeAdjustmentKcal == this.tdeeAdjustmentKcal &&
-          other.updatedAt == this.updatedAt);
+          other.updatedAt == this.updatedAt &&
+          other.specialCondition == this.specialCondition &&
+          other.dietPreference == this.dietPreference &&
+          other.healthCondition == this.healthCondition);
 }
 
 class ProfilesCompanion extends UpdateCompanion<Profile> {
@@ -712,6 +847,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
   final Value<double?> carbGPerKg;
   final Value<int> tdeeAdjustmentKcal;
   final Value<int> updatedAt;
+  final Value<String?> specialCondition;
+  final Value<String?> dietPreference;
+  final Value<String?> healthCondition;
   const ProfilesCompanion({
     this.id = const Value.absent(),
     this.heightCm = const Value.absent(),
@@ -729,6 +867,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.carbGPerKg = const Value.absent(),
     this.tdeeAdjustmentKcal = const Value.absent(),
     this.updatedAt = const Value.absent(),
+    this.specialCondition = const Value.absent(),
+    this.dietPreference = const Value.absent(),
+    this.healthCondition = const Value.absent(),
   });
   ProfilesCompanion.insert({
     this.id = const Value.absent(),
@@ -747,6 +888,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     this.carbGPerKg = const Value.absent(),
     this.tdeeAdjustmentKcal = const Value.absent(),
     required int updatedAt,
+    this.specialCondition = const Value.absent(),
+    this.dietPreference = const Value.absent(),
+    this.healthCondition = const Value.absent(),
   }) : heightCm = Value(heightCm),
        weightKg = Value(weightKg),
        age = Value(age),
@@ -776,6 +920,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Expression<double>? carbGPerKg,
     Expression<int>? tdeeAdjustmentKcal,
     Expression<int>? updatedAt,
+    Expression<String>? specialCondition,
+    Expression<String>? dietPreference,
+    Expression<String>? healthCondition,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -796,6 +943,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
       if (tdeeAdjustmentKcal != null)
         'tdee_adjustment_kcal': tdeeAdjustmentKcal,
       if (updatedAt != null) 'updated_at': updatedAt,
+      if (specialCondition != null) 'special_condition': specialCondition,
+      if (dietPreference != null) 'diet_preference': dietPreference,
+      if (healthCondition != null) 'health_condition': healthCondition,
     });
   }
 
@@ -816,6 +966,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     Value<double?>? carbGPerKg,
     Value<int>? tdeeAdjustmentKcal,
     Value<int>? updatedAt,
+    Value<String?>? specialCondition,
+    Value<String?>? dietPreference,
+    Value<String?>? healthCondition,
   }) {
     return ProfilesCompanion(
       id: id ?? this.id,
@@ -834,6 +987,9 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
       carbGPerKg: carbGPerKg ?? this.carbGPerKg,
       tdeeAdjustmentKcal: tdeeAdjustmentKcal ?? this.tdeeAdjustmentKcal,
       updatedAt: updatedAt ?? this.updatedAt,
+      specialCondition: specialCondition ?? this.specialCondition,
+      dietPreference: dietPreference ?? this.dietPreference,
+      healthCondition: healthCondition ?? this.healthCondition,
     );
   }
 
@@ -888,6 +1044,15 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
     if (updatedAt.present) {
       map['updated_at'] = Variable<int>(updatedAt.value);
     }
+    if (specialCondition.present) {
+      map['special_condition'] = Variable<String>(specialCondition.value);
+    }
+    if (dietPreference.present) {
+      map['diet_preference'] = Variable<String>(dietPreference.value);
+    }
+    if (healthCondition.present) {
+      map['health_condition'] = Variable<String>(healthCondition.value);
+    }
     return map;
   }
 
@@ -909,7 +1074,10 @@ class ProfilesCompanion extends UpdateCompanion<Profile> {
           ..write('fatGPerKg: $fatGPerKg, ')
           ..write('carbGPerKg: $carbGPerKg, ')
           ..write('tdeeAdjustmentKcal: $tdeeAdjustmentKcal, ')
-          ..write('updatedAt: $updatedAt')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('specialCondition: $specialCondition, ')
+          ..write('dietPreference: $dietPreference, ')
+          ..write('healthCondition: $healthCondition')
           ..write(')'))
         .toString();
   }
@@ -4560,6 +4728,9 @@ typedef $$ProfilesTableCreateCompanionBuilder =
       Value<double?> carbGPerKg,
       Value<int> tdeeAdjustmentKcal,
       required int updatedAt,
+      Value<String?> specialCondition,
+      Value<String?> dietPreference,
+      Value<String?> healthCondition,
     });
 typedef $$ProfilesTableUpdateCompanionBuilder =
     ProfilesCompanion Function({
@@ -4579,6 +4750,9 @@ typedef $$ProfilesTableUpdateCompanionBuilder =
       Value<double?> carbGPerKg,
       Value<int> tdeeAdjustmentKcal,
       Value<int> updatedAt,
+      Value<String?> specialCondition,
+      Value<String?> dietPreference,
+      Value<String?> healthCondition,
     });
 
 class $$ProfilesTableFilterComposer
@@ -4667,6 +4841,21 @@ class $$ProfilesTableFilterComposer
 
   ColumnFilters<int> get updatedAt => $composableBuilder(
     column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get specialCondition => $composableBuilder(
+    column: $table.specialCondition,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get dietPreference => $composableBuilder(
+    column: $table.dietPreference,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get healthCondition => $composableBuilder(
+    column: $table.healthCondition,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -4759,6 +4948,21 @@ class $$ProfilesTableOrderingComposer
     column: $table.updatedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get specialCondition => $composableBuilder(
+    column: $table.specialCondition,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get dietPreference => $composableBuilder(
+    column: $table.dietPreference,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get healthCondition => $composableBuilder(
+    column: $table.healthCondition,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$ProfilesTableAnnotationComposer
@@ -4831,6 +5035,21 @@ class $$ProfilesTableAnnotationComposer
 
   GeneratedColumn<int> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<String> get specialCondition => $composableBuilder(
+    column: $table.specialCondition,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get dietPreference => $composableBuilder(
+    column: $table.dietPreference,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get healthCondition => $composableBuilder(
+    column: $table.healthCondition,
+    builder: (column) => column,
+  );
 }
 
 class $$ProfilesTableTableManager
@@ -4877,6 +5096,9 @@ class $$ProfilesTableTableManager
                 Value<double?> carbGPerKg = const Value.absent(),
                 Value<int> tdeeAdjustmentKcal = const Value.absent(),
                 Value<int> updatedAt = const Value.absent(),
+                Value<String?> specialCondition = const Value.absent(),
+                Value<String?> dietPreference = const Value.absent(),
+                Value<String?> healthCondition = const Value.absent(),
               }) => ProfilesCompanion(
                 id: id,
                 heightCm: heightCm,
@@ -4894,6 +5116,9 @@ class $$ProfilesTableTableManager
                 carbGPerKg: carbGPerKg,
                 tdeeAdjustmentKcal: tdeeAdjustmentKcal,
                 updatedAt: updatedAt,
+                specialCondition: specialCondition,
+                dietPreference: dietPreference,
+                healthCondition: healthCondition,
               ),
           createCompanionCallback:
               ({
@@ -4913,6 +5138,9 @@ class $$ProfilesTableTableManager
                 Value<double?> carbGPerKg = const Value.absent(),
                 Value<int> tdeeAdjustmentKcal = const Value.absent(),
                 required int updatedAt,
+                Value<String?> specialCondition = const Value.absent(),
+                Value<String?> dietPreference = const Value.absent(),
+                Value<String?> healthCondition = const Value.absent(),
               }) => ProfilesCompanion.insert(
                 id: id,
                 heightCm: heightCm,
@@ -4930,6 +5158,9 @@ class $$ProfilesTableTableManager
                 carbGPerKg: carbGPerKg,
                 tdeeAdjustmentKcal: tdeeAdjustmentKcal,
                 updatedAt: updatedAt,
+                specialCondition: specialCondition,
+                dietPreference: dietPreference,
+                healthCondition: healthCondition,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

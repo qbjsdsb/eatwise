@@ -57,6 +57,10 @@ class JsonExporter {
         'fatGPerKg': p.fatGPerKg,
         'carbGPerKg': p.carbGPerKg,
         'tdeeAdjustmentKcal': p.tdeeAdjustmentKcal,
+        // 特殊人群适配（schema v2 新增，null 表示旧数据未设置）
+        'specialCondition': p.specialCondition,
+        'dietPreference': p.dietPreference,
+        'healthCondition': p.healthCondition,
         'updatedAt': p.updatedAt,
       };
 

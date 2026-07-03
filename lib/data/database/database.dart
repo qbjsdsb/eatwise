@@ -31,11 +31,20 @@ class EatWiseDatabase extends _$EatWiseDatabase {
   final bool seedOnCreate;
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
         onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          // v1 → v2：profile 表加 3 个特殊人群适配列（全部 nullable，向后兼容）
+          // 旧用户升级时自动加列，旧数据保持 null（视为 'none' 默认行为）
+          if (from < 2) {
+            await m.addColumn(profiles, profiles.specialCondition);
+            await m.addColumn(profiles, profiles.dietPreference);
+            await m.addColumn(profiles, profiles.healthCondition);
+          }
+        },
         beforeOpen: (details) async {
           // 启用 SQLite 外键约束（drift NativeDatabase 默认不启用）
           // recognition_feedback.meal_log_id 的 ON DELETE CASCADE 依赖此 PRAGMA

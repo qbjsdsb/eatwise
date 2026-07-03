@@ -64,10 +64,10 @@ void main() {
   });
 }
 
-/// 选目标：goal 是第 2 个 `DropdownMenu<String>`（gender 第1；activity 是 double）。
+/// 选目标：用 Key 精确定位 goal DropdownMenu（避免新增特殊状况菜单导致 .last 失效）。
 /// tall viewport 下目标菜单已可见，直接点开菜单选目标。
 Future<void> _selectGoal(WidgetTester tester, String label) async {
-  final goalMenu = find.byType(DropdownMenu<String>).last;
+  final goalMenu = find.byKey(const Key('goal_dropdown'));
   // 点开菜单：点 trailing 图标（arrow_drop_down）
   await tester.tap(find
       .descendant(of: goalMenu, matching: find.byIcon(Icons.arrow_drop_down))

@@ -56,6 +56,10 @@ class ProfileRepository {
   /// 更新 profile（部分字段）
   /// 注意：dailyCalorieTarget / proteinGPerKg / fatGPerKg / carbGPerKg
   /// 由 ProfilePage 调 NutritionCalculator 重算后传入，本方法不重算
+  ///
+  /// 特殊人群字段（specialCondition/dietPreference/healthCondition）：
+  /// 用 sentinel 区分"不更新"（absent）和"显式清空"（设为 'none'）。
+  /// null 参数 = 不更新该字段；非 null（含 'none'）= 写入该值。
   Future<void> update({
     double? heightCm,
     double? weightKg,
@@ -71,6 +75,9 @@ class ProfileRepository {
     double? fatGPerKg,
     double? carbGPerKg,
     int? tdeeAdjustmentKcal,
+    String? specialCondition,
+    String? dietPreference,
+    String? healthCondition,
   }) async {
     final companion = ProfilesCompanion(
       heightCm: heightCm != null ? Value(heightCm) : const Value.absent(),
@@ -95,6 +102,15 @@ class ProfileRepository {
           carbGPerKg != null ? Value(carbGPerKg) : const Value.absent(),
       tdeeAdjustmentKcal: tdeeAdjustmentKcal != null
           ? Value(tdeeAdjustmentKcal)
+          : const Value.absent(),
+      specialCondition: specialCondition != null
+          ? Value(specialCondition)
+          : const Value.absent(),
+      dietPreference: dietPreference != null
+          ? Value(dietPreference)
+          : const Value.absent(),
+      healthCondition: healthCondition != null
+          ? Value(healthCondition)
           : const Value.absent(),
       updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
     );

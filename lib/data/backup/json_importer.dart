@@ -19,9 +19,12 @@ class JsonImporter {
   Future<({int profiles, int foodItems, int mealLogs, int weightLogs, int insights, int feedbacks, ImageCheckResult imageCheckResult})>
       importFromMap(Map<String, dynamic> data) async {
     final schemaVersion = data['schemaVersion'] as int;
-    if (schemaVersion != _db.schemaVersion) {
+    // 版本兼容策略：只拒绝"高于当前"的版本（旧 app 无法读新格式）；
+    // 允许旧版本备份导入新版本 DB（向后兼容，老用户升级后可恢复旧备份）。
+    // 旧 JSON 缺少的新字段由 _profileFromJson 用 `as String?` 兜底为 null。
+    if (schemaVersion > _db.schemaVersion) {
       throw ArgumentError(
-          'schemaVersion 不匹配：文件 $schemaVersion vs 当前 ${_db.schemaVersion}');
+          'schemaVersion 不匹配：文件 $schemaVersion 高于当前 ${_db.schemaVersion}，请升级 app 后再导入');
     }
 
     final tables = data['tables'] as Map<String, dynamic>;
@@ -150,6 +153,11 @@ class JsonImporter {
         fatGPerKg: _asDouble(j['fatGPerKg']),
         carbGPerKg: Value(_asDoubleOrNull(j['carbGPerKg'])),
         tdeeAdjustmentKcal: Value(j['tdeeAdjustmentKcal'] as int),
+        // 特殊人群适配（schema v2 新增）：旧版本 JSON 无此字段时 `as String?` 得 null，
+        // 写入 DB nullable 列等同默认值（视为 'none'），向后兼容
+        specialCondition: Value(j['specialCondition'] as String?),
+        dietPreference: Value(j['dietPreference'] as String?),
+        healthCondition: Value(j['healthCondition'] as String?),
         updatedAt: j['updatedAt'] as int,
       );
 
