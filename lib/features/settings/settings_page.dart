@@ -220,7 +220,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _sectionHeader('关于'),
           ListTile(
             leading: const Icon(Icons.info_outline),
-            title: const Text('关于 EatWise'),
+            title: const Text('关于慢慢吃'),
             trailing: const Icon(Icons.chevron_right),
             onTap: _showAbout,
           ),
@@ -334,12 +334,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     await showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        title: const Text('关于 EatWise'),
+        title: const Text('关于慢慢吃'),
         content: const Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('EatWise v1.0.0'),
+            Text('慢慢吃 v0.1.0'),
             SizedBox(height: 8),
             Text('拍照识别食物热量 + 营养记录 + AI 汇总建议'),
             SizedBox(height: 8),

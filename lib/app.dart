@@ -20,7 +20,7 @@ class EatWiseApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final seed = Color(ref.watch(themeSeedProvider));
     return MaterialApp.router(
-      title: 'EatWise',
+      title: '慢慢吃',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: seed),
         useMaterial3: true,
