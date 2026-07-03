@@ -116,7 +116,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           SliverAppBar.large(title: const Text('设置')),
           SliverList(
             delegate: SliverChildListDelegate([
-              _sectionTitle('主题色'),
+              SectionTitle('主题色'),
               GroupCard(children: [
                 Padding(
                   padding: const EdgeInsets.symmetric(
@@ -124,7 +124,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   child: _themePalette(),
                 ),
               ]),
-              _sectionTitle('AI 模型'),
+              SectionTitle('AI 模型'),
               GroupCard(dividerIndent: 16, children: [
                 TextField(
                   controller: _qwenKeyCtrl,
@@ -153,7 +153,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       border: InputBorder.none),
                 ),
               ]),
-              _sectionTitle('监控与校准'),
+              SectionTitle('监控与校准'),
               GroupCard(dividerIndent: 16, children: [
                 SwitchListTile(
                   title: const Text('启用 Sentry 上报'),
@@ -179,7 +179,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       labelText: 'Sentry DSN', border: InputBorder.none),
                 ),
               ]),
-              _sectionTitle('图片管理'),
+              SectionTitle('图片管理'),
               GroupCard(children: [
                 ListTile(
                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
@@ -202,7 +202,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   ),
                 ),
               ]),
-              _sectionTitle('使用情况'),
+              SectionTitle('使用情况'),
               GroupCard(children: [
                 ListTile(
                   leading: const LeadingIconContainer(Icons.analytics_outlined),
@@ -216,25 +216,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   trailing: Text('${_estimatedCost!.toStringAsFixed(3)} 元'),
                 ),
                 if (_estimatedCost! >= _costWarningThreshold)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.warning_amber_rounded,
-                            color: cs.error, size: 16),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '本月花费已达 ${_estimatedCost!.toStringAsFixed(2)} 元，建议在厂商控制台设置月度费用上限',
-                            style: TextStyle(color: cs.error, fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  WarningBanner(
+                      '本月花费已达 ${_estimatedCost!.toStringAsFixed(2)} 元，建议在厂商控制台设置月度费用上限'),
               ]),
-              _sectionTitle('备份状态'),
+              SectionTitle('备份状态'),
               GroupCard(children: [
                 ListTile(
                   leading: const LeadingIconContainer(Icons.backup),
@@ -243,25 +228,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                       style: TextStyle(color: cs.onSurfaceVariant)),
                 ),
                 if (_backupOverdue)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(Icons.warning_amber_rounded,
-                            color: cs.error, size: 16),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            '已超过 14 天未备份，建议立即导出备份',
-                            style: TextStyle(color: cs.error, fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  const WarningBanner('已超过 14 天未备份，建议立即导出备份'),
               ]),
-              _sectionTitle('关于'),
+              SectionTitle('关于'),
               GroupCard(dividerIndent: 16, children: [
                 ListTile(
                   leading: const LeadingIconContainer(Icons.info_outline_rounded),
@@ -297,8 +266,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     ),
     );
   }
-
-  Widget _sectionTitle(String text) => SectionTitle(text);
 
   Future<void> _save() async {
     if (_isSaving) return; // 防重入

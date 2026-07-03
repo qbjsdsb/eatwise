@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ai/glm_flash_provider.dart';
 import '../../core/util/date_format.dart';
 import '../../core/util/refresh_bus.dart';
+import '../../core/widgets/m3_widgets.dart';
 import '../../data/repositories/insight_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/profile_repository.dart';
@@ -302,7 +303,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
             SizedBox(height: 200, child: _buildCaloriesChart()),
             const SizedBox(height: 16),
           ] else ...[
-            _emptyChartHint('暂无足够热量数据，至少记录 2 天'),
+            const EmptyChartHint('暂无足够热量数据，至少记录 2 天'),
             const SizedBox(height: 16),
           ],
           // 体重趋势折线图（至少 2 条记录才渲染）
@@ -310,7 +311,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
             SizedBox(height: 150, child: _buildWeightChart()),
             const SizedBox(height: 16),
           ] else ...[
-            _emptyChartHint('暂无足够体重数据，至少记录 2 次'),
+            const EmptyChartHint('暂无足够体重数据，至少记录 2 次'),
             const SizedBox(height: 16),
           ],
           if (_error != null)
@@ -374,29 +375,6 @@ class _InsightPageState extends ConsumerState<InsightPage> {
             label: Text(_summary == null ? '生成$periodLabel汇总' : '重新生成'),
           ),
         ],
-      ),
-    );
-  }
-
-  /// 图表数据不足时的占位提示（图标 + 文案，避免用户看到空白困惑）
-  Widget _emptyChartHint(String text) {
-    final cs = Theme.of(context).colorScheme;
-    return SizedBox(
-      height: 120,
-      child: Card(
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.show_chart_rounded,
-                  size: 32, color: cs.onSurfaceVariant),
-              const SizedBox(height: 8),
-              Text(text,
-                  style: TextStyle(
-                      color: cs.onSurfaceVariant, fontSize: 13)),
-            ],
-          ),
-        ),
       ),
     );
   }

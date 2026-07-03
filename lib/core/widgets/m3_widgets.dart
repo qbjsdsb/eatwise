@@ -262,3 +262,65 @@ Future<bool> confirmDiscardChanges(BuildContext context) async {
       ) ??
       false;
 }
+
+/// 图表空数据占位：固定高度 120 + Card + show_chart 图标 + 文案。
+///
+/// 用于 weight_page 趋势图 / insight_page 折线图数据不足时的占位，
+/// 与 EmptyState（全屏居中、48px 图标、可选 action）区分——此组件是图表区占位，
+/// 高度受限、图标 32px、无 action。两页原各自手写实现，现统一抽象。
+class EmptyChartHint extends StatelessWidget {
+  const EmptyChartHint(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 120,
+      child: Card(
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.show_chart_rounded,
+                  size: 32, color: cs.onSurfaceVariant),
+              const SizedBox(height: 8),
+              Text(text,
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 警告横幅：error 色 Icon + 文案，用于 settings 页费用/备份超期等警告。
+///
+/// 统一 settings_page 内两处手写 Padding+Row 实现。MD3 风格用 error 色
+/// （而非 tertiaryContainer），因这些是需用户关注的风险提示。
+class WarningBanner extends StatelessWidget {
+  const WarningBanner(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.warning_amber_rounded, color: cs.error, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text,
+                style: TextStyle(color: cs.error, fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+  }
+}

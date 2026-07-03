@@ -146,7 +146,7 @@ class _MePageState extends ConsumerState<MePage> {
           ),
           SliverList(
             delegate: SliverChildListDelegate([
-              _sectionTitle('数据'),
+              SectionTitle('数据'),
               GroupCard(dividerIndent: 56, children: [
                 _listItem(
                   Icons.monitor_weight_rounded,
@@ -159,7 +159,7 @@ class _MePageState extends ConsumerState<MePage> {
                   () => _pushAndRefresh(const BackupPage()),
                 ),
               ]),
-              _sectionTitle('偏好'),
+              SectionTitle('偏好'),
               GroupCard(dividerIndent: 56, children: [
                 _listItem(
                   Icons.settings_rounded,
@@ -167,7 +167,7 @@ class _MePageState extends ConsumerState<MePage> {
                   () => _pushAndRefresh(const SettingsPage()),
                 ),
               ]),
-              _sectionTitle('关于'),
+              SectionTitle('关于'),
               GroupCard(dividerIndent: 56, children: [
                 _listItem(
                   Icons.info_outline_rounded,
@@ -187,8 +187,6 @@ class _MePageState extends ConsumerState<MePage> {
       ),
     );
   }
-
-  Widget _sectionTitle(String text) => SectionTitle(text);
 
   Widget _listItem(IconData icon, String title, VoidCallback onTap) {
     return ListTile(

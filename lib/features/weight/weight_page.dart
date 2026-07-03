@@ -113,32 +113,11 @@ class WeightPageState extends ConsumerState<WeightPage> {
           if (_logs.length >= 2)
             SizedBox(height: 250, child: _buildChart())
           else
-            _emptyChartHint(),
+            const EmptyChartHint('至少记录 2 次才能显示趋势图'),
           const SizedBox(height: 16),
           for (final log in _logs.reversed)
             _buildWeightTile(log),
         ],
-      ),
-    );
-  }
-
-  /// 趋势图空数据占位：图标 + 文案，与 insight/today_meals 空态风格一致。
-  Widget _emptyChartHint() {
-    final cs = Theme.of(context).colorScheme;
-    return SizedBox(
-      height: 120,
-      child: Card(
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.show_chart_rounded, size: 32, color: cs.onSurfaceVariant),
-              const SizedBox(height: 8),
-              Text('至少记录 2 次才能显示趋势图',
-                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 13)),
-            ],
-          ),
-        ),
       ),
     );
   }

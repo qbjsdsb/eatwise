@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/util/food_name.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
@@ -149,7 +150,7 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
                               f.name.trim().isEmpty ? '未命名食物' : f.name,
                             ),
                             subtitle: Text(
-                                '${f.caloriesPer100g.toStringAsFixed(0)} kcal/100g · ${_sourceLabel(f.source)}'),
+                                '${f.caloriesPer100g.toStringAsFixed(0)} kcal/100g · ${foodSourceLabel(f.source)}'),
                             // 可跳转编辑页，加 chevron 提示（与 me/settings/dashboard 全局约定一致）
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () async {
@@ -192,22 +193,5 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
         ),
       ),
     );
-  }
-
-  String _sourceLabel(String source) {
-    switch (source) {
-      case 'china_fct':
-        return '中国成分表';
-      case 'usda':
-        return 'USDA';
-      case 'manual':
-        return '手动';
-      case 'ai_recognized':
-        return 'AI 入库';
-      case 'off':
-        return 'OFF 云查';
-      default:
-        return source;
-    }
   }
 }

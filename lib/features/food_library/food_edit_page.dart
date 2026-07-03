@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/util/food_name.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
@@ -84,7 +85,7 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
                 children: [
                   const Icon(Icons.source_outlined),
                   const SizedBox(width: 8),
-                  Text('数据来源：${_sourceLabel(f.source)} ${f.sourceVersion}'),
+                  Text('数据来源：${foodSourceLabel(f.source)} ${f.sourceVersion}'),
                 ],
               ),
             ),
@@ -214,22 +215,5 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(msg)));
-  }
-
-  String _sourceLabel(String source) {
-    switch (source) {
-      case 'china_fct':
-        return '中国成分表';
-      case 'usda':
-        return 'USDA';
-      case 'manual':
-        return '手动';
-      case 'ai_recognized':
-        return 'AI 入库';
-      case 'off':
-        return 'OFF 云查';
-      default:
-        return source;
-    }
   }
 }
