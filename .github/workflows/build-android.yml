@@ -3,6 +3,7 @@ name: Build Android APK
 # 触发条件：
 # 1. 手动触发（workflow_dispatch）—— 任意分支可手动跑，可选指定 release_tag 上传 APK
 # 2. 推送 v* tag —— 自动构建并把 APK 附加到对应 release
+# 3. 推送到 trae/agent-E5yTBA 分支 —— 自动构建并把 APK 附加到 BRANCH_BUILD_RELEASE_TAG 指定的 release（CI 测试用）
 on:
   workflow_dispatch:
     inputs:
@@ -19,8 +20,14 @@ on:
           - android-arm64
           - android-arm,android-arm64,android-x64
   push:
+    branches:
+      - trae/agent-E5yTBA
     tags:
       - 'v*'
+
+# branch push 触发时，APK 附加到此 release（CI 测试目标；改 tag 即可换目标 release）
+env:
+  BRANCH_BUILD_RELEASE_TAG: v0.9.0
 
 # 防止同 tag/分支并发构建抢资源
 concurrency:
@@ -147,15 +154,19 @@ jobs:
           if-no-files-found: error
 
       - name: Attach APK to GitHub Release
-        # 条件：workflow_dispatch 显式提供 release_tag，或 push tag 触发
+        # 条件：workflow_dispatch 显式提供 release_tag，或 push 触发（tag 或 branch）
         if: ${{ (github.event_name == 'workflow_dispatch' && inputs.release_tag != '') || github.event_name == 'push' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.release_tag }}" ]; then
             TAG="${{ inputs.release_tag }}"
-          else
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            # tag push：用 tag 名作为 release tag
             TAG="${GITHUB_REF_NAME}"
+          else
+            # branch push：用顶部 env 指定的固定 release
+            TAG="${BRANCH_BUILD_RELEASE_TAG}"
           fi
           echo "上传 ${{ steps.rename.outputs.apk_path }} 到 release $TAG"
           # 用 GitHub CLI（已预装在 ubuntu-latest runner）
