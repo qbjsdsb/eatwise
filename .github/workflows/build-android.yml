@@ -12,13 +12,13 @@ on:
         required: false
         type: string
       target_platforms:
-        description: '目标平台（默认仅 arm64）'
+        description: '目标平台（默认 fat 全架构，兼容任意设备/模拟器；arm64 体积小但仅限 64 位真机）'
         required: false
-        default: 'android-arm64'
+        default: 'android-arm,android-arm64,android-x64'
         type: choice
         options:
-          - android-arm64
           - android-arm,android-arm64,android-x64
+          - android-arm64
   push:
     branches:
       - trae/agent-E5yTBA
@@ -106,18 +106,22 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "targets=${{ inputs.target_platforms }}" >> "$GITHUB_OUTPUT"
           else
-            # tag 推送默认只构建 arm64
-            echo "targets=android-arm64" >> "$GITHUB_OUTPUT"
+            # push（tag/branch）默认 fat 全架构，兼容任意设备/模拟器（与历史可用构建一致）
+            echo "targets=android-arm,android-arm64,android-x64" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build APK (release)
         run: |
-          # 从 pubspec 读 version（如 0.9.0+1），取 + 前作为 build-name（gradle 不接受 + 号）
-          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d '+' -f 1)
-          echo "build-name=$VERSION"
+          # 从 pubspec 读 version（如 0.9.0+9），取 + 前作为 build-name（gradle 不接受 + 号）
+          # versionCode 由 + 后数字决定（Flutter 约定），用于 Android 覆盖升级判断
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          BUILD_NAME=$(echo "$VERSION" | cut -d '+' -f 1)
+          BUILD_NUMBER=$(echo "$VERSION" | cut -d '+' -f 2)
+          echo "build-name=$BUILD_NAME build-number(versionCode)=$BUILD_NUMBER"
           flutter build apk --release \
             --target-platform "${{ steps.platforms.outputs.targets }}" \
-            --build-name="$VERSION" 2>&1 | tee build.log
+            --build-name="$BUILD_NAME" \
+            --build-number="$BUILD_NUMBER" 2>&1 | tee build.log
           # 校验产物存在
           APK="build/app/outputs/flutter-apk/app-release.apk"
           if [ ! -f "$APK" ]; then
@@ -126,19 +130,56 @@ jobs:
           fi
           ls -lh "$APK"
 
+      - name: Verify APK contents (架构 + native 库 + 版本号)
+        run: |
+          APK="build/app/outputs/flutter-apk/app-release.apk"
+          echo "===== APK 内 lib/ 目录（native 库） ====="
+          unzip -l "$APK" | grep -E 'lib/' || { echo "::error::APK 内无 lib/ 目录，native 库缺失，应用将无法启动"; exit 1; }
+          echo ""
+          echo "===== 各 ABI 的 .so 文件清单 ====="
+          unzip -l "$APK" | grep -E '\.so$' | awk '{print $4}' | sort
+          echo ""
+          echo "===== ABI 计数 ====="
+          ABI_COUNT=$(unzip -l "$APK" | grep -oE 'lib/[^/]+/' | sort -u | wc -l)
+          echo "包含 ABI 目录数: $ABI_COUNT"
+          if [ "$ABI_COUNT" -lt 2 ]; then
+            echo "::warning::仅含 $ABI_COUNT 个 ABI，模拟器/旧设备可能无法安装"
+          fi
+          echo ""
+          echo "===== sqlite3mc 加密库检查（drift 依赖，缺失则 DB 打不开） ====="
+          if unzip -l "$APK" | grep -q 'libsqlite3mc.so'; then
+            echo "✓ libsqlite3mc.so 已打包"
+            unzip -l "$APK" | grep 'libsqlite3mc.so'
+          else
+            echo "::error::libsqlite3mc.so 缺失，加密数据库将无法打开"
+            exit 1
+          fi
+          echo ""
+          echo "===== aapt badging（包名/versionCode/versionName/原生架构） ====="
+          # 定位 build-tools 中的 aapt
+          AAPT=$(ls /usr/local/lib/android/sdk/build-tools/*/aapt 2>/dev/null | sort -V | tail -1)
+          if [ -z "$AAPT" ]; then
+            echo "::warning::未找到 aapt，跳过 badging 检查"
+          else
+            "$AAPT" dump badging "$APK" | grep -E '^(package|native-code|sdkVersion|targetSdkVersion)' 
+          fi
+
       - name: Rename APK with version + short SHA
         id: rename
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d '+' -f 1)
+          BUILD_NUMBER=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d '+' -f 2)
           # 确定目标架构后缀
           TARGETS="${{ steps.platforms.outputs.targets }}"
-          if [ "$TARGETS" = "android-arm64" ]; then
+          if echo "$TARGETS" | grep -q ','; then
+            ARCH_TAG="fat"
+          elif echo "$TARGETS" | grep -q 'arm64'; then
             ARCH_TAG="arm64"
           else
-            ARCH_TAG="fat"
+            ARCH_TAG="$TARGETS"
           fi
-          NEW_NAME="eatwise-v${VERSION}-${ARCH_TAG}-${SHORT_SHA}.apk"
+          NEW_NAME="eatwise-v${VERSION}-b${BUILD_NUMBER}-${ARCH_TAG}-${SHORT_SHA}.apk"
           cp build/app/outputs/flutter-apk/app-release.apk "$NEW_NAME"
           ls -lh "$NEW_NAME"
           echo "apk_path=$NEW_NAME" >> "$GITHUB_OUTPUT"
