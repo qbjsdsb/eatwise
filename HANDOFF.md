@@ -36,16 +36,20 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（食物热量计算优化第一波+第二波+主页刷新修复已提交，未发布 release，等用户确认）
+**工作区状态**：clean（v0.11.0 已发布，等用户真机验收）
 **最近 commit**：
+- `58db4e3` chore: 版本号 bump 到 0.11.0+11 准备发布 v0.11.0
+- `add3c42` docs: 更新 HANDOFF——主页刷新修复（profile/weight→RefreshBus→dashboard）
 - `b167574` fix: 个人档案/体重页保存后通知主页刷新（profile/weight→RefreshBus→dashboard）
 - `62dd475` refactor: 提取 RecognitionPostProcessor 修复三路径行为分叉（第二波 2.0+2.1）
 - `47fd22c` feat: 食物热量计算优化第一波——可食部分系数+组分份量交叉验证+液体密度换算（建议1+3+7）
-- `c2510cb` feat: 识别智能化——图片预检+字段校验+营养素自洽+包装容量优先+反馈闭环（批次 1-3）
 
 **已发布**：
-- v0.10.0 已发布（2026-07-03，第二次 release 成功，APK 已上传）
-- 识别智能化批次 1-3 **未发布**（用户要求先告知，不发布 release）
+- v0.11.0 已发布（2026-07-03，包含识别智能化+食物热量优化第一波+第二波+主页刷新修复，APK 已上传）
+  - Release: https://github.com/qbjsdsb/eatwise/releases/tag/v0.11.0
+  - app-release.apk 73.1 MB / app-debug.apk 167.5 MB
+  - workflow run: https://github.com/qbjsdsb/eatwise/actions/runs/28658030594（success）
+- v0.10.0 已发布（2026-07-03）
 
 **识别智能化批次 1-3 修复清单**（本次 commit，用户选择"全部融入"）：
 - 批次 1 图片预检 + 字段校验：
@@ -113,7 +117,7 @@
 - 4 个 widget 测试全过（ProfilePage/WeightPage notify + weightKg 同步 + weight_logs 不影响）
 
 **未完成/待办**（按优先级）：
-1. ⬜ 用户验收测试（真机装 APK 验证第一波+第二波+主页刷新修复效果，等用户确认后发布 release）
+1. ⬜ 用户真机验收 v0.11.0（装 APK 验证识别智能化+食物热量优化+主页刷新修复效果）
 2. 🔧 第三波（待用户确认后启动）：建议 6（接入 USDA FoodData Central API 替代部分 OFF 云查，免费但需 API key）—— 但需先评估 OFF 中文命中率，USDA 是英文 API 中文菜名需翻译层
 3. ⏸️ 建议 4 餐前/餐后双拍对比（DietDelta 思路）：用户明确暂不做
 4. 🔧 重构性优化（风险较高，不阻塞当前版本）：
