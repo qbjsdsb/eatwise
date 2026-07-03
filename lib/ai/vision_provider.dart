@@ -29,6 +29,11 @@ class VisionRecognitionResult {
   // package_label=读取包装标注净含量（最准），ai_estimate=AI 视觉估算
   // 旧 prompt(v1.0-v1.5) 无此字段 → 默认 ai_estimate
   final String weightSource;
+  // v1.7：食物类别（建议 3 密度表换算用）
+  // water/carbonated/juice/milk/cream/oil/honey/sauce/alcohol/beer/wine/yogurt/soup/solid
+  // 包装液体食品（weight_source=package_label）按此类别查密度表把 ml 换算成真实克数
+  // 旧 prompt(v1.0-v1.6) 无此字段 → 默认 solid（不换算）
+  final String foodCategory;
 
   const VisionRecognitionResult({
     required this.dishName,
@@ -50,6 +55,7 @@ class VisionRecognitionResult {
     this.estimatedFatG,
     this.estimatedCarbsG,
     this.weightSource = 'ai_estimate',
+    this.foodCategory = 'solid',
   });
 
   /// 是否多菜（additionalDishes 非空）
@@ -61,17 +67,25 @@ class VisionRecognitionResult {
   /// 复制并覆盖部分字段
   /// - dishName：改菜名重试后透传新菜名给校准页
   /// - estimatedCalories：营养素自洽校验失败时用修正值覆盖（批次 1）
+  /// - foodComponents：组分份量交叉验证失败时用缩放后组分覆盖（建议 7）
+  /// - perUnitG/estimatedWeightG*/foodCategory：建议 3 密度换算后覆盖
   VisionRecognitionResult copyWith({
     String? dishName,
     double? estimatedCalories,
+    List<FoodComponent>? foodComponents,
+    double? perUnitG,
+    double? estimatedWeightGLow,
+    double? estimatedWeightGMid,
+    double? estimatedWeightGHigh,
+    String? foodCategory,
   }) {
     return VisionRecognitionResult(
       dishName: dishName ?? this.dishName,
       brand: brand,
-      estimatedWeightGLow: estimatedWeightGLow,
-      estimatedWeightGMid: estimatedWeightGMid,
-      estimatedWeightGHigh: estimatedWeightGHigh,
-      foodComponents: foodComponents,
+      estimatedWeightGLow: estimatedWeightGLow ?? this.estimatedWeightGLow,
+      estimatedWeightGMid: estimatedWeightGMid ?? this.estimatedWeightGMid,
+      estimatedWeightGHigh: estimatedWeightGHigh ?? this.estimatedWeightGHigh,
+      foodComponents: foodComponents ?? this.foodComponents,
       cookingMethod: cookingMethod,
       isSingleItem: isSingleItem,
       confidence: confidence,
@@ -79,12 +93,13 @@ class VisionRecognitionResult {
       additionalDishes: additionalDishes,
       quantity: quantity,
       unit: unit,
-      perUnitG: perUnitG,
+      perUnitG: perUnitG ?? this.perUnitG,
       estimatedCalories: estimatedCalories ?? this.estimatedCalories,
       estimatedProteinG: estimatedProteinG,
       estimatedFatG: estimatedFatG,
       estimatedCarbsG: estimatedCarbsG,
       weightSource: weightSource,
+      foodCategory: foodCategory ?? this.foodCategory,
     );
   }
 
@@ -144,6 +159,11 @@ class VisionRecognitionResult {
       weightSource: (json['weight_source'] as String?) == 'package_label'
           ? 'package_label'
           : 'ai_estimate',
+      // v1.7 food_category 缺失时默认 solid（旧 prompt 兼容，不换算密度）
+      // 非法值兜底为 solid
+      foodCategory: (json['food_category'] as String?)?.isNotEmpty == true
+          ? json['food_category'] as String
+          : 'solid',
     );
   }
 }

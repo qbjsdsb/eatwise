@@ -476,13 +476,16 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
   }
 
   /// 用 FoodItem + 份量构造 NutritionResult（候选列表选中后用）
+  /// 建议 1：同步 lookupSingleItem 的可食部分系数（servingG 为 AI 整重，需乘 ediblePercent）
   NutritionResult _nutritionFromFoodItem(FoodItem food, double servingG) {
+    final edibleFactor = (food.ediblePercent ?? 100).clamp(1, 100) / 100;
+    final effectiveG = servingG * edibleFactor;
     return NutritionResult(
       foodItemId: food.id,
-      calories: food.caloriesPer100g * servingG / 100,
-      proteinG: food.proteinPer100g * servingG / 100,
-      fatG: food.fatPer100g * servingG / 100,
-      carbsG: food.carbsPer100g * servingG / 100,
+      calories: food.caloriesPer100g * effectiveG / 100,
+      proteinG: food.proteinPer100g * effectiveG / 100,
+      fatG: food.fatPer100g * effectiveG / 100,
+      carbsG: food.carbsPer100g * effectiveG / 100,
       oilG: 0,
     );
   }

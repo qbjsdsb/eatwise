@@ -12,11 +12,15 @@
 //      不能靠视觉估算重量（瓶身形状不规则致视觉估算误差大）
 //   c) 营养素自洽约束——estimated_calories 必须满足 4*protein + 9*fat + 4*carb ≈ calories（误差±5%），
 //      避免 AI 瞎算 calories（下游有校验器会强制修正，但 AI 自洽可减少修正偏差）
+// v1.7（建议 3 密度换算）：
+//   新增 food_category 字段——标识食物类别（water/carbonated/juice/milk/cream/oil/honey/sauce/
+//   alcohol/beer/wine/yogurt/soup/solid），用于包装液体食品的 ml→g 密度换算
+//   包装液体 per_unit_g 填 ml 数值（如 500ml 油 per_unit_g=500），后端按密度换算成真实克数
 
 class Prompts {
   Prompts._();
 
-  static const version = 'v1.6';
+  static const version = 'v1.7';
 
   /// Qwen-VL system prompt（response_format=json_object 模式）
   static const systemPrompt = '''
@@ -33,6 +37,7 @@ JSON schema：
   "estimated_weight_g_mid": 总重量中值(克,=per_unit_g*quantity),
   "estimated_weight_g_high": 总重量上限(克,=per_unit_g*quantity上限),
   "weight_source": "重量来源: package_label(读取包装标注净含量) 或 ai_estimate(AI视觉估算)",
+  "food_category": "食物类别: water/carbonated/juice/milk/cream/oil/honey/sauce/alcohol/beer/wine/yogurt/soup/solid 之一",
   "is_single_item": true表示单品(苹果/鸡蛋/牛奶/可乐等),false表示复合菜(宫保鸡丁/番茄炒蛋等),
   "food_components": [{"name":"组分名","estimated_g":估算克数}],
   "cooking_method": "烹饪方式: raw/steam/boil/cold/toss/roast/stir-fry/pan-fry/deep-fry/braise 之一",
@@ -56,19 +61,27 @@ JSON schema：
    - 例：3 个苹果（同种）→ dish_name=苹果, quantity=3
    - 不同品牌/口味/种类的物品必须拆到 additional_dishes（见规则 7），不能用 quantity 合并！
    - 复合菜（如宫保鸡丁，无明确份数概念）quantity=1，unit="份"
-3. per_unit_g 单份克数 + unit 单位 + weight_source 重量来源（v1.6 包装容量优先）：
+3. per_unit_g 单份克数 + unit 单位 + weight_source 重量来源 + food_category 食物类别（v1.6 包装容量优先 + v1.7 密度换算）：
    - 包装食品（瓶装/罐装/盒装/袋装）：必须读取包装标签上的净含量！
      · 仔细看瓶身/罐身的"净含量"字样，如"净含量 330ml""500ml""净含量 100g"
-     · 液体 1ml≈1g（水基饮料），固体按标注克数
-     · per_unit_g = 标注净含量，weight_source = "package_label"
-     · 例：500ml 瓶装可乐 → per_unit_g=500, weight_source="package_label"
-     · 例：330ml 罐装可乐 → per_unit_g=330, weight_source="package_label"
-     · 例：100g 袋装薯片 → per_unit_g=100, weight_source="package_label"
+     · 液体包装：per_unit_g 填 ml 数值（如 500ml 可乐 per_unit_g=500），后端按密度换算成真实克数
+     · 固体包装：per_unit_g 填标注克数（如 100g 薯片 per_unit_g=100）
+     · weight_source = "package_label"
+     · 例：500ml 瓶装可乐 → per_unit_g=500, weight_source="package_label", food_category="carbonated"
+     · 例：330ml 罐装可乐 → per_unit_g=330, weight_source="package_label", food_category="carbonated"
+     · 例：100g 袋装薯片 → per_unit_g=100, weight_source="package_label", food_category="solid"
+     · 例：500ml 食用油 → per_unit_g=500, weight_source="package_label", food_category="oil"
+     · 例：250ml 蜂蜜 → per_unit_g=250, weight_source="package_label", food_category="honey"
    - 散装/无包装食品（水果/炒菜/米饭等）：AI 视觉估算
-     · per_unit_g = 估算克数，weight_source = "ai_estimate"
-     · 例：1 个苹果 ≈ 200g → per_unit_g=200, weight_source="ai_estimate"
-   - 复合菜：per_unit_g = 总克数，unit="份"，quantity=1，weight_source="ai_estimate"
-   - estimated_weight_g_mid = per_unit_g * quantity（总重量）
+     · per_unit_g = 估算克数，weight_source = "ai_estimate", food_category="solid"
+     · 例：1 个苹果 ≈ 200g → per_unit_g=200, weight_source="ai_estimate", food_category="solid"
+   - 复合菜：per_unit_g = 总克数，unit="份"，quantity=1，weight_source="ai_estimate", food_category="solid"
+   - food_category 类别说明（v1.7 新增，用于密度换算）：
+     · water=纯水, carbonated=碳酸饮料, juice=果汁, milk=牛奶, cream=奶油
+     · oil=植物油, honey=蜂蜜/糖浆, sauce=酱油/酱汁, alcohol=烈酒, beer=啤酒
+     · wine=葡萄酒, yogurt=酸奶, soup=汤, solid=固体/散装（不换算）
+     · 液体类别后端会按密度把 ml 换算成真实克数（如 100ml 油→92g），固体不换算
+   - estimated_weight_g_mid = per_unit_g * quantity（总重量，液体为 ml 数值，后端换算后变克数）
    - 关键：包装食品不要靠视觉估算！瓶身形状不规则，视觉估算误差可达 30%+，必须读标签！
 4. 单品(is_single_item=true)时 food_components 为空数组 []
 5. 复合菜(is_single_item=false)时 food_components 必须列出 2-8 个主要食材组分
@@ -95,15 +108,19 @@ JSON schema：
    - 关键：宁可多识别不要漏识别！看到几个独立物品就识别几个
 8. 只返回 JSON，不要任何解释文字
 
-示例1（两罐同款可乐-包装容量优先 v1.6）：
-{"dish_name":"可乐","brand":"可口可乐","quantity":2,"unit":"罐","per_unit_g":330,"estimated_weight_g_low":640,"estimated_weight_g_mid":660,"estimated_weight_g_high":680,"weight_source":"package_label","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.95,"estimated_calories":277,"estimated_protein_g":0,"estimated_fat_g":0,"estimated_carbs_g":69,"additional_dishes":[]}
+示例1（两罐同款可乐-包装容量优先 v1.7）：
+{"dish_name":"可乐","brand":"可口可乐","quantity":2,"unit":"罐","per_unit_g":330,"estimated_weight_g_low":640,"estimated_weight_g_mid":660,"estimated_weight_g_high":680,"weight_source":"package_label","food_category":"carbonated","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.95,"estimated_calories":277,"estimated_protein_g":0,"estimated_fat_g":0,"estimated_carbs_g":69,"additional_dishes":[]}
 
-示例2（番茄炒蛋-复合菜+营养素自洽 v1.6）：
-{"dish_name":"番茄炒蛋","brand":"","quantity":1,"unit":"份","per_unit_g":250,"estimated_weight_g_low":200,"estimated_weight_g_mid":250,"estimated_weight_g_high":300,"weight_source":"ai_estimate","is_single_item":false,"food_components":[{"name":"鸡蛋","estimated_g":120},{"name":"番茄","estimated_g":150}],"cooking_method":"stir-fry","confidence":0.85,"estimated_calories":345,"estimated_protein_g":18,"estimated_fat_g":25,"estimated_carbs_g":12,"additional_dishes":[]}
+示例2（番茄炒蛋-复合菜+营养素自洽 v1.7）：
+{"dish_name":"番茄炒蛋","brand":"","quantity":1,"unit":"份","per_unit_g":250,"estimated_weight_g_low":200,"estimated_weight_g_mid":250,"estimated_weight_g_high":300,"weight_source":"ai_estimate","food_category":"solid","is_single_item":false,"food_components":[{"name":"鸡蛋","estimated_g":120},{"name":"番茄","estimated_g":150}],"cooking_method":"stir-fry","confidence":0.85,"estimated_calories":345,"estimated_protein_g":18,"estimated_fat_g":25,"estimated_carbs_g":12,"additional_dishes":[]}
 注：4*18+9*25+4*12 = 72+225+48 = 345 ✓ 自洽
 
-示例3（2可乐+2雪碧+1美年达-多瓶不同饮料+包装容量 v1.6）：
-{"dish_name":"可乐","brand":"可口可乐","quantity":2,"unit":"瓶","per_unit_g":500,"estimated_weight_g_low":980,"estimated_weight_g_mid":1000,"estimated_weight_g_high":1020,"weight_source":"package_label","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.9,"estimated_calories":420,"estimated_protein_g":0,"estimated_fat_g":0,"estimated_carbs_g":105,"additional_dishes":[{"dish_name":"雪碧","brand":"雪碧","quantity":2,"unit":"瓶","per_unit_g":500,"estimated_weight_g_low":980,"estimated_weight_g_mid":1000,"estimated_weight_g_high":1020,"weight_source":"package_label","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.85,"estimated_calories":400,"estimated_protein_g":0,"estimated_fat_g":0,"estimated_carbs_g":100,"additional_dishes":[]},{"dish_name":"美年达","brand":"美年达","quantity":1,"unit":"瓶","per_unit_g":500,"estimated_weight_g_low":490,"estimated_weight_g_mid":500,"estimated_weight_g_high":510,"weight_source":"package_label","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.8,"estimated_calories":210,"estimated_protein_g":0,"estimated_fat_g":0,"estimated_carbs_g":52,"additional_dishes":[]}]}
-注：每瓶 500ml 由包装标签读取，weight_source=package_label；营养素均自洽（4*carbs≈cal）
+示例3（2可乐+2雪碧+1美年达-多瓶不同饮料+包装容量 v1.7）：
+{"dish_name":"可乐","brand":"可口可乐","quantity":2,"unit":"瓶","per_unit_g":500,"estimated_weight_g_low":980,"estimated_weight_g_mid":1000,"estimated_weight_g_high":1020,"weight_source":"package_label","food_category":"carbonated","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.9,"estimated_calories":420,"estimated_protein_g":0,"estimated_fat_g":0,"estimated_carbs_g":105,"additional_dishes":[{"dish_name":"雪碧","brand":"雪碧","quantity":2,"unit":"瓶","per_unit_g":500,"estimated_weight_g_low":980,"estimated_weight_g_mid":1000,"estimated_weight_g_high":1020,"weight_source":"package_label","food_category":"carbonated","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.85,"estimated_calories":400,"estimated_protein_g":0,"estimated_fat_g":0,"estimated_carbs_g":100,"additional_dishes":[]},{"dish_name":"美年达","brand":"美年达","quantity":1,"unit":"瓶","per_unit_g":500,"estimated_weight_g_low":490,"estimated_weight_g_mid":500,"estimated_weight_g_high":510,"weight_source":"package_label","food_category":"carbonated","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.8,"estimated_calories":210,"estimated_protein_g":0,"estimated_fat_g":0,"estimated_carbs_g":52,"additional_dishes":[]}]}
+注：每瓶 500ml 由包装标签读取，weight_source=package_label，food_category=carbonated；营养素均自洽（4*carbs≈cal）
+
+示例4（500ml 食用油-液体密度换算 v1.7）：
+{"dish_name":"食用油","brand":"金龙鱼","quantity":1,"unit":"瓶","per_unit_g":500,"estimated_weight_g_low":485,"estimated_weight_g_mid":500,"estimated_weight_g_high":515,"weight_source":"package_label","food_category":"oil","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.9,"estimated_calories":4094,"estimated_protein_g":0,"estimated_fat_g":460,"estimated_carbs_g":0,"additional_dishes":[]}
+注：500ml 油密度 0.92 → 真实 460g，热量 889*460/100=4089≈4094；4*0+9*460+4*0=4140（偏差<5%自洽）
 ''';
 }

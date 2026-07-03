@@ -77,10 +77,34 @@ class RecognitionValidator {
       }
     }
 
+    // 建议 7：复合菜组分份量交叉验证
+    // sum(components.estimated_g) 应 ≈ estimated_weight_g_mid（±15%）
+    // AI 常出现"鸡蛋120g+番茄150g=270g"但整菜 mid=250g 的不自洽
+    // 不自洽时按 mid 比例缩放各组分（mid 是 AI 整菜估算，相对可信）
+    List<FoodComponent>? correctedComponents;
+    if (!result.isSingleItem && result.foodComponents.isNotEmpty) {
+      final sumG =
+          result.foodComponents.fold(0.0, (s, c) => s + c.estimatedG);
+      final mid = result.estimatedWeightGMid;
+      if (sumG > 0 && mid > 0) {
+        final ratio = mid / sumG;
+        // 偏差超 15% → 缩放（±15% 内视为合理波动，不修正避免过度干预）
+        if ((ratio - 1).abs() > 0.15) {
+          correctedComponents = result.foodComponents
+              .map((c) => FoodComponent(
+                  name: c.name, estimatedG: c.estimatedG * ratio))
+              .toList();
+          reasons.add('组分份量不自洽: sum=${sumG.toStringAsFixed(0)}g, '
+              'mid=${mid.toStringAsFixed(0)}g, 按 mid 缩放 ${ratio.toStringAsFixed(2)}x');
+        }
+      }
+    }
+
     return RecognitionValidationResult(
       isValid: reasons.isEmpty,
       needsRetry: needsRetry,
       correctedCalories: correctedCalories,
+      correctedComponents: correctedComponents,
       reasons: reasons,
     );
   }
@@ -98,6 +122,10 @@ class RecognitionValidationResult {
   /// controller 用此值覆盖 VisionRecognitionResult.estimatedCalories
   final double? correctedCalories;
 
+  /// 建议 7：组分份量交叉验证修正后的组分列表（null 表示无需修正或不适用）
+  /// controller 用此值覆盖 VisionRecognitionResult.foodComponents
+  final List<FoodComponent>? correctedComponents;
+
   /// 校验失败原因（用于 Sentry 上报 + 调试日志）
   final List<String> reasons;
 
@@ -105,6 +133,7 @@ class RecognitionValidationResult {
     required this.isValid,
     required this.needsRetry,
     required this.correctedCalories,
+    required this.correctedComponents,
     required this.reasons,
   });
 }

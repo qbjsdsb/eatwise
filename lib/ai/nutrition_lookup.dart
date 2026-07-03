@@ -32,6 +32,13 @@ class NutritionLookup {
   /// 单品查库回填
   /// 查库未命中 → OFF 云查兜底（若配置了 offProvider）→ 命中落库（source='off'）
   /// 返回 null 表示未命中（调用方转手动录入）
+  ///
+  /// 建议 1：可食部分系数（ediblePercent）
+  /// servingG 来自 AI 估算的"图中食物整重"（含皮/骨/壳），而 FCT 的 caloriesPer100g
+  /// 是"每 100g 可食部分"的营养值。若不乘 ediblePercent，香蕉（edible=65%）、
+  /// 带骨排骨（edible=50%）会系统性高估热量 30-100%。
+  /// 系数取 (ediblePercent ?? 100).clamp(1,100)/100，null/异常值按 100% 兜底。
+  /// 注：复合菜组分（lookupCompositeDish）已是可食部分克数，不乘此系数。
   Future<NutritionResult?> lookupSingleItem({
     required String dishName,
     required double servingG,
@@ -42,12 +49,15 @@ class NutritionLookup {
       // 单品查库命中这类记录会返回 0 热量造成数据污染。
       // 视为未命中返回 null，让调用方走 AI 兜底或 OFF 云查。
       if (food.componentsJson != null) return null;
+      // 建议 1：可食部分系数（仅单品，FCT 水果/带骨肉类需要；包装食品 ediblePercent=null 按 100%）
+      final edibleFactor = (food.ediblePercent ?? 100).clamp(1, 100) / 100;
+      final effectiveG = servingG * edibleFactor;
       return NutritionResult(
         foodItemId: food.id,
-        calories: food.caloriesPer100g * servingG / 100,
-        proteinG: food.proteinPer100g * servingG / 100,
-        fatG: food.fatPer100g * servingG / 100,
-        carbsG: food.carbsPer100g * servingG / 100,
+        calories: food.caloriesPer100g * effectiveG / 100,
+        proteinG: food.proteinPer100g * effectiveG / 100,
+        fatG: food.fatPer100g * effectiveG / 100,
+        carbsG: food.carbsPer100g * effectiveG / 100,
         oilG: 0,
       );
     }
