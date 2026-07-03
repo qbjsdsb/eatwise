@@ -36,8 +36,11 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（v0.11.0 已发布，等用户真机验收）
+**工作区状态**：clean（v0.11.0 已发布；v0.11.0 之后又提交了 2 个修复但**未发布**，等用户验收后再决定是否打 v0.11.1）
 **最近 commit**：
+- `b97eb89` style: 今日明细页卡片式重构（缩略图+营养素圆点+餐次小计，未发布）
+- `1f1fad0` fix: 校准页加多份识别警告横幅（避免一罐被识别成两罐时记录双倍克数，未发布）
+- `ec5d452` docs: 更新 HANDOFF——v0.11.0 已发布
 - `58db4e3` chore: 版本号 bump 到 0.11.0+11 准备发布 v0.11.0
 - `add3c42` docs: 更新 HANDOFF——主页刷新修复（profile/weight→RefreshBus→dashboard）
 - `b167574` fix: 个人档案/体重页保存后通知主页刷新（profile/weight→RefreshBus→dashboard）
@@ -46,10 +49,15 @@
 
 **已发布**：
 - v0.11.0 已发布（2026-07-03，包含识别智能化+食物热量优化第一波+第二波+主页刷新修复，APK 已上传）
-  - Release: https://github.com/qbjsdsb/eatwise/releases/tag/v0.11.0
+  - Release: https://github.com/qbjsb/eatwise/releases/tag/v0.11.0
   - app-release.apk 73.1 MB / app-debug.apk 167.5 MB
-  - workflow run: https://github.com/qbjsdsb/eatwise/actions/runs/28658030594（success）
+  - workflow run: https://github.com/qbjsb/eatwise/actions/runs/28658030594（success）
 - v0.10.0 已发布（2026-07-03）
+
+**未发布的两个修复（v0.11.0 之后）**：
+1. **校准页多份识别警告**（`1f1fad0`）：用户反馈"一罐芬达显示两罐克数"。根因是 AI 偶发误判 quantity=2，校准页默认用 `estimatedWeightGMid`（已含 quantity 乘积）作初值，数量步进器在底部不显眼，用户未调整直接确认会写入双倍克数。修复方式：quantity>1 时在标题下方加 tertiaryContainer 警告横幅，提示用户检查数量。
+2. **今日明细页卡片式重构**（`b97eb89`）：用户反馈"明细界面不够美观"。ListTile → Card 卡片布局：56x56 圆角缩略图、份量/热量 chip、三大宏量营养素彩色圆点、餐次分组带竖条+小计热量。纯 UI 层重构，不动写入逻辑。
+- 验证：`flutter analyze` No issues + `flutter test` 324 passed (3 skipped)。
 
 **识别智能化批次 1-3 修复清单**（本次 commit，用户选择"全部融入"）：
 - 批次 1 图片预检 + 字段校验：
