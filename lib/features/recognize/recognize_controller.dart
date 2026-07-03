@@ -9,6 +9,7 @@ import '../../ai/nutrition_lookup.dart';
 import '../../ai/prompts.dart';
 import '../../ai/vision_provider.dart';
 import '../../core/config/secure_config_store.dart';
+import '../../core/util/image_quality_checker.dart';
 import 'circuit_breaker.dart';
 
 /// 拍照识别状态
@@ -185,6 +186,17 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
       );
       if (compressedBytes == null) {
         state = state.copyWith(state: RecognizeState.error, errorMessage: '图片压缩失败');
+        return;
+      }
+
+      // 图片预检：模糊图直接拒识（避免垃圾输入导致必错识别，浪费 token）
+      // 阈值 50，低于判定模糊，提示用户重拍
+      final isBlurry = await ImageQualityChecker.isBlurry(compressedBytes);
+      if (isBlurry) {
+        state = state.copyWith(
+          state: RecognizeState.error,
+          errorMessage: '图片较模糊，请擦净镜头后重拍',
+        );
         return;
       }
 

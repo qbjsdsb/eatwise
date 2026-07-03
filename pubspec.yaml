@@ -26,6 +26,7 @@ dependencies:
   # 拍照 + 图片预处理
   image_picker: ^1.2.2
   flutter_image_compress: ^2.4.0
+  image: ^4.5.3  # 图片预检（模糊检测，解码后算拉普拉斯方差）
 
   # 网络 + 离线检测
   connectivity_plus: ^6.1.0
