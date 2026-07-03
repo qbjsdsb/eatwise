@@ -60,8 +60,30 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     final now = DateTime.now();
     final today =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    // 推荐算法 v3：传 profile（偏好/健康过滤）+ mealType（时段感知）+ 昨日（多样性）
+    final yesterday = now.subtract(const Duration(days: 1));
+    final yesterdayDate =
+        '${yesterday.year}-${yesterday.month.toString().padLeft(2, '0')}-${yesterday.day.toString().padLeft(2, '0')}';
+    final profile = await profileRepo.get();
+    final mealType = _currentMealType(now.hour);
     final remaining = await service.getDailyRemaining(today);
-    return service.recommend(remaining: remaining, limit: 5, todayDate: today);
+    return service.recommend(
+      remaining: remaining,
+      limit: 5,
+      todayDate: today,
+      profile: profile,
+      mealType: mealType,
+      yesterdayDate: yesterdayDate,
+    );
+  }
+
+  /// 按当前小时推断餐次（推荐算法 v3 时段感知用）。
+  /// 5-10 早餐 / 11-13 午餐 / 14-16 加餐 / 17-21 晚餐 / 其他 加餐。
+  static String _currentMealType(int hour) {
+    if (hour >= 5 && hour <= 10) return 'breakfast';
+    if (hour >= 11 && hour <= 13) return 'lunch';
+    if (hour >= 17 && hour <= 21) return 'dinner';
+    return 'snack'; // 14-16 加餐 + 22-4 深夜
   }
 
   Future<DashboardData> _loadData() async {

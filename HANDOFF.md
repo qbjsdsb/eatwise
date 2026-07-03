@@ -36,8 +36,9 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（v0.11.1 已发布；v0.11.1 之后又提交了 1 个修复但**未发布**）
+**工作区状态**：clean（v0.11.1 已发布；v0.11.1 之后又提交了 2 个修复但**未发布**）
 **最近 commit**：
+- （待提交）feat: 智能推荐算法 v3 五维评分 + addAlias 冲突检测（未发布）
 - `1064449` fix: 识别精准度修复+界面偏右修正（雪花啤酒→雪碧假阳性，未发布）
 - `52dc876` docs: 更新 HANDOFF——v0.11.1 已发布
 - `a907625` chore: 版本号 bump 到 0.11.1+12 准备发布 v0.11.1
@@ -75,8 +76,10 @@
 6. **个人档案特殊人群适配**（`84cc29a`）：用户反馈"个人信息太简单，不能应用在不同人群"。profile 表 schema v1→v2 加 3 个 nullable 列（specialCondition/dietPreference/healthCondition，null 视为 'none' 向后兼容）。NutritionCalculator 按权威来源调整：孕期 +340 / 哺乳期 +500 kcal（IOM 2006）、老年蛋白 1.2g/kg 防肌少症（ISSN）、肾病蛋白 cap 0.8g/kg（KDOQI）、糖尿病碳水 cap 45%（ADA）。ProfilePage 加"特殊状况"段（3 个 DropdownMenu + 风险提示卡片）+ 活动量描述优化（步数/锻炼频率）+ 保存时孕期/哺乳/肾病减脂风险警告。JsonExporter/Importer 同步 3 字段导出导入；版本检查从严格相等放宽为只拒绝高于当前版本（支持旧备份恢复到新版本）。**坑提醒：JsonExporter 加新字段必须同步 JsonImporter 读取，否则备份恢复丢数据；DropdownMenu 测试用 find.byKey 定位，不要用 .last/.first（新增菜单会让索引漂移）。**
 
 **v0.11.1 之后未发布的修复**：
-7. **识别精准度修复 + 界面偏右修正**（待提交）：用户反馈"雪花啤酒被识别成雪碧"+"界面整体偏右"。识别错配根因有三：①findByNameOrAlias 优先级 5 编辑距离 ≤1 对 2 字短名假阳性（"雪花"vs"雪碧"编辑距离恰好 1 → 误命中）；②反馈回流 addAlias 用 5 级模糊查"正确菜"，模糊命中错对象后把 AI 错误名写成错对象别名 → 永久错配（无法自愈）；③_normalize 不处理全角半角（AI 返回全角字符精确匹配 miss → 降级模糊匹配增加误命中）。修复：①优先级 5 加严——query 长度 ≥3 且 target 与 query 等长才走编辑距离（2 字短名禁用，typo 容错仅保留 3+ 字等长如"蕃茄炒蛋"→"番茄炒蛋"）；②新增 findExactByNameOrAlias（只走 name/alias 精确匹配），today_meals_page 反馈回流改用它，避免模糊命中错对象导致反向错配；③_normalize 加全角→半角转换（数字/字母/空格/括号）。界面偏右根因：SectionTitle padding `fromLTRB(24,20,16,8)` 左 24 右 16 不对称，被 6 页面 14 处复用，标题相对下方卡片（padding 16）右移 8px → 改 `fromLTRB(16,20,16,8)` 对称；dashboard/me_page 的 Divider 缺 endIndent → 补 `endIndent: 16`。新增 4 个精准度专项测试（雪花不命中雪碧/typo 容错保留/findExact 只精确/全角括号归一化）。**坑提醒：2 字短名编辑距离 1 无法区分"假阳性（雪花/雪碧）"与"typo（可东/可乐）"，取舍上禁用 2 字短名编辑距离（牺牲罕见 2 字 typo 容错换取防常见相近名误判）；反馈回流别名必须用精确匹配查库，绝不能用模糊匹配（否则反向错配永久污染别名表）。**
-- 验证：`flutter analyze` No issues + `flutter test` 328 passed (3 skipped)。
+7. **识别精准度修复 + 界面偏右修正**（`1064449`）：用户反馈"雪花啤酒被识别成雪碧"+"界面整体偏右"。识别错配根因有三：①findByNameOrAlias 优先级 5 编辑距离 ≤1 对 2 字短名假阳性（"雪花"vs"雪碧"编辑距离恰好 1 → 误命中）；②反馈回流 addAlias 用 5 级模糊查"正确菜"，模糊命中错对象后把 AI 错误名写成错对象别名 → 永久错配（无法自愈）；③_normalize 不处理全角半角（AI 返回全角字符精确匹配 miss → 降级模糊匹配增加误命中）。修复：①优先级 5 加严——query 长度 ≥3 且 target 与 query 等长才走编辑距离（2 字短名禁用，typo 容错仅保留 3+ 字等长如"蕃茄炒蛋"→"番茄炒蛋"）；②新增 findExactByNameOrAlias（只走 name/alias 精确匹配），today_meals_page 反馈回流改用它，避免模糊命中错对象导致反向错配；③_normalize 加全角→半角转换（数字/字母/空格/括号）。界面偏右根因：SectionTitle padding `fromLTRB(24,20,16,8)` 左 24 右 16 不对称，被 6 页面 14 处复用，标题相对下方卡片（padding 16）右移 8px → 改 `fromLTRB(16,20,16,8)` 对称；dashboard/me_page 的 Divider 缺 endIndent → 补 `endIndent: 16`。新增 4 个精准度专项测试（雪花不命中雪碧/typo 容错保留/findExact 只精确/全角括号归一化）。**坑提醒：2 字短名编辑距离 1 无法区分"假阳性（雪花/雪碧）"与"typo（可东/可乐）"，取舍上禁用 2 字短名编辑距离（牺牲罕见 2 字 typo 容错换取防常见相近名误判）；反馈回流别名必须用精确匹配查库，绝不能用模糊匹配（否则反向错配永久污染别名表）。**
+
+8. **智能推荐算法 v3 五维评分 + addAlias 冲突检测**（待提交）：用户反馈"推荐冷门食物，不学习习惯，参考业界成熟方案优化"。WebSearch 调研业界（MyFitnessPal/Yazio/薄荷/Lifesum/Carbon Diet Coach），严谨筛选：弃用协同过滤（单机无用户群）、AI 生成食谱（离线 app）、替换建议（需建替代图谱留后续）；采用内容推荐+频次+约束过滤+时段感知+多样性（全离线，基于现有数据）。v3 五维：①冷门降权——常吃蛋白加权 *4，基础食材 *3，冷门 *1.5（直击"冷门霸榜"痛点，原 v2 全部 *4 致冷门高密度食物盖过常吃基础食材）；②基础食材白名单——硬编码 ~50 个中式家常食材关键词（鸡蛋/鸡胸/牛奶/燕麦/米饭/豆腐/苹果/西兰花…）命中 +3 底分，保证常见食物不沉底；③profile 约束过滤——素食/纯素/乳糖不耐/无麸质硬排除违规食物（按名称关键词），糖尿病高糖降权 *0.3，肾病极高蛋白降权 *0.5（软降权避免列表空）；④时段感知——MealLogRepository 新增 getMealTypeDistribution 学习每食物历史 mealType 分布（ratio>0.5 加 3 分），dashboard 按当前小时推断 mealType 传入；⑤多样性——排除今日已吃（已有）+ 昨日已吃降权 -2。addAlias 冲突检测（防反向错配第二道防线，findExact 是第一道）：写入前遍历全表，若别名已是其他食物的 name/alias 则拒绝写入，防止反馈回流把同一错误名绑多食物致永久错配。新增 9 个专项测试（冷门降权/白名单底分/素食过滤/乳糖过滤/时段感知/多样性 + addAlias 冲突检测 3 个）。**坑提醒：recommend() 新增 profile/mealType/yesterdayDate 全是可选参数，不传时退化到 v2 行为（向后兼容现有测试）；时段感知是数据驱动（学历史 mealType 分布）非硬编码"早餐食物"，样本<2 不返回避免单次误判；糖尿病/肾病用软降权而非硬排除，避免推荐列表空；addAlias 冲突检测遍历全表 O(n) 但在 addAlias 事务内，反馈回流低频调用可接受。**
+- 验证：`flutter analyze` No issues + `flutter test` 337 passed (3 skipped)。
 
 **识别智能化批次 1-3 修复清单**（本次 commit，用户选择"全部融入"）：
 - 批次 1 图片预检 + 字段校验：
@@ -213,6 +216,14 @@
 - findExactByNameOrAlias（仅精确，反馈回流用）：只走 ①②，绝不模糊——避免模糊命中错对象导致 addAlias 反向错配永久污染别名表
 - _normalize：全角→半角（数字/字母/空格/括号）+ 去空白 + 小写，避免全角字符精确 miss 降级模糊
 - 反馈回流方向：AI 错误名 → 正确菜的别名（addAlias(correctFood.id, aiName)），查正确菜必须精确匹配
+- addAlias 冲突检测：写入前遍历全表，若别名已是其他食物 name/alias 则拒绝（第二道防线）
+
+### 3.11 推荐算法 v3 五维评分（参考业界 + 项目实际筛选）
+- 调研：MyFitnessPal（大数据库+宏量分析）、Yazio（清洁 UX+断食）、薄荷（中式本土化+替代建议）、Lifesum（综合代谢画像）、Carbon Diet Coach（动态宏量调整）
+- 弃用：协同过滤（单机无用户群）、AI 生成食谱（离线 app）、替换建议（需替代图谱留后续）
+- 五维：①相对缺口匹配（Content-Based）②冷门降权+基础食材白名单（频次*4/基础*3/冷门*1.5）③profile 约束过滤（素食/乳糖/麸质硬排除，糖尿病/肾病软降权）④时段感知（数据驱动学 mealType 分布，非硬编码）⑤多样性（排除今日+昨日降权）
+- 新增 MealLogRepository.getMealTypeDistribution(days:60) 学习食物历史 mealType 分布，样本<2 丢弃
+- dashboard 按当前小时推断 mealType：5-10 breakfast / 11-13 lunch / 17-21 dinner / 其他 snack
 
 ---
 
@@ -235,6 +246,9 @@
 15. **findByNameOrAlias 优先级 5 编辑距离对 2 字短名禁用**：2 字短名编辑距离 1 无法区分"假阳性（雪花/雪碧）"与"typo（可东/可乐）"，禁用 2 字短名编辑距离（query.length>=3 且 target 与 query 等长才走）。typo 容错仅保留 3+ 字等长场景（蕃茄炒蛋→番茄炒蛋）
 16. **反馈回流别名必须用 findExactByNameOrAlias 精确匹配查库**：today_meals_page 用户纠正菜名后调 addAlias 回流别名，查"正确菜"必须用精确匹配（name/alias 归一化相等），绝不能用 findByNameOrAlias 5 级模糊匹配。否则模糊命中错对象后把 AI 错误名写成错对象别名 → 永久错配且无法自愈（雪花啤酒模糊命中雪碧 → "雪碧"成雪碧别名 → 永久错配）
 17. **SectionTitle padding 必须左右对称且与下方 Card 对齐**：`fromLTRB(16,20,16,8)`，左缘与 Card 的 EdgeInsets.all(16)/symmetric(horizontal:16) 对齐。曾用 `fromLTRB(24,20,16,8)` 左 24 右 16 不对称，被 6 页面 14 处复用导致"界面整体偏右"。改公共组件 padding 必须考虑所有复用页面
+18. **addAlias 写入前必须做全表冲突检测**：写入别名前遍历全表，若别名已是其他食物的 name/alias 则拒绝写入（防反向错配第二道防线）。findExactByNameOrAlias 是第一道（调用方用精确匹配查"正确菜"），addAlias 冲突检测是第二道。两道防线缺一不可——单靠 findExact 仍可能因调用方传错 foodItemId 而写入冲突别名
+19. **推荐算法 v3 冷门降权用动态蛋白权重**：常吃 *4 / 基础食材 *3 / 冷门 *1.5，三者区分决定排序。原 v2 全部 *4 致冷门高密度食物（蛋白粉等）盖过常吃基础食材（鸡蛋）。改权重必须同步 _scoreFood 里"非最缺宏量"分支的 0.4 系数（用 proteinWeight*0.4 保持比例）
+20. **recommend() 新增维度参数必须可选且向后兼容**：profile/mealType/yesterdayDate 全可选，不传时退化到 v2 行为。现有 6 个 v2 测试不传新参数仍全过。新增维度测试在独立 group 里显式传参验证
 
 ---
 

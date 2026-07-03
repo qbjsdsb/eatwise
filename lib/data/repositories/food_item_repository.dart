@@ -168,18 +168,35 @@ class FoodItemRepository {
   /// findByNameOrAlias 命中别名，直接返回正确菜的营养数据（无需用户再纠正）。
   ///
   /// 去重规则：归一化后与 name + 现有别名比较，已存在则跳过（幂等）。
+  ///
+  /// 冲突检测（v3 新增，防反向错配第二道防线）：若该别名已是其他食物的
+  /// name 或别名，则不写入。否则会把"AI 错误名"绑定到多个食物，下次精确
+  /// 匹配会命中第一个 → 永久错配且无法自愈。findExactByNameOrAlias 是第一道
+  /// 防线（调用方用精确匹配查"正确菜"），此为第二道（写入前再校验全局唯一）。
   Future<void> addAlias(int foodItemId, String alias) async {
     final cleanAlias = alias.trim();
     if (cleanAlias.isEmpty) return;
+    final normalized = _normalize(cleanAlias);
     return _db.transaction(() async {
       final item = await (_db.foodItems.select()
             ..where((f) => f.id.equals(foodItemId)))
           .getSingleOrNull();
       if (item == null) return;
       // 去重：已是 name 或已有别名则跳过（归一化比较，防大小写/空格差异）
-      if (_normalize(item.name) == _normalize(cleanAlias)) return;
+      if (_normalize(item.name) == normalized) return;
       final existing = _decodeAliases(item.aliasesJson);
-      if (existing.any((a) => _normalize(a) == _normalize(cleanAlias))) return;
+      if (existing.any((a) => _normalize(a) == normalized)) return;
+
+      // 冲突检测：遍历全表，若该别名已是其他食物的 name 或别名，拒绝写入
+      // （防止反馈回流把同一个错误名绑到多个食物导致永久错配）
+      final all = await _db.foodItems.select().get();
+      for (final other in all) {
+        if (other.id == foodItemId) continue; // 跳过自己
+        if (_normalize(other.name) == normalized) return; // 已是其他食物 name
+        final otherAliases = _decodeAliases(other.aliasesJson);
+        if (otherAliases.any((a) => _normalize(a) == normalized)) return;
+      }
+
       final updated = [...existing, cleanAlias];
       await (_db.foodItems.update()..where((f) => f.id.equals(foodItemId)))
           .write(FoodItemsCompanion(

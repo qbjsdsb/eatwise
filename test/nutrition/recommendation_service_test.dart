@@ -153,6 +153,123 @@ void main() {
       expect(recs.any((e) => e.food.name == '异常食物'), isFalse);
     });
   });
+
+  // v3 五维评分专项测试
+  group('recommend v3 五维评分', () {
+    test('冷门降权：常吃高蛋白 > 冷门高蛋白（同密度）', () async {
+      // 两条等蛋白密度的食物，一条常吃（频次高），一条冷门（频次 0）
+      await _seedFood(db, name: '常吃蛋白棒', cal: 100, protein: 20, fat: 2, carbs: 5);
+      await _seedFood(db, name: '冷门蛋白粉', cal: 100, protein: 20, fat: 2, carbs: 5);
+      final foods = await db.foodItems.select().get();
+      final popular = foods.firstWhere((f) => f.name == '常吃蛋白棒');
+      // 给常吃蛋白棒记 3 次历史（频次 > 0）
+      for (var i = 0; i < 3; i++) {
+        await mealRepo.insertMealLog(
+          date: '2026-06-2$i', mealType: 'snack', foodItemId: popular.id,
+          actualServingG: 50, actualCalories: 50, actualProteinG: 10,
+          actualFatG: 1, actualCarbsG: 2.5,
+        );
+      }
+      final r = await service.getDailyRemaining('2026-07-02');
+      final recs = await service.recommend(remaining: r, limit: 10);
+      final popularIdx = recs.indexWhere((e) => e.food.name == '常吃蛋白棒');
+      final coldIdx = recs.indexWhere((e) => e.food.name == '冷门蛋白粉');
+      // 两条都应在列表中，且常吃的排前
+      expect(popularIdx, greaterThanOrEqualTo(0));
+      expect(coldIdx, greaterThanOrEqualTo(0));
+      expect(popularIdx, lessThan(coldIdx));
+    });
+
+    test('基础食材白名单：白名单食物有底分不沉底', () async {
+      // 鸡蛋（白名单）vs 同营养的非白名单食物，鸡蛋应有底分优势
+      await _seedFood(db, name: '鸡蛋', cal: 144, protein: 13, fat: 9, carbs: 1.1);
+      await _seedFood(db, name: '某冷门蛋制品', cal: 144, protein: 13, fat: 9, carbs: 1.1);
+      final r = await service.getDailyRemaining('2026-07-02');
+      final recs = await service.recommend(remaining: r, limit: 10);
+      final eggIdx = recs.indexWhere((e) => e.food.name == '鸡蛋');
+      final coldIdx = recs.indexWhere((e) => e.food.name == '某冷门蛋制品');
+      expect(eggIdx, greaterThanOrEqualTo(0));
+      if (coldIdx >= 0) {
+        expect(eggIdx, lessThan(coldIdx));
+      }
+    });
+
+    test('profile 素食过滤：vegetarian 排除肉类', () async {
+      await profileRepo.update(dietPreference: 'vegetarian');
+      final profile = await profileRepo.get();
+      final r = await service.getDailyRemaining('2026-07-02');
+      final recs = await service.recommend(
+        remaining: r, limit: 10, profile: profile);
+      // 鸡胸肉含"鸡"应被排除（vegetarian 排除肉）
+      expect(recs.any((e) => e.food.name == '鸡胸肉'), isFalse);
+      // 白菜/米饭应保留
+      expect(recs.any((e) => e.food.name == '白菜'), isTrue);
+    });
+
+    test('profile 乳糖不耐过滤：排除牛奶保留植物奶', () async {
+      await _seedFood(db, name: '纯牛奶', cal: 54, protein: 3, fat: 3.2, carbs: 3.4);
+      await _seedFood(db, name: '燕麦奶', cal: 40, protein: 1.5, fat: 1.5, carbs: 6);
+      await profileRepo.update(dietPreference: 'lactose_intolerant');
+      final profile = await profileRepo.get();
+      final r = await service.getDailyRemaining('2026-07-02');
+      final recs = await service.recommend(
+        remaining: r, limit: 10, profile: profile);
+      expect(recs.any((e) => e.food.name == '纯牛奶'), isFalse); // 排除
+      expect(recs.any((e) => e.food.name == '燕麦奶'), isTrue); // 保留
+    });
+
+    test('时段感知：历史常作早餐的食物在早餐时段加分', () async {
+      // 给鸡蛋记 3 次早餐 + 1 次晚餐 → 早餐占比 75%
+      final foods = await db.foodItems.select().get();
+      final egg = foods.firstWhere((f) => f.name == '鸡蛋');
+      for (final mt in ['breakfast', 'breakfast', 'breakfast', 'dinner']) {
+        await mealRepo.insertMealLog(
+          date: '2026-06-2${mt == 'breakfast' ? '0' : '5'}',
+          mealType: mt, foodItemId: egg.id,
+          actualServingG: 60, actualCalories: 86, actualProteinG: 7.8,
+          actualFatG: 5.4, actualCarbsG: 0.7,
+        );
+      }
+      final r = await service.getDailyRemaining('2026-07-02');
+      // 早餐时段推荐
+      final breakfastRecs = await service.recommend(
+        remaining: r, limit: 10, mealType: 'breakfast');
+      // 晚餐时段推荐
+      final dinnerRecs = await service.recommend(
+        remaining: r, limit: 10, mealType: 'dinner');
+      final breakfastEggIdx = breakfastRecs.indexWhere((e) => e.food.name == '鸡蛋');
+      final dinnerEggIdx = dinnerRecs.indexWhere((e) => e.food.name == '鸡蛋');
+      // 早餐时段鸡蛋应存在（加了时段分）
+      expect(breakfastEggIdx, greaterThanOrEqualTo(0));
+      // 早餐时段鸡蛋得分应高于晚餐时段（时段加分）
+      if (dinnerEggIdx >= 0) {
+        expect(breakfastRecs[breakfastEggIdx].score,
+            greaterThan(dinnerRecs[dinnerEggIdx].score));
+      }
+    });
+
+    test('多样性：昨日已吃食物降权', () async {
+      final foods = await db.foodItems.select().get();
+      final egg = foods.firstWhere((f) => f.name == '鸡蛋');
+      // 鸡蛋昨日吃
+      await mealRepo.insertMealLog(
+        date: '2026-07-01', mealType: 'breakfast', foodItemId: egg.id,
+        actualServingG: 60, actualCalories: 86, actualProteinG: 7.8,
+        actualFatG: 5.4, actualCarbsG: 0.7,
+      );
+      final r = await service.getDailyRemaining('2026-07-02');
+      final withoutYesterday = await service.recommend(remaining: r, limit: 10);
+      final withYesterday = await service.recommend(
+        remaining: r, limit: 10, yesterdayDate: '2026-07-01');
+      final eggIdxA = withoutYesterday.indexWhere((e) => e.food.name == '鸡蛋');
+      final eggIdxB = withYesterday.indexWhere((e) => e.food.name == '鸡蛋');
+      if (eggIdxA >= 0 && eggIdxB >= 0) {
+        // 昨日已吃时鸡蛋得分应更低（降权 -2）
+        expect(withYesterday[eggIdxB].score,
+            lessThan(withoutYesterday[eggIdxA].score));
+      }
+    });
+  });
 }
 
 /// 辅助：插入一条食物

@@ -166,4 +166,42 @@ class MealLogRepository {
     }
     return result;
   }
+
+  /// 学习每个食物在各 mealType（breakfast/lunch/dinner/snack）的历史分布。
+  /// 推荐算法 v3 时段感知用：若某食物历史 70% 在早餐吃，当前是早餐时段则加分。
+  ///
+  /// 返回 `Map<foodItemId, Map<mealType, ratio>>`，ratio = 该 mealType 次数 / 该食物总次数。
+  /// N 默认 60 天：比频次窗口长，时段分布需更多样本才稳定。
+  /// 样本不足（总次数 < 2）的食物不返回，避免单次记录误判分布。
+  Future<Map<int, Map<String, double>>> getMealTypeDistribution(
+      {int days = 60}) async {
+    final now = DateTime.now();
+    final start = now.subtract(Duration(days: days));
+    final startDate =
+        '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
+    final rows = await _db.customSelect(
+      'SELECT food_item_id, meal_type, COUNT(id) AS cnt '
+      'FROM meal_logs '
+      'WHERE date >= ? '
+      'GROUP BY food_item_id, meal_type',
+      variables: [Variable.withString(startDate)],
+      readsFrom: {_db.mealLogs},
+    ).get();
+    // 先聚合每个食物各 mealType 的次数
+    final raw = <int, Map<String, int>>{};
+    for (final row in rows) {
+      final fid = row.read<int>('food_item_id');
+      final mt = row.read<String>('meal_type');
+      final cnt = row.read<int>('cnt');
+      (raw[fid] ??= {})[mt] = cnt;
+    }
+    // 转为 ratio，样本不足的丢弃
+    final result = <int, Map<String, double>>{};
+    raw.forEach((fid, counts) {
+      final total = counts.values.fold<int>(0, (a, b) => a + b);
+      if (total < 2) return; // 样本不足，跳过
+      result[fid] = counts.map((k, v) => MapEntry(k, v / total));
+    });
+    return result;
+  }
 }

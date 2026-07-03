@@ -246,4 +246,38 @@ void main() {
       expect((await repo.findByNameOrAlias('可乐（罐）'))?.name, '可乐(罐)');
     });
   });
+
+  // addAlias 冲突检测（v3 新增，防反向错配第二道防线）
+  group('addAlias 冲突检测（防别名绑多食物）', () {
+    test('别名已是其他食物的 name → 拒绝写入', () async {
+      final idA = await seedFood('雪碧');
+      final idB = await seedFood('可口可乐');
+      // 试图把"雪碧"（已是 A 的 name）作为 B 的别名 → 应拒绝
+      await repo.addAlias(idB, '雪碧');
+      final b = await repo.getById(idB);
+      expect(b!.aliasesJson, isNull); // 未写入
+    });
+
+    test('别名已是其他食物的 alias → 拒绝写入', () async {
+      final idA = await seedFood('雪碧');
+      final idB = await seedFood('可口可乐');
+      final idC = await seedFood('芬达');
+      // 先正常给 B 加别名"汽水"
+      await repo.addAlias(idB, '汽水');
+      // 试图把"汽水"（已是 B 的 alias）作为 C 的别名 → 应拒绝
+      await repo.addAlias(idC, '汽水');
+      final c = await repo.getById(idC);
+      expect(c!.aliasesJson, isNull); // 未写入
+    });
+
+    test('别名不冲突 → 正常写入', () async {
+      final idA = await seedFood('雪碧');
+      final idB = await seedFood('可口可乐');
+      // "柠檬汽水"不与任何食物冲突 → 正常写入 B
+      await repo.addAlias(idB, '柠檬汽水');
+      final b = await repo.getById(idB);
+      expect(b!.aliasesJson, isNotNull);
+      expect(b.aliasesJson!.contains('柠檬汽水'), isTrue);
+    });
+  });
 }
