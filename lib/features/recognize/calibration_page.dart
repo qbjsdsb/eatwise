@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
 import '../../data/repositories/food_item_repository.dart';
+import '../manual_entry/manual_entry_page.dart';
 
 /// 校准页：按置信度分级
 /// - 置信度 ≥ 0.85 且单品：允许"一键记录"跳过校准
@@ -118,6 +119,17 @@ class _CalibrationPageState extends State<CalibrationPage> {
               onPressed: _isRecording ? null : _trustAi,
               child: const Text('信任 AI'),
             ),
+          // 识别不准？转手动录入（避免用户被迫记录错误识别结果）
+          TextButton.icon(
+            onPressed: _isRecording
+                ? null
+                : () => Navigator.of(context).pushReplacement(
+                      MaterialPageRoute(
+                          builder: (_) => const ManualEntryPage()),
+                    ),
+            icon: const Icon(Icons.edit_outlined),
+            label: const Text('转手动'),
+          ),
         ],
       ),
       body: Padding(

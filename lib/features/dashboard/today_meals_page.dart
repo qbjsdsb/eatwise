@@ -230,112 +230,118 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   }
 
   Future<void> _showFeedbackDialog(MealLog m) async {
-    final db = await ref.read(recognize.databaseProvider.future);
-    final feedbackRepo = RecognitionFeedbackRepository(db);
-    if (await feedbackRepo.hasFeedback(m.id)) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已反馈过')));
+    try {
+      final db = await ref.read(recognize.databaseProvider.future);
+      final feedbackRepo = RecognitionFeedbackRepository(db);
+      if (await feedbackRepo.hasFeedback(m.id)) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('已反馈过')));
+        }
+        return;
       }
-      return;
-    }
-    if (!mounted) return;
-    final isCorrect = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('识别准不准？'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('准')),
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('不准')),
-        ],
-      ),
-    );
-    if (isCorrect == null) return;
-    if (!mounted) return;
+      if (!mounted) return;
+      final isCorrect = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('识别准不准？'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('准')),
+            TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('不准')),
+          ],
+        ),
+      );
+      if (isCorrect == null) return;
+      if (!mounted) return;
 
-    // T45：不准时追加输入正确菜名 + 份量
-    String? correctedDishName;
-    double? correctedServingG;
-    if (!isCorrect) {
-      // controller 提到外层，try/finally 释放（避免泄漏）
-      final nameCtrl =
-          TextEditingController(text: _foodNames[m.foodItemId] ?? '');
-      final servingCtrl = TextEditingController();
-      try {
-        final correction = await showDialog<_CorrectionResult>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('请输入正确信息'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(
-                      labelText: '正确菜名', border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: servingCtrl,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                      labelText: '正确份量(g)', border: OutlineInputBorder()),
+      // T45：不准时追加输入正确菜名 + 份量
+      String? correctedDishName;
+      double? correctedServingG;
+      if (!isCorrect) {
+        // controller 提到外层，try/finally 释放（避免泄漏）
+        final nameCtrl =
+            TextEditingController(text: _foodNames[m.foodItemId] ?? '');
+        final servingCtrl = TextEditingController();
+        try {
+          final correction = await showDialog<_CorrectionResult>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('请输入正确信息'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(
+                        labelText: '正确菜名', border: OutlineInputBorder()),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: servingCtrl,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    decoration: const InputDecoration(
+                        labelText: '正确份量(g)', border: OutlineInputBorder()),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('跳过')),
+                FilledButton(
+                  onPressed: () => Navigator.pop(ctx, _CorrectionResult(
+                    nameCtrl.text.trim().isEmpty ? null : nameCtrl.text.trim(),
+                    double.tryParse(servingCtrl.text.trim()),
+                  )),
+                  child: const Text('提交'),
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx), child: const Text('跳过')),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, _CorrectionResult(
-                  nameCtrl.text.trim().isEmpty ? null : nameCtrl.text.trim(),
-                  double.tryParse(servingCtrl.text.trim()),
-                )),
-                child: const Text('提交'),
-              ),
-            ],
-          ),
-        );
-        if (correction != null) {
-          correctedDishName = correction.name;
-          correctedServingG = correction.servingG;
+          );
+          if (correction != null) {
+            correctedDishName = correction.name;
+            correctedServingG = correction.servingG;
+          }
+        } finally {
+          nameCtrl.dispose();
+          servingCtrl.dispose();
         }
-      } finally {
-        nameCtrl.dispose();
-        servingCtrl.dispose();
       }
-    }
-    if (!mounted) return;
+      if (!mounted) return;
 
-    // T23：反查 prompt_version（优先从 pending_recognition 按 imagePath 查，
-    // fallback Prompts.version）。拍照识别的 meal_log 有 original_image_path，
-    // 对应 pending_recognition.image_path
-    String promptVersion = Prompts.version;
-    if (m.originalImagePath != null) {
-      final pendingRepo = PendingRecognitionRepository(db);
-      final pendingList = await pendingRepo.listAll();
-      final match =
-          pendingList.where((p) => p.imagePath == m.originalImagePath).toList();
-      if (match.isNotEmpty && match.first.promptVersion != null) {
-        promptVersion = match.first.promptVersion!;
+      // T23：反查 prompt_version（精准 where 查询，替代 listAll 全表扫）
+      // 拍照识别的 meal_log 有 original_image_path，对应 pending_recognition.image_path
+      String promptVersion = Prompts.version;
+      if (m.originalImagePath != null) {
+        final pendingRepo = PendingRecognitionRepository(db);
+        final pending = await pendingRepo.getByImagePath(m.originalImagePath!);
+        if (pending?.promptVersion != null) {
+          promptVersion = pending!.promptVersion!;
+        }
       }
-    }
-    // T45：传 correctedDishName/ServingG
-    await feedbackRepo.insert(
-      mealLogId: m.id,
-      isCorrect: isCorrect,
-      correctedDishName: correctedDishName,
-      correctedServingG: correctedServingG,
-      promptVersion: promptVersion,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('已记录反馈')));
+      // T45：传 correctedDishName/ServingG
+      await feedbackRepo.insert(
+        mealLogId: m.id,
+        isCorrect: isCorrect,
+        correctedDishName: correctedDishName,
+        correctedServingG: correctedServingG,
+        promptVersion: promptVersion,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('已记录反馈')));
+      }
+    } catch (e) {
+      // 整个反馈流程异常兜底：给用户反馈，不静默卡住
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('反馈失败：$e')));
+      }
     }
   }
 }

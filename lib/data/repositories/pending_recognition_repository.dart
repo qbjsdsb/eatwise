@@ -42,6 +42,14 @@ class PendingRecognitionRepository {
         .get();
   }
 
+  /// 按 imagePath 精准查询单条记录（反查 prompt_version 用，替代 listAll 全表扫）
+  Future<PendingRecognition?> getByImagePath(String imagePath) {
+    return (_db.pendingRecognitions.select()
+          ..where((p) => p.imagePath.equals(imagePath))
+          ..limit(1))
+        .getSingleOrNull();
+  }
+
   /// 标记成功
   Future<void> markDone(int id, int resultFoodItemId) async {
     await (_db.pendingRecognitions.update()..where((p) => p.id.equals(id)))
