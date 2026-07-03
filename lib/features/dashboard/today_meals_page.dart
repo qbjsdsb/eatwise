@@ -11,6 +11,7 @@ import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/pending_recognition_repository.dart';
 import '../../data/repositories/recognition_feedback_repository.dart';
 import '../recognize/providers.dart' as recognize;
+import 'meal_edit_dialog.dart';
 
 /// 今日记录页（按餐次分组 + 编辑份量 + 删除 + 识别反馈）
 class TodayMealsPage extends ConsumerStatefulWidget {
@@ -317,61 +318,32 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
 
   Future<void> _showEditDialog(MealLog m) async {
     if (_busy) return; // 防重入
-    final servingCtrl =
-        TextEditingController(text: m.actualServingG.toStringAsFixed(0));
-    double? result;
-    try {
-      // dialog 在 root Navigator，按钮必须用 dialog 的 ctx pop；
-      // 用页面 context 会 pop 掉 RecordsTabPage 嵌套 Navigator 栈顶 → 黑屏
-      result = await showDialog<double>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('编辑份量'),
-          content: TextField(
-              controller: servingCtrl,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: '份量 (g)')),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('取消')),
-            // 主操作"保存"用 FilledButton（MD3 对话框规范：确认用 FilledButton）
-            FilledButton(
-              onPressed: () =>
-                  Navigator.pop(ctx, double.tryParse(servingCtrl.text)),
-              child: const Text('保存')),
-          ],
-        ),
-      );
-    } finally {
-      servingCtrl.dispose();
-    }
-    if (result == null || result <= 0) return;
+    // dialog 在 root Navigator，避免 tab 页嵌套 Navigator 误 pop（陷阱 7）
+    final result = await showDialog<MealEditResult>(
+      context: context,
+      builder: (ctx) => MealEditDialog(
+        mealLog: m,
+        currentFoodName: _foodNames[m.foodItemId] ?? '食物 #${m.foodItemId}',
+      ),
+    );
+    if (result == null) return;
     if (!mounted) return;
     setState(() => _busy = true);
     try {
       final repo = await ref.read(recognize.mealLogRepoProvider.future);
-      if (m.actualServingG <= 0) {
-        // 原份量异常（≤0），无法按比例重算 → 直接用新份量，营养素保持原值
-        await repo.updateMealLog(
-          id: m.id,
-          actualServingG: result,
-          actualCalories: m.actualCalories,
-          actualProteinG: m.actualProteinG,
-          actualFatG: m.actualFatG,
-          actualCarbsG: m.actualCarbsG,
-        );
-      } else {
-        final ratio = result / m.actualServingG;
-        await repo.updateMealLog(
-          id: m.id,
-          actualServingG: result,
-          actualCalories: m.actualCalories * ratio,
-          actualProteinG: m.actualProteinG * ratio,
-          actualFatG: m.actualFatG * ratio,
-          actualCarbsG: m.actualCarbsG * ratio,
-        );
-      }
+      // 全字段更新：份量 + 营养值（dialog 内已按优先级算好）+ 餐次 + 日期
+      // foodItemId 仅在换了食物时传（null 不更新，沿用原值）
+      await repo.updateMealLog(
+        id: m.id,
+        actualServingG: result.servingG,
+        actualCalories: result.calories,
+        actualProteinG: result.proteinG,
+        actualFatG: result.fatG,
+        actualCarbsG: result.carbsG,
+        date: result.date,
+        mealType: result.mealType,
+        foodItemId: result.foodItemId,
+      );
       if (mounted) _load();
     } catch (e) {
       if (mounted) {

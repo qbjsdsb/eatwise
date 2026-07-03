@@ -13,6 +13,32 @@ class WeightLogRepository {
         ));
   }
 
+  /// 单条查询（编辑 dialog 初始值用）
+  Future<WeightLog?> getById(int id) {
+    return (_db.weightLogs.select()..where((w) => w.id.equals(id)))
+        .getSingleOrNull();
+  }
+
+  /// 部分更新体重记录（[weightKg]/[date] 任一非 null 才更新该字段，null 跳过）
+  /// 用于编辑 dialog：用户可能只改体重值不改日期，或只改日期不改值
+  Future<void> update({
+    required int id,
+    double? weightKg,
+    String? date,
+  }) async {
+    await (_db.weightLogs.update()..where((w) => w.id.equals(id))).write(
+      WeightLogsCompanion(
+        weightKg: weightKg == null ? const Value.absent() : Value(weightKg),
+        date: date == null ? const Value.absent() : Value(date),
+      ),
+    );
+  }
+
+  /// 删除单条体重记录（输错纠错用）
+  Future<void> delete(int id) async {
+    await (_db.weightLogs.delete()..where((w) => w.id.equals(id))).go();
+  }
+
   /// 查询某区间体重记录（折线图用，按日期升序）
   Future<List<WeightLog>> getRange(String startDate, String endDate) {
     return (_db.weightLogs.select()

@@ -82,6 +82,171 @@ void main() {
     expect(meals.first.actualProteinG, 2.0);
   });
 
+  // ===== 编辑能力扩展测试（P0 第一批：date/mealType/foodItemId + 部分更新）=====
+
+  group('updateMealLog 扩展字段（date/mealType/foodItemId）', () {
+    test('只改 date，其他字段保持原值', () async {
+      final mealId = await seedFoodAndMeal(
+        date: '2026-07-02',
+        serving: 100,
+        calories: 50,
+        protein: 1.0,
+        fat: 0.2,
+        carbs: 13.5,
+      );
+
+      await repo.updateMealLog(id: mealId, date: '2026-07-05');
+
+      // 原日期应查不到
+      expect((await repo.getMealsByDate('2026-07-02')).length, 0);
+      // 新日期能查到，且其他字段未变
+      final meals = await repo.getMealsByDate('2026-07-05');
+      expect(meals.length, 1);
+      expect(meals.first.actualServingG, 100);
+      expect(meals.first.actualCalories, 50);
+      expect(meals.first.actualProteinG, 1.0);
+      expect(meals.first.mealType, 'breakfast');
+    });
+
+    test('只改 mealType，其他字段保持原值', () async {
+      final mealId = await seedFoodAndMeal(
+        mealType: 'breakfast',
+        serving: 150,
+        calories: 75,
+      );
+
+      await repo.updateMealLog(id: mealId, mealType: 'lunch');
+
+      final meals = await repo.getMealsByDate('2026-07-02');
+      expect(meals.length, 1);
+      expect(meals.first.mealType, 'lunch');
+      // 份量/热量不应被改动
+      expect(meals.first.actualServingG, 150);
+      expect(meals.first.actualCalories, 75);
+    });
+
+    test('换食物 foodItemId，份量/营养保持原值（UI 层负责重算）', () async {
+      final mealId = await seedFoodAndMeal(
+        serving: 200,
+        calories: 100,
+        protein: 5.0,
+      );
+      // 新建另一个食物用于替换
+      final newFoodId = await db.into(db.foodItems).insert(
+            FoodItemsCompanion.insert(
+              name: '替换食物',
+              defaultServingG: 100,
+              caloriesPer100g: 80,
+              proteinPer100g: 4.0,
+              fatPer100g: 0.5,
+              carbsPer100g: 18.0,
+              source: 'test',
+              sourceVersion: 'v1',
+              createdAt: 0,
+            ),
+          );
+
+      await repo.updateMealLog(id: mealId, foodItemId: newFoodId);
+
+      final meals = await repo.getMealsByDate('2026-07-02');
+      expect(meals.length, 1);
+      expect(meals.first.foodItemId, newFoodId);
+      // 份量/营养未传 → 保留原值（UI 层换食物后会调重算，repo 只负责持久化）
+      expect(meals.first.actualServingG, 200);
+      expect(meals.first.actualCalories, 100);
+      expect(meals.first.actualProteinG, 5.0);
+    });
+
+    test('同时改 date + mealType + 份量 + 营养（全字段）', () async {
+      final mealId = await seedFoodAndMeal(
+        date: '2026-07-02',
+        mealType: 'breakfast',
+        serving: 100,
+        calories: 50,
+        protein: 1.0,
+        fat: 0.2,
+        carbs: 13.5,
+      );
+
+      await repo.updateMealLog(
+        id: mealId,
+        date: '2026-07-05',
+        mealType: 'dinner',
+        actualServingG: 250,
+        actualCalories: 125,
+        actualProteinG: 2.5,
+        actualFatG: 0.5,
+        actualCarbsG: 33.75,
+      );
+
+      final meals = await repo.getMealsByDate('2026-07-05');
+      expect(meals.length, 1);
+      expect(meals.first.mealType, 'dinner');
+      expect(meals.first.actualServingG, 250);
+      expect(meals.first.actualCalories, 125);
+      expect(meals.first.actualProteinG, 2.5);
+      expect(meals.first.actualFatG, 0.5);
+      expect(meals.first.actualCarbsG, 33.75);
+    });
+
+    test('什么都不传 → 不修改任何字段', () async {
+      final mealId = await seedFoodAndMeal(
+        serving: 100,
+        calories: 50,
+        protein: 1.0,
+        fat: 0.2,
+        carbs: 13.5,
+      );
+
+      await repo.updateMealLog(id: mealId);
+
+      final meals = await repo.getMealsByDate('2026-07-02');
+      expect(meals.length, 1);
+      expect(meals.first.actualServingG, 100);
+      expect(meals.first.actualCalories, 50);
+      expect(meals.first.mealType, 'breakfast');
+    });
+  });
+
+  group('updateMealLog 哨兵防御（foodItemId<=0 拒绝写入）', () {
+    test('foodItemId=0 抛 ArgumentError', () async {
+      final mealId = await seedFoodAndMeal();
+      expect(
+        () => repo.updateMealLog(id: mealId, foodItemId: 0),
+        throwsArgumentError,
+      );
+    });
+
+    test('foodItemId=-1 抛 ArgumentError', () async {
+      final mealId = await seedFoodAndMeal();
+      expect(
+        () => repo.updateMealLog(id: mealId, foodItemId: -1),
+        throwsArgumentError,
+      );
+    });
+
+    test('foodItemId=null（不传）→ 不触发校验，正常执行', () async {
+      final mealId = await seedFoodAndMeal();
+      // 只改份量，不传 foodItemId，不应抛错
+      await repo.updateMealLog(id: mealId, actualServingG: 200);
+      final meals = await repo.getMealsByDate('2026-07-02');
+      expect(meals.first.actualServingG, 200);
+    });
+
+    test('抛错后记录未被修改（事务回滚 / 提前抛错）', () async {
+      final mealId = await seedFoodAndMeal(serving: 100, calories: 50);
+      // 抛错
+      try {
+        await repo.updateMealLog(id: mealId, foodItemId: 0);
+      } catch (_) {}
+      // 记录应保持原值
+      final meals = await repo.getMealsByDate('2026-07-02');
+      expect(meals.length, 1);
+      expect(meals.first.actualServingG, 100);
+      expect(meals.first.actualCalories, 50);
+    });
+  });
+
   test('deleteMealLog 后 recognition_feedback 级联删除', () async {
     final mealId = await seedFoodAndMeal(confidence: 0.95);
 

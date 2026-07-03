@@ -77,22 +77,45 @@ class MealLogRepository {
     return meals.fold<double>(0.0, (sum, m) => sum + m.actualCalories);
   }
 
-  /// 更新某条 meal_log 的份量（校准后修正，按比例重算营养素）
+  /// 更新某条 meal_log 的部分字段（[MealLogs] 表）
+  ///
+  /// 全字段可选：传 null（或不传）跳过该字段更新，传非 null 才写入。
+  /// 这样编辑 dialog 可只改 date/mealType 而不动营养值，或只改份量按比例重算，
+  /// 或只换 foodItemId 而保留原份量。向后兼容现有调用方（传所有 5 个营养字段）。
+  ///
+  /// 哨兵防御：[foodItemId] 传 <=0 抛 ArgumentError（与 insertMealLog 一致），
+  /// 防止 UI 层把 0 哨兵写入非空 FK 字段致崩溃。
   Future<void> updateMealLog({
     required int id,
-    required double actualServingG,
-    required double actualCalories,
-    required double actualProteinG,
-    required double actualFatG,
-    required double actualCarbsG,
+    double? actualServingG,
+    double? actualCalories,
+    double? actualProteinG,
+    double? actualFatG,
+    double? actualCarbsG,
+    String? date,
+    String? mealType,
+    int? foodItemId,
   }) async {
+    if (foodItemId != null && foodItemId <= 0) {
+      throw ArgumentError('foodItemId 必须为真实 id，不能是 0 哨兵');
+    }
     await (_db.mealLogs.update()..where((m) => m.id.equals(id))).write(
       MealLogsCompanion(
-        actualServingG: Value(actualServingG),
-        actualCalories: Value(actualCalories),
-        actualProteinG: Value(actualProteinG),
-        actualFatG: Value(actualFatG),
-        actualCarbsG: Value(actualCarbsG),
+        actualServingG:
+            actualServingG == null ? const Value.absent() : Value(actualServingG),
+        actualCalories:
+            actualCalories == null ? const Value.absent() : Value(actualCalories),
+        actualProteinG: actualProteinG == null
+            ? const Value.absent()
+            : Value(actualProteinG),
+        actualFatG:
+            actualFatG == null ? const Value.absent() : Value(actualFatG),
+        actualCarbsG:
+            actualCarbsG == null ? const Value.absent() : Value(actualCarbsG),
+        date: date == null ? const Value.absent() : Value(date),
+        mealType: mealType == null ? const Value.absent() : Value(mealType),
+        foodItemId:
+            foodItemId == null ? const Value.absent() : Value(foodItemId),
       ),
     );
   }

@@ -36,8 +36,9 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（v0.12.0 已发布，本次 P0/P1/P2 食物识别增强已提交，未发布）
+**工作区状态**：clean（v0.12.0 已发布；P0/P1/P2 食物识别增强 + 全 editable 第一批体重/餐次已提交，未发布）
 **最近 commit**：
+- `（待提交）` feat: 全 editable 第一批——体重记录可改值/改日期/删，餐次记录可改份量/营养/餐次/日期/换食物/高级覆盖
 - `7d1e8bd` docs: HANDOFF 补全 v0.12.0 release workflow run URL + APK 大小
 - `cbdc664` docs: HANDOFF 补充图标精致化详情（v0.12.0 已含）
 - `c37912b` feat: 启动器图标精致化 + bump v0.12.0（已发布 v0.12.0）
@@ -46,6 +47,33 @@
 - `a8aa1f5` feat: 界面 MD3 全面优化（协调性+合规+字体层级，已随 v0.12.0 发布）
 - `a680241` feat: 智能推荐算法 v3 五维评分 + addAlias 冲突检测（已随 v0.12.0 发布）
 - `1064449` fix: 识别精准度修复+界面偏右修正（雪花啤酒→雪碧假阳性，已随 v0.12.0 发布）
+
+**本次全 editable 第一批（本次 commit，未发布）**：
+解决用户反馈"所有功能都希望自己改，比如体重输错了点了确认后还能改"。
+4 批渐进实施，本次第一批（P0：体重 + 餐次全 editable）。
+- **体重记录全 editable**：`WeightLogRepository` 加 `getById`/`update`/`delete`（部分更新，null 跳过）；`weight_page` ListTile → Dismissible（左滑删除带二次确认 dialog）+ onTap 编辑 dialog（体重 TextField + 日期 DatePicker，StatefulBuilder 局部刷新）；编辑最新一条时同步 `ProfileRepository.update(weightKg:)`（与 _save 一致逻辑，保证 dashboard 宏量目标用最新体重）；删除/编辑后调 RefreshBus.notify 跨页刷新
+- **餐次记录全 editable（8 字段）**：`MealLogRepository.updateMealLog` 从 5 必填营养字段扩展为 8 可选字段（加 date/mealType/foodItemId，全部 null 跳过保持原值），向后兼容现有 5 处调用；新增独立 `MealEditDialog`（ConsumerStatefulWidget，5 个 TextEditingController 管理份量+4 营养），支持换食物（push FoodLibraryPage pickForReuse 模式 + 自动重算营养）、改餐次（ChoiceChip 4 选 1）、改日期（DatePicker ListTile）、高级覆盖（ExpansionTile 4 个营养 TextField，监听手动修改标记 _nutritionOverridden 优先级最高）、营养重算优先级（advanced 覆盖 > 换食物重算 > 份量比例）
+- **哨兵防御扩展**：`updateMealLog` 加 `foodItemId != null && foodItemId <= 0` ArgumentError 校验（与 insertMealLog 一致，防 UI 把 0 哨兵写入非空 FK 字段）
+- **测试**：weight_log_repository 加 11 个测试（getById 2 + update 5 + delete 3 + 不存在 id 边界），meal_log_repository 加 9 个测试（date/mealType/foodItemId 部分更新 5 + 哨兵防御 4），全量 377 passed (3 skipped)
+- **文件**：新建 1（meal_edit_dialog.dart），修改 4（weight_log_repository/weight_page/meal_log_repository/today_meals_page）+ 2 测试文件
+
+**未完成/待办**（按优先级）：
+1. ⬜ 用户真机验收 v0.12.0（装 APK 验证：图标精致化效果 + MD3 全面优化 + 智能推荐 v3 + 深度审查修复 15 项）
+2. 🔧 全 editable 第二批：FoodItems 删除/归档 + name/aliases 编辑（用户已批准 4 批计划，第一批已完成）
+3. 🔧 全 editable 第三批：PendingRecognitions UI 页 + 重试/删除 + Feedbacks 历史/删除
+4. 🔧 全 editable 第四批：历史 InsightSummaries 查看页 + 份量校准回滚
+5. 🔧 第三波（待用户确认后启动）：建议 6（接入 USDA FoodData Central API 替代部分 OFF 云查，免费但需 API key）—— 但需先评估 OFF 中文命中率，USDA 是英文 API 中文菜名需翻译层
+6. ⏸️ 建议 4 餐前/餐后双拍对比（DietDelta 思路）：用户明确暂不做
+7. 🔧 重构性优化（风险较高，不阻塞当前版本）：
+   - 路由方式统一（GoRouter vs Navigator.push 混用）
+   - 版本号从 PackageInfo 读取（替代硬编码，me_page/settings_page/sentry_init 三处）
+   - dashboard/today_meals N+1 查询优化（getByIds）
+   - 测试覆盖增强：AI 兜底（test S3 哨兵防御已补）、getThemeSeed 单元测试
+   - Sentry appRunner 标准化 + FlutterError.onError 链式调用
+   - 后台回补补 fallback provider + circuitBreaker + incrementMonthlyCount
+   - NutritionLookup 3x OFF 云查重构（深度审查 M4，暂不修复）
+   - RecognitionPostProcessor correctAdditionalDishes needsRetry 丢弃（深度审查 M3，暂不修复）
+   - image_quality_checker 改 isolate（深度审查 core M1，暂不修复）
 
 **本次 P0/P1/P2 食物识别增强（本次 commit，未发布）**：
 解决"雪花啤酒识别成雪碧 + 奶茶/网红零食能否准确分辨 + 热量能否严谨计算"三问。
@@ -169,21 +197,6 @@
 - 修复：profile_page pop 后 + weight_page _save 末尾都加 RefreshBus.instance.notify()；weight_page insert 后同步 ProfileRepository.update(weightKg: weight)
 - 设计决策：weight_page 不同步重算 dailyCalorieTarget（BMR 重算只在用户主动编辑档案时做，日常体重波动通过 TDEE 校准 adjustmentKcal 微调）
 - 4 个 widget 测试全过（ProfilePage/WeightPage notify + weightKg 同步 + weight_logs 不影响）
-
-**未完成/待办**（按优先级）：
-1. ⬜ 用户真机验收 v0.12.0（装 APK 验证：图标精致化效果 + MD3 全面优化 + 智能推荐 v3 + 深度审查修复 15 项）
-2. 🔧 第三波（待用户确认后启动）：建议 6（接入 USDA FoodData Central API 替代部分 OFF 云查，免费但需 API key）—— 但需先评估 OFF 中文命中率，USDA 是英文 API 中文菜名需翻译层
-3. ⏸️ 建议 4 餐前/餐后双拍对比（DietDelta 思路）：用户明确暂不做
-4. 🔧 重构性优化（风险较高，不阻塞当前版本）：
-   - 路由方式统一（GoRouter vs Navigator.push 混用）
-   - 版本号从 PackageInfo 读取（替代硬编码，me_page/settings_page/sentry_init 三处）
-   - dashboard/today_meals N+1 查询优化（getByIds）
-   - 测试覆盖增强：AI 兜底（test S3 哨兵防御已补）、getThemeSeed 单元测试
-   - Sentry appRunner 标准化 + FlutterError.onError 链式调用
-   - 后台回补补 fallback provider + circuitBreaker + incrementMonthlyCount
-   - NutritionLookup 3x OFF 云查重构（深度审查 M4，暂不修复）
-   - RecognitionPostProcessor correctAdditionalDishes needsRetry 丢弃（深度审查 M3，暂不修复）
-   - image_quality_checker 改 isolate（深度审查 core M1，暂不修复）
 
 ---
 
@@ -329,6 +342,32 @@
 
 **测试**：新增 18 个测试（品类校准 11 + brand 匹配 3 + brand 持久化 4），全量 358 passed (3 skipped)。FakeOffProvider.lookup 和 _FakeNutritionLookup.lookupSingleItem 签名同步加 `{String brand = ''}` 防止 invalid_override
 
+### 3.16 全 editable 架构（4 批渐进，第一批已实施，本次 commit 未发布）
+
+解决用户反馈"所有功能都希望自己改，比如体重输错了点了确认后还能改"。审计现状：weight_logs 无 update/delete（ListTile 无交互）、meal_logs updateMealLog 只接受 5 营养字段（无 date/mealType/foodItemId）、food_items 无 delete/无 name 编辑、pending_recognitions 无 UI 页、recognition_feedbacks 无 list/delete、insight_summaries 无历史访问。4 批渐进实施。
+
+**第一批（P0：体重 + 餐次全 editable，本次 commit）**：
+- `WeightLogRepository` 加 `getById(id)` / `update(id, weightKg?, date?)` / `delete(id)` —— 部分更新模式（null 跳过用 `Value.absent()`，非 null 用 `Value(x)`）
+- `weight_page` ListTile → Dismissible（confirmDismiss 二次确认 dialog 比 Undo SnackBar 更适合低频数据）+ onTap 编辑 dialog（StatefulBuilder 局部刷新避免重建整个页面）
+- **编辑最新一条体重必须同步 ProfileRepository.update(weightKg:)**（与 _save 一致逻辑，否则 dashboard 宏量目标 proteinGPerKg*weightKg 仍用旧体重）；判断"最新"用 `_logs.isEmpty || log.id == _logs.last.id`（_logs 已按日期升序）
+- `MealLogRepository.updateMealLog` 从 5 必填扩展为 8 可选（加 date/mealType/foodItemId），向后兼容现有 5 处调用（required double → double? 不破坏调用方）
+- **新增独立 MealEditDialog**（ConsumerStatefulWidget，不内嵌 AlertDialog）—— 复杂表单状态隔离；5 个 TextEditingController（份量 + 4 营养）+ 4 个独立状态（_mealType/_selectedDate/_newFoodItemId/_nutritionOverridden）
+- **营养重算优先级**：advanced 手动覆盖 > 换食物重算 > 份量比例。`_nutritionOverridden` 标志由 4 个营养 TextField 的 listener `_markOverride` 设置；`_setCtrlSilently` 在程序化设值前移除 listener，避免触发 override 误判
+- **换食物**：push `FoodLibraryPage(pickForReuse:true)` 接收 FoodItem，用新食物 per100g × 当前份量重算营养（与 NutritionLookup.lookupSingleItem 反算公式一致：caloriesPer100g * servingG / 100）
+- **哨兵防御扩展**：`updateMealLog` 加 `foodItemId != null && foodItemId <= 0` ArgumentError（与 insertMealLog 一致，防 UI 把 0 哨兵写入非空 FK 字段致 PRAGMA foreign_keys=ON 崩溃）
+
+**第二批（待实施）：FoodItems 删除/归档 + name/aliases 编辑**
+- 现状：FoodItemRepository 无 delete 方法，food_edit_page 只能改营养不能改名
+- 计划：加 delete（带 meal_log 引用检查，有引用则归档 source='archived' 而非物理删除）+ updateName + updateAliases
+
+**第三批（待实施）：PendingRecognitions UI 页 + 重试/删除 + Feedbacks 历史/删除**
+- 现状：pending_recognitions 无 UI 页（只能 workmanager 后台重试），recognition_feedbacks 无 list/delete
+- 计划：me_page 加"离线队列"入口显示 pending 列表（手动重试/删除单条），加"反馈历史"列表（按时间倒序，可删除）
+
+**第四批（待实施）：历史 InsightSummaries 查看页 + 份量校准回滚**
+- 现状：insight_summaries 只显示当前周期，历史 insight 无访问入口；meal_log 份量校准后无法回滚到 AI 原始估算
+- 计划：insight_page 加历史周期 SegmentedButton（weekly/monthly 切换 + 滚动历史），meal_log 加 estimatedServingGAiOriginal 字段记录 AI 原始值供回滚
+
 ---
 
 ## 4. 已知陷阱（踩过的坑）
@@ -394,6 +433,14 @@
 
 40. **prompt v1.8 啤酒剥离示例必须强调瓶身文字**：雪花啤酒瓶身绿色与雪碧瓶身绿色视觉相似，AI 视觉模型仅看颜色易混淆。prompt 必须明确"读瓶身标签文字是'雪花'不是'雪碧'"，dish_name=啤酒/brand=雪花。仅靠品类校准（beer 默认 43）不够——若 AI 识别成雪碧（carbonated 默认 43，巧合热量相近），品类校准无法拦截，必须靠 prompt 引导 AI 读文字。同时 brand 字段必填连锁品牌（喜茶/瑞幸等），后端按 brand+name 查品牌库精确命中。prompt 改版本必须同步 bump `Prompts.version`（v1.7→v1.8），离线入队存 promptVersion 字段以便后续兼容
 
+41. **Drift 部分更新必须用 Value.absent() 跳过 null 字段**：repo update 方法把可选参数转 `MealLogsCompanion` 时，`param == null ? const Value.absent() : Value(param)`。`Value.absent()` 表示"该字段不参与 UPDATE"，`Value(null)` 表示"该字段置 NULL"，`Value(x)` 表示"该字段置 x"。三者语义完全不同。若把 null 字段写成 `Value(null)` 会把数据库已有值清空（破坏数据）；写成 `Value.absent()` 才是"保持原值"。WeightLogRepository.update 和 MealLogRepository.updateMealLog 都遵循此模式。新增可选字段更新方法必须照此实现
+
+42. **编辑最新一条体重必须同步 profile.weightKg**：weight_page 编辑/删除体重记录时，若操作的是 `_logs.last`（最新一条，_logs 已按日期升序），必须同步调 `ProfileRepository.update(weightKg: newValue)`。原因：dashboard 宏量目标 `proteinGPerKg * weightKg` 用 profile.weightKg 而非 weight_logs 最新值。若只改 weight_logs 不改 profile，dashboard 显示的目标仍是旧体重算的。判断"最新"用 `log.id == _logs.last.id`（按 id 不可靠，必须用已排序的 _logs 末位）。删除最新一条时，profile.weightKg 应同步为新的最新一条（_logs 倒数第二条）或保留——当前实现仅编辑时同步，删除时不同步（避免删完所有记录后 profile 体重被清空）
+
+43. **复杂表单 dialog 必须提取为独立 StatefulWidget 而非内嵌 AlertDialog**：餐次编辑涉及 5 TextEditingController + 4 独立状态（_mealType/_selectedDate/_newFoodItemId/_nutritionOverridden）+ 换食物导航 + 日期选择 + 高级覆盖监听。若用 AlertDialog + StatefulBuilder 内联实现，状态管理混乱且无法用 ConsumerStatefulWidget 的 ref。提取为 `MealEditDialog extends ConsumerStatefulWidget` 后：①状态隔离在 dialog 内不污染父页 ②可用 ref.read(recognize.databaseProvider) 获取 DB ③controller 在 dispose 统一释放防泄漏 ④返回值类型化（MealEditResult）比 Map<String,dynamic> 安全。今后涉及 3+ 字段编辑的 dialog 都应提取为独立 widget
+
+44. **TextField 程序化设值前必须移除 listener 避免误触发 override 标记**：MealEditDialog 的 4 个营养 TextField 加了 `_markOverride` listener（用户手动改值时标记 `_nutritionOverridden=true`，让 advanced 覆盖优先级最高）。但程序化设值（如换食物后重算营养、展开 advanced 时回填当前值）也会触发 listener → 误标记 override → 份量/换食物重算被跳过。`_setCtrlSilently` 方法在 setText 前 `removeListener`，setText 后 `addListener`，保证只有用户真实输入才标记 override。controller 的 listener 必须区分"用户输入"与"程序设值"两种触发源
+
 ---
 
 ## 5. 常用命令
@@ -447,7 +494,8 @@ lib/
 │   ├── database/database.dart         # drift，PRAGMA foreign_keys=ON
 │   └── repositories/
 │       ├── food_item_repository.dart  # upsertAiRecognized（更新含 componentsJson）
-│       └── meal_log_repository.dart   # insertMealLog
+│       ├── meal_log_repository.dart   # insertMealLog + updateMealLog（8 可选字段全 editable）
+│       └── weight_log_repository.dart # insert + getRange + getById/update/delete（全 editable）
 └── features/
     ├── recognize/
     │   ├── recognize_controller.dart  # AI 兜底 + 复合菜全 miss 转 AI
@@ -464,6 +512,7 @@ lib/
     ├── me/me_page.dart
     ├── records/records_tab_page.dart
     ├── dashboard/dashboard_page.dart
+    ├── dashboard/meal_edit_dialog.dart   # 全 editable 第一批：餐次编辑独立 dialog（换食物+改餐次+日期+高级覆盖）
     └── insight/insight_page.dart
 ```
 

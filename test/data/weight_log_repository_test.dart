@@ -66,4 +66,98 @@ void main() {
     expect(logs.first.date, today);
     expect(logs.first.weightKg, 70.0);
   });
+
+  // ===== 编辑/删除能力测试（P0 第一批：全 editable）=====
+
+  group('getById 单条查询', () {
+    test('存在 id 返回 WeightLog', () async {
+      final id = await repo.insert(date: '2026-07-02', weightKg: 70.5);
+      final log = await repo.getById(id);
+      expect(log, isNotNull);
+      expect(log!.id, id);
+      expect(log.weightKg, 70.5);
+      expect(log.date, '2026-07-02');
+    });
+
+    test('不存在的 id 返回 null', () async {
+      final log = await repo.getById(99999);
+      expect(log, isNull);
+    });
+  });
+
+  group('update 部分更新', () {
+    test('只改 weightKg，date 保持原值', () async {
+      final id = await repo.insert(date: '2026-07-02', weightKg: 70.0);
+      await repo.update(id: id, weightKg: 71.5);
+
+      final log = await repo.getById(id);
+      expect(log, isNotNull);
+      expect(log!.weightKg, 71.5);
+      expect(log.date, '2026-07-02'); // date 未传，保留原值
+    });
+
+    test('只改 date，weightKg 保持原值', () async {
+      final id = await repo.insert(date: '2026-07-02', weightKg: 70.0);
+      await repo.update(id: id, date: '2026-07-05');
+
+      final log = await repo.getById(id);
+      expect(log, isNotNull);
+      expect(log!.weightKg, 70.0); // weightKg 未传，保留原值
+      expect(log.date, '2026-07-05');
+    });
+
+    test('同时改 weightKg 和 date', () async {
+      final id = await repo.insert(date: '2026-07-02', weightKg: 70.0);
+      await repo.update(id: id, weightKg: 71.2, date: '2026-07-05');
+
+      final log = await repo.getById(id);
+      expect(log, isNotNull);
+      expect(log!.weightKg, 71.2);
+      expect(log.date, '2026-07-05');
+    });
+
+    test('不传任何字段（null null）→ 不修改记录', () async {
+      final id = await repo.insert(date: '2026-07-02', weightKg: 70.0);
+      await repo.update(id: id);
+
+      final log = await repo.getById(id);
+      expect(log, isNotNull);
+      expect(log!.weightKg, 70.0);
+      expect(log.date, '2026-07-02');
+    });
+
+    test('更新不存在的 id 不报错（drift 无操作）', () async {
+      // drift update where 不命中行时不报错，无副作用
+      await repo.update(id: 99999, weightKg: 70.0);
+      // 验证全表无新增
+      final all = await repo.getRange('2020-01-01', '2099-12-31');
+      expect(all, isEmpty);
+    });
+  });
+
+  group('delete 删除', () {
+    test('删除存在的记录', () async {
+      final id = await repo.insert(date: '2026-07-02', weightKg: 70.0);
+      await repo.delete(id);
+
+      final log = await repo.getById(id);
+      expect(log, isNull);
+    });
+
+    test('删除后其他记录不受影响', () async {
+      final id1 = await repo.insert(date: '2026-07-01', weightKg: 70.0);
+      final id2 = await repo.insert(date: '2026-07-02', weightKg: 71.0);
+      await repo.delete(id1);
+
+      expect(await repo.getById(id1), isNull);
+      expect(await repo.getById(id2), isNotNull);
+    });
+
+    test('删除不存在的 id 不报错', () async {
+      await repo.delete(99999);
+      // 验证全表无变化
+      final all = await repo.getRange('2020-01-01', '2099-12-31');
+      expect(all, isEmpty);
+    });
+  });
 }
