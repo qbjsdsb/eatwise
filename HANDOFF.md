@@ -38,20 +38,23 @@
 
 **工作区状态**：clean
 **最近 commit**：
+- `bd66ef3` docs: 添加跨会话交接文档 + Trae 项目规则
 - `8e436cc` fix: 深度审查修复——数据丢失/污染 + 启动白屏 + 异常处理 + 一致性
 - `79f4cfd` fix: v0.10.0 合并收尾——修复致命崩溃 + 数据正确性 + 防重入 + 一致性
 
-**已就绪**：
+**已发布**：
+- v0.10.0 tag 已推送（2026-07-03），release.yml workflow 已触发构建
+- 分支 v0.10.0-m3-merge 已同步到远程
+- workflow 监控：https://github.com/qbjsdsb/eatwise/actions/runs/28648760728
 - v0.10.0 合并完成（v0.8.0 M3 + HEAD AI 估热 + 主题色 + Sentry + 应用名）
 - 两轮深度审查修复（启动白屏、数据丢失/污染、异常处理、一致性）
-- flutter analyze: No issues found
-- flutter test: 242 passed, 3 skipped, 0 failed
-- 未发布（无 v0.10 tag）
+- 发布前验证：flutter analyze No issues + flutter test 242 passed/3 skipped/0 failed
+- 版本号一致：pubspec 0.10.0+10 / sentry eatwise@0.10.0 / me_page 0.10.0 / settings_page v0.10.0
+- R8 禁用确认：isMinifyEnabled=false + isShrinkResources=false
 
 **未完成/待办**（按优先级）：
-1. ⬜ 用户验收测试（真机装 APK 验证）
-2. ⬜ 发布 v0.10.0（打 tag + push 触发 release.yml）—— 等用户明确指令
-3. 🔧 重构性优化（风险较高，不阻塞当前版本）：
+1. ⬜ 用户验收测试（真机装 APK 验证，等 release 构建完成下载）
+2. 🔧 重构性优化（风险较高，不阻塞当前版本）：
    - 路由方式统一（GoRouter vs Navigator.push 混用）
    - 版本号从 PackageInfo 读取（替代硬编码）
    - dashboard/today_meals N+1 查询优化（getByIds）
