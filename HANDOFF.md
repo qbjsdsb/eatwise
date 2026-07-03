@@ -36,9 +36,13 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（v0.12.0 已发布；P0/P1/P2 食物识别增强 + 全 editable 第一批 + UI/UX 审查修复 Phase 3 已提交，未发布）
+**工作区状态**：clean（v0.12.0 已发布；P0/P1/P2 食物识别增强 + 全 editable 第一批 + UI/UX 审查修复 Phase 3 [B+A+C+D 批] 已提交，未发布）
 **最近 commit**：
-- `（本次）` feat: UI/UX 审查修复 Phase 3——公共抽象层 B1-B6 + 数据安全 A1-A4
+- `4252093` refactor: UI/UX 审查修复 D 批第三轮——confirmAction + showAppToast 公共抽象
+- `390d19a` refactor: UI/UX 审查修复 D 批第二轮——foodSourceLabel/EmptyChartHint/WarningBanner/_sectionTitle
+- `d46a1b9` fix: UI/UX 审查修复 C 批——数据安全 + 一致性 S 级
+- `4ad029c` docs: HANDOFF 补 Phase 3 陷阱 45-48
+- `（前次）` feat: UI/UX 审查修复 Phase 3——公共抽象层 B1-B6 + 数据安全 A1-A4
 - `db80dfb` feat: 全 editable 第一批——体重记录可改值/改日期/删，餐次记录可改份量/营养/餐次/日期/换食物/高级覆盖
 - `79a0ae6` feat: 食物识别增强四层自我进化架构（P0/P1/P2，未发布）
 - `7d1e8bd` docs: HANDOFF 补全 v0.12.0 release workflow run URL + APK 大小
@@ -76,12 +80,13 @@
 
 **未完成/待办**（按优先级）：
 1. ⬜ 用户真机验收 v0.12.0（装 APK 验证：图标精致化效果 + MD3 全面优化 + 智能推荐 v3 + 深度审查修复 15 项）
-2. 🔧 全 editable 第二批：FoodItems 删除/归档 + name/aliases 编辑（用户已批准 4 批计划，第一批已完成）
-3. 🔧 全 editable 第三批：PendingRecognitions UI 页 + 重试/删除 + Feedbacks 历史/删除
-4. 🔧 全 editable 第四批：历史 InsightSummaries 查看页 + 份量校准回滚
-5. 🔧 第三波（待用户确认后启动）：建议 6（接入 USDA FoodData Central API 替代部分 OFF 云查，免费但需 API key）—— 但需先评估 OFF 中文命中率，USDA 是英文 API 中文菜名需翻译层
-6. ⏸️ 建议 4 餐前/餐后双拍对比（DietDelta 思路）：用户明确暂不做
-7. 🔧 重构性优化（风险较高，不阻塞当前版本）：
+2. 🔧 UI/UX 审查修复 F 批：输入校验——TextField → Form+TextFormField validator（待用户确认范围与校验规则，风险较高，会改 form 行为）
+3. 🔧 全 editable 第二批：FoodItems 删除/归档 + name/aliases 编辑（用户已批准 4 批计划，第一批已完成）
+4. 🔧 全 editable 第三批：PendingRecognitions UI 页 + 重试/删除 + Feedbacks 历史/删除
+5. 🔧 全 editable 第四批：历史 InsightSummaries 查看页 + 份量校准回滚
+6. 🔧 第三波（待用户确认后启动）：建议 6（接入 USDA FoodData Central API 替代部分 OFF 云查，免费但需 API key）—— 但需先评估 OFF 中文命中率，USDA 是英文 API 中文菜名需翻译层
+7. ⏸️ 建议 4 餐前/餐后双拍对比（DietDelta 思路）：用户明确暂不做
+8. 🔧 重构性优化（风险较高，不阻塞当前版本）：
    - 路由方式统一（GoRouter vs Navigator.push 混用）
    - 版本号从 PackageInfo 读取（替代硬编码，me_page/settings_page/sentry_init 三处）
    - dashboard/today_meals N+1 查询优化（getByIds）
@@ -385,15 +390,44 @@
 - 现状：insight_summaries 只显示当前周期，历史 insight 无访问入口；meal_log 份量校准后无法回滚到 AI 原始估算
 - 计划：insight_page 加历史周期 SegmentedButton（weekly/monthly 切换 + 滚动历史），meal_log 加 estimatedServingGAiOriginal 字段记录 AI 原始值供回滚
 
-### 3.17 UI/UX 审查修复 Phase 3（公共抽象层 + 数据安全，本次 commit，未发布）
-4 路并行 search agent 全面审查所有界面，识别 14 S + 30+ M + 10 L 级问题，分 6 批（A-F）渐进修复。本次完成公共抽象层（B1-B6）+ 数据安全（A1-A4）共 10 项。
-- **公共抽象层模式**：把跨页重复的 UI 模式/工具函数提取到共享文件（m3_widgets.dart / core/util/），防止各页实现漂移。新增 4 个共享组件（EmptyState / GroupCard / MealTypeSelector / confirmDiscardChanges）+ 2 个工具（date_format / food_name）
+### 3.17 UI/UX 审查修复 Phase 3（A+B+C+D 四批，本次 commit，未发布）
+4 路并行 search agent 全面审查所有界面，识别 14 S + 30+ M + 10 L 级问题，分 6 批（A-F）渐进修复。本次完成 A+B+C+D 四批共 26 项（E 评估后跳过、F 待用户确认）。
+
+**公共抽象层模式**：把跨页重复的 UI 模式/工具函数提取到共享文件（m3_widgets.dart / core/util/），防止各页实现漂移。
+
+**B 批（公共抽象层第一轮）**：新增 4 个共享组件（EmptyState / GroupCard / MealTypeSelector / confirmDiscardChanges）+ 2 个工具（date_format / food_name）
 - **B6 主题单一源**：app.dart 的 `inputDecorationTheme` 是全局 OutlineInputBorder 定义，各页 TextField 不再重复声明 `border: OutlineInputBorder()`，改主题色只需改 app.dart 一处
+
+**A 批（数据安全）**：
 - **A1 乐观删除 + Undo**：Dismissible 先从 UI 移除 + 4s 撤销 SnackBar，未撤销才实际 DB delete。比"立即删 + SnackBar 提示"更宽容误操作。删除失败回滚 `_load()`
 - **A3 PopScope + _dirty 追踪**：编辑页加 `_dirty` 标志 + `_markDirty()` + controller listeners；`PopScope(canPop: !_dirty)` 拦截返回 + `confirmDiscardChanges` 共享 dialog。`_markDirty` 必须加 `_loading` 守卫——初始 `_loadXxx()` 异步赋值 controller.text 会触发 listener，若不守卫会误标 dirty 致首屏就拦截返回
 - **A4 错误态可重试性判断**：recognize_page 错误态 SnackBar 加"重试"按钮，按错误消息内容判断可重试性。「操作太快」/「已转手动录入」/「安全过滤」三类不显示重试（重试无意义或已跳转），其余错误可重试。用 `msg.contains(...)` 字符串匹配判断，因 controller 的错误文案是固定字符串
 - **权衡**：A4 用字符串匹配判断错误类型而非枚举，因 controller 已有的错误文案是固定中文字符串，改枚举需动 controller 状态结构，本次最小改动只动 recognize_page。后续若错误类型增多可重构为枚举
-- **验证**：flutter analyze No issues + flutter test 392 passed (3 skipped)
+
+**C 批（数据安全 + 一致性 S 级，commit `d46a1b9`）**：
+- **C1 today_meals 乐观删除页面销毁后未删 DB 修复**：A1 引入的 bug——`onDismissed` 里 `setState` + `await SnackBar` 后才 DB delete，但 await 4s 期间页面可能已销毁（用户切 tab），`if (!mounted) return` 跳过 delete 致记录"复活"（UI 已删但 DB 还在，下次 _load 重新出现）。修复：在 await 前提前 `final mealRepo = await ref.read(...)` + `final id = m.id` 捕获引用，DB delete 不依赖 mounted，删除失败用捕获的 messenger 显示错误（不用 context）
+- **C2 today_meals 加载失败显 ErrorState**：原 `_load()` catch 置空列表，build 中显示"今日暂无记录"误导用户以为今日真无数据。加 `_loadError` 标志区分"加载失败"与"空数据"，失败时显 `EmptyState(icon: error_outline, actionLabel: '重试')`
+- **C3 insight 错误信息独立 `_error` 字段 + errorContainer Card**：原 controller 失败时把错误塞进 `_summary` 字段伪装 AI 输出（用户看到 "AI 汇总失败：xxx" 像 AI 响应）。改独立 `_error` 字段，build 中用 `Card(color: cs.errorContainer)` 醒目显示，与正常 AI 汇总分隔
+- **C4 meal_edit_dialog ChoiceChip → MealTypeSelector**：B5 抽象出 MealTypeSelector 后，meal_edit_dialog 仍用内联 ChoiceChip 4 段（与 recognize/manual_entry 不一致）。改用 MealTypeSelector 统一三页餐次选择 UI
+- **C5 multi_dish_page + manual_entry_page 补 PopScope 未保存确认**：A3 漏补两页——multi_dish 用户拖滑块改份量/数量后未确认直接返回会丢修改；manual_entry 5+ TextField 输入到一半返回同样丢。两页都加 `_dirty` 标志（滑块 onChanged / controller listener 触发）+ PopScope + confirmDiscardChanges
+- **C6 emoji ⚠ → Icon(Icons.warning_amber_rounded)**：backup/calibration 的 emoji 警告跨平台渲染不一致（iOS/Android 字体不同）且不跟随主题色。改 Icon 用 cs.error 色，与 profile/settings 一致（已在 v0.12.0 a8aa1f5 完成 profile/settings 两页，C6 补完剩余 backup/calibration）
+- **C7 FilledButton 内 CircularProgressIndicator 加 color**：8 处 FilledButton 内的 loading 圈用默认 primary 色，在 errorContainer/FilledButton 背景下对比度不足。加 `color: cs.onPrimary` 或 `cs.onPrimaryContainer` 保证可见
+- **C8 app.dart 加 textButtonTheme + outlinedButtonTheme minimumSize 48dp**：MD3 默认 TextButton/OutlinedButton 高度 40dp 不满足 WCAG 2.5.5 触摸目标最小 44dp（推荐 48dp）。设 `minimumSize: Size(48,48)` 全局生效，避免各页再单独设
+
+**D 批（公共抽象层第二轮 + 第三轮，commit `390d19a` + `4252093`）**：
+- **D1 foodSourceLabel 集中**（commit `390d19a`）：food_edit_page + food_library_page 各有本地 `_sourceLabel(source)` switch 把 'manual'/'ai_recognized'/'brand_official' 等映射到中文标签。提到 `food_name.dart` 的 `foodSourceLabel(source)` 函数，新增 source 类型只改一处
+- **D2 删 _sectionTitle 包装**（commit `390d19a`）：me_page（3 处）+ settings_page（7 处）有零价值间接层 `_sectionTitle(text) => SectionTitle(text)`，直接用 `SectionTitle(text)` 删除中间层。10 处调用替换 + 2 个私有方法删除
+- **D3 EmptyChartHint 组件**（commit `390d19a`）：weight_page + insight_page 各有本地 `_emptyChartHint` 实现（Card + show_chart 图标 + 灰文提示"暂无数据"）。提到 `m3_widgets.dart` 的 `EmptyChartHint` 共享组件（120px 高 Card + show_chart 图标 + onSurfaceVariant 灰文），与全屏 `EmptyState` 区分（图表占位用 EmptyChartHint 120px，全屏空态用 EmptyState）
+- **D4 WarningBanner 组件**（commit `390d19a`）：settings_page 2 处内联 `Padding+Row(Icon+Text)` 警告横幅实现重复。提到 `m3_widgets.dart` 的 `WarningBanner(text)` 共享组件（warning_amber_rounded 图标 + cs.error 色文 + 12px 字号），统一警示横幅样式
+- **D5 confirmAction 共享确认对话框**（commit `4252093`）：m3_widgets.dart 新增 `confirmAction(context, title, content, {cancelLabel, confirmLabel, icon, destructive})`，统一 AlertDialog 取消/确认两按钮样板。支持 `destructive`（errorContainer 配色确认按钮，用于删除）+ `icon`（cs.error 色警示图标，用于风险警告/确认导入）。替换 4 处内联 `showDialog<bool>`：weight_page 删除体重确认（destructive）/ profile_page 风险警告确认（icon）/ insight_page 重新生成确认（简单）/ backup_page 确认导入（icon）。profile_page 原用 `Row(icon+title)` 非标准模式，改 MD3 `AlertDialog.icon` 参数更合规
+- **D6 showAppToast 共享 toast 提示**（commit `4252093`）：m3_widgets.dart 新增 `showAppToast(context, msg, {duration})`，封装 `ScaffoldMessenger + SnackBar` 样板。替换 23 处简单 SnackBar（无 SnackBarAction 的成功/失败/提示消息），覆盖 8 文件：today_meals / meal_edit_dialog / weight / settings / profile / manual_entry / backup / multi_dish_page。backup_page 4 处带 5s duration（导入导出操作结果需更长阅读时间）。**recognize_page 4 处带 SnackBarAction 重试按钮的不替换**（重试按钮是功能性入口，showAppToast 不支持 SnackBarAction）
+
+**E 批（评估后跳过）**：24 处硬编码 `fontSize:` 扫描。多数在图表上下文（insight/weight 的 fl_chart 坐标轴标签、tooltip）需精确字号控制，转 textTheme 无收益；4 处非图表（settings/profile/backup 脚注）转 textTheme 收益微小。整体评估为低价值，跳过
+
+**验证**：
+- C 批：flutter analyze No issues + flutter test 392 passed (3 skipped)
+- D 批第二轮（D1-D4）：flutter analyze No issues + flutter test 392 passed (3 skipped)
+- D 批第三轮（D5+D6）：flutter analyze No issues + flutter test 392 passed (3 skipped)
 
 ---
 
@@ -475,6 +509,8 @@
 47. **app.dart inputDecorationTheme 是 OutlineInputBorder 全局单一源**：app.dart L68-71 的 `inputDecorationTheme: InputDecorationTheme(border: OutlineInputBorder())` 全局生效，各页 TextField 不再需要重复声明 `border: OutlineInputBorder()`。本次清除 6 文件 11 处冗余声明。改主题色/圆角只需改 app.dart 一处。新增 TextField 默认就用 OutlineInputBorder，无需显式声明 border（除非要 InputBorder.none 做内嵌 ListTile 样式）
 
 48. **Undo SnackBar 乐观删除必须捕获 messenger 引用 + 用 undone 标志**：Dismissible 的 `onDismissed` 回调里 `setState(() => _meals.removeAt(index))` 后立即 `showSnackBar`，但 await 4s 后 widget 可能已 unmounted。必须 `final messenger = ScaffoldMessenger.of(context)` 在 await 前捕获引用（context 可能失效但 messenger 仍可用），用 `var undone = false` 标志在 SnackBarAction.onPressed 置 true，await 后检查 `if (undone) return` 跳过 DB delete。删除失败要 `await _load()` 回滚 UI + 错误提示。比"立即删"多一个 4s 窗口给用户反悔
+
+49. **confirmAction/showAppToast 抽象：SnackBarAction 重试按钮与图表 fontSize 必须保持内联**：D5/D6 抽象出共享 `confirmAction`（确认对话框）+ `showAppToast`（toast）后，有两类场景必须保留内联实现不能用共享抽象——①**SnackBarAction 重试按钮**：recognize_page 4 处错误态 SnackBar 带"重试"按钮（SnackBarAction），是功能性入口（点击重新触发识别），showAppToast 不支持 SnackBarAction 参数，强行替换会丢重试功能。带 action 的 SnackBar 必须保留 `ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:..., action: SnackBarAction(label:'重试', onPressed:...)))` 内联写法；②**图表 fontSize 精确控制**：fl_chart 坐标轴标签、tooltip 的硬编码 `fontSize: 10/11/12` 需精确像素控制（图表内文字与数据点对齐，textTheme 的相对单位会破坏对齐），不能转 textTheme。E 批评估跳过即因此。新增 toast 时先检查是否带 SnackBarAction，是则保留内联；新增图表文字样式时不要转 textTheme
 
 ---
 
