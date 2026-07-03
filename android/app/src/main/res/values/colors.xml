@@ -1,3 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- 启动 splash 背景色：匹配 app 默认主题（M3 fromSeed #6750A4）的 surface 色，
+         让 native splash → Flutter UI 过渡无颜色跳变（减少"黑/白屏一两秒"的突兀感）。
+         用户若切了主题色，splash 仍是默认紫调 surface——native 启动太快读不到 secure_storage，可接受。 -->
+    <color name="splash_background">#FCF9F9</color>
 </resources>

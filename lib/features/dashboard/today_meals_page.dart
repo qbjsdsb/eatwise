@@ -43,15 +43,20 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     try {
       final mealRepo = await ref.read(recognize.mealLogRepoProvider.future);
       final meals = await mealRepo.getMealsByDate(_today);
-      // 批量反查食物名
+      // 批量反查食物名（原 N+1 逐条 getById → 1 次 IN 查询）
       final db = await ref.read(recognize.databaseProvider.future);
       final foodRepo = FoodItemRepository(db);
       final names = <int, String>{};
-      for (final m in meals) {
-        if (!names.containsKey(m.foodItemId)) {
-          final food = await foodRepo.getById(m.foodItemId);
-          final nm = food?.name ?? '';
-          names[m.foodItemId] = nm.trim().isEmpty ? '食物 #${m.foodItemId}' : nm;
+      final uniqueIds = meals.map((m) => m.foodItemId).toSet().toList();
+      if (uniqueIds.isNotEmpty) {
+        final foods = await foodRepo.getByIds(uniqueIds);
+        for (final food in foods) {
+          final nm = food.name.trim();
+          names[food.id] = nm.isEmpty ? '食物 #${food.id}' : nm;
+        }
+        // 兜底：未命中的 id（理论不会，外键约束保证存在）
+        for (final id in uniqueIds) {
+          names.putIfAbsent(id, () => '食物 #$id');
         }
       }
       _meals = meals;

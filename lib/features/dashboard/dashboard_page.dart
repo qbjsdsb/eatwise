@@ -72,14 +72,25 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     final now = DateTime.now();
     final today =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    final macros = await mealRepo.getMacrosByDate(today);
-    final profile = await profileRepo.get();
-    final meals = await mealRepo.getMealsByDate(today);
+    // 三查询无依赖，并行执行（原串行 await 总时间 = sum，并行后 = max）
+    // 用"同时启动 + 分别 await"模式，类型安全且并行（Future.wait 因三类型不同会退化为 Object）
+    final macrosFuture = mealRepo.getMacrosByDate(today);
+    final profileFuture = profileRepo.get();
+    final mealsFuture = mealRepo.getMealsByDate(today);
+    final macros = await macrosFuture;
+    final profile = await profileFuture;
+    final meals = await mealsFuture;
+    // 食物名批量查询（原 N+1 逐条 getById → 1 次 IN 查询）
     final foodNames = <int, String>{};
-    for (final m in meals) {
-      if (!foodNames.containsKey(m.foodItemId)) {
-        final food = await foodRepo.getById(m.foodItemId);
-        foodNames[m.foodItemId] = food?.name ?? '食物 #${m.foodItemId}';
+    final uniqueIds = meals.map((m) => m.foodItemId).toSet().toList();
+    if (uniqueIds.isNotEmpty) {
+      final foods = await foodRepo.getByIds(uniqueIds);
+      for (final food in foods) {
+        foodNames[food.id] = food.name;
+      }
+      // 兜底：未命中的 id（理论不会，外键约束保证存在）显示占位名
+      for (final id in uniqueIds) {
+        foodNames.putIfAbsent(id, () => '食物 #$id');
       }
     }
     final proteinGoal = profile.proteinGPerKg * profile.weightKg;

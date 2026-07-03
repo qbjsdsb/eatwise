@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 暗色模式 splash 背景：匹配 app 默认主题（M3 fromSeed #6750A4）暗色 surface 色 -->
+    <color name="splash_background">#1C1B1F</color>
+</resources>

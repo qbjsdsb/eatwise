@@ -45,6 +45,13 @@ void main() {
     // 单一 ProviderContainer：UI 与初始化共用，避免双容器导致监听被销毁
     final container = ProviderContainer();
 
+    // 启动期并行化：themeSeed 和 appConfig 是两次独立的 secure_storage 读取，无依赖。
+    // 原来串行 await（getThemeSeed 完了才开始 appConfig），总时间 = sum；
+    // 并行后总时间 = max，省 100-300ms（secure_storage 每次 platform channel + Keystore 解密）。
+    // 提前触发 appConfigProvider 加载（不 await），让它和 getThemeSeed 并行跑。
+    // FutureProvider 一旦 read 即开始加载，future 由 provider 持有，无需手动 await。
+    container.read(appConfigProvider.future);
+
     // 主题种子色：runApp 前快速读（轻量 secure_storage 单 key），首帧即用正确主题色，避免换肤闪烁
     // 复用 secureConfigStoreProvider 实例（后续 appConfigProvider 也会用它），避免重复实例化
     try {
@@ -56,6 +63,7 @@ void main() {
     }
 
     // 用 Sentry 包裹 app（DSN 为空时 initSentryAndRunApp 直接返回原 app，跳过 Sentry）
+    // appConfigProvider 已在上面提前触发，这里 await 多半已就绪（秒回）
     final app = await initSentryAndRunApp(
       container: container,
       app: UncontrolledProviderScope(

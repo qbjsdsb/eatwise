@@ -26,28 +26,50 @@ class AppConfig {
 
   /// 从 secure_storage 加载全部配置（App 启动时调用一次）
   /// --dart-define 作为 fallback：若 secure_storage 无值则用 define 值并回写 storage
+  ///
+  /// 性能：flutter_secure_storage 每次 read 都是独立 platform channel + Keystore 解密，
+  /// 串行 10+ 次会有 200-500ms 开销。这里用 Future.wait 并行读 7 个 key，
+  /// 且复用已读结果判断是否需要首次注入回写（省掉原来 3 次重复 read）。
   Future<void> load() async {
-    qwenApiKey = (await _store.getQwenApiKey()) ??
+    // 并行读取所有 key（原串行 10+ 次 platform channel → 并行启动）
+    // 用"同时启动 + 分别 await"模式，类型安全且并行
+    // （Future.wait 因 7 个 future 类型不同会退化为 List<Object?>，丢失类型信息）
+    final qwenKeyFuture = _store.getQwenApiKey();
+    final qwenUrlFuture = _store.getQwenBaseUrl();
+    final glmKeyFuture = _store.getGlmApiKey();
+    final glmUrlFuture = _store.getGlmBaseUrl();
+    final sentryDsnFuture = _store.getSentryDsn();
+    final sentryEnabledFuture = _store.getSentryEnabled();
+    final tdeeAutoCalibFuture = _store.getTdeeAutoCalib();
+
+    final qwenKeyRaw = await qwenKeyFuture;
+    final qwenUrlRaw = await qwenUrlFuture;
+    final glmKeyRaw = await glmKeyFuture;
+    final glmUrlRaw = await glmUrlFuture;
+    final sentryDsnRaw = await sentryDsnFuture;
+    sentryEnabled = await sentryEnabledFuture;
+    tdeeAutoCalib = await tdeeAutoCalibFuture;
+
+    qwenApiKey = qwenKeyRaw ??
         const String.fromEnvironment('QWEN_API_KEY', defaultValue: '');
-    qwenBaseUrl = (await _store.getQwenBaseUrl()) ??
+    qwenBaseUrl = qwenUrlRaw ??
         const String.fromEnvironment('QWEN_BASE_URL', defaultValue: '');
-    glmApiKey = (await _store.getGlmApiKey()) ??
+    glmApiKey = glmKeyRaw ??
         const String.fromEnvironment('GLM_API_KEY', defaultValue: '');
-    glmBaseUrl = (await _store.getGlmBaseUrl()) ??
+    glmBaseUrl = glmUrlRaw ??
         const String.fromEnvironment('GLM_BASE_URL', defaultValue: '');
-    sentryDsn = await _store.getSentryDsn() ??
+    sentryDsn = sentryDsnRaw ??
         const String.fromEnvironment('SENTRY_DSN', defaultValue: '');
-    sentryEnabled = await _store.getSentryEnabled();
-    tdeeAutoCalib = await _store.getTdeeAutoCalib();
 
     // 首次注入：若 secure_storage 为空但 define 有值，回写 storage（后续不再依赖 define）
-    if ((await _store.getQwenApiKey()) == null && qwenApiKey.isNotEmpty) {
+    // 复用上面已读结果判断 null，省掉原来的 3 次重复 read
+    if (qwenKeyRaw == null && qwenApiKey.isNotEmpty) {
       await _store.setQwenApiKey(qwenApiKey);
     }
-    if ((await _store.getGlmApiKey()) == null && glmApiKey.isNotEmpty) {
+    if (glmKeyRaw == null && glmApiKey.isNotEmpty) {
       await _store.setGlmApiKey(glmApiKey);
     }
-    if ((await _store.getSentryDsn()) == null && sentryDsn.isNotEmpty) {
+    if (sentryDsnRaw == null && sentryDsn.isNotEmpty) {
       await _store.setSentryDsn(sentryDsn);
     }
   }

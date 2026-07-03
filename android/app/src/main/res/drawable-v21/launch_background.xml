@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Modify this file to customize your launch splash screen -->
+<!-- 启动 splash 背景：用 app 默认 surface 色（亮/暗各自匹配），减少颜色跳变 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="?android:colorBackground" />
+    <item android:drawable="@color/splash_background" />
 
     <!-- You can insert your own image assets here -->
     <!-- <item>

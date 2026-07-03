@@ -207,6 +207,13 @@ class FoodItemRepository {
         .getSingleOrNull();
   }
 
+  /// 批量按 id 查询（首屏/明细页反查食物名，避免 N+1 逐条 getById）
+  /// 用 SQL `id IN (...)` 一次查回，N 条 meal 只需 1 次 DB 往返
+  Future<List<FoodItem>> getByIds(List<int> ids) {
+    if (ids.isEmpty) return Future.value(const []);
+    return (_db.foodItems.select()..where((f) => f.id.isIn(ids))).get();
+  }
+
   /// 查询常用食物（按 meal_log 引用次数降序，取 top N）
   /// 用于食物库首页"常吃"列表
   /// 仅返回被 meal_log 引用过的食物（refCount > 0），避免种子库 0 引用项混入
