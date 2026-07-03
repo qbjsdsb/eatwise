@@ -46,7 +46,9 @@ class SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 20, 16, 8),
+      // 左右对称 16：与下方 Card 的 EdgeInsets.all(16)/symmetric(horizontal:16) 左缘对齐，
+      // 避免"标题相对卡片右移 8px"造成界面整体偏右的观感（6 页面 14 处复用）
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
       child: Text(
         text,
         style: Theme.of(context).textTheme.labelLarge?.copyWith(

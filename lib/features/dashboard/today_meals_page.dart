@@ -524,9 +524,11 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
               !aiName.startsWith('食物 #') &&
               aiName.trim().toLowerCase() !=
                   correctedDishName.trim().toLowerCase()) {
-            // 查正确菜是否在库（findByNameOrAlias 5 级匹配）
+            // 查正确菜是否在库：只用精确匹配（name/alias 归一化相等），
+            // 不走模糊匹配——避免"雪花啤酒"模糊命中"雪碧"后把"雪碧"写成
+            // 雪碧的别名导致反向错配（永久错配且无法自愈）。
             final correctFood =
-                await foodRepo.findByNameOrAlias(correctedDishName);
+                await foodRepo.findExactByNameOrAlias(correctedDishName);
             // 在库且不是同一条记录 → 把错误名 A 作为正确菜 B 的别名
             if (correctFood != null && correctFood.id != m.foodItemId) {
               await foodRepo.addAlias(correctFood.id, aiName);

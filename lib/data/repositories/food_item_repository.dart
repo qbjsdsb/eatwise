@@ -53,13 +53,17 @@ class FoodItemRepository {
         if (_containsLenDiff(query, _normalize(a)) != null) return item;
       }
     }
-    // 优先级 5：name 编辑距离 ≤1（仅短名 typo 容错，如"可东"→"可乐"）
-    // 阈值 1 非 2：避免 2 字短名互相假阳性（如"黄瓜"→"鸡肉"编辑距离恰好 2）
-    if (query.length <= 8) {
+    // 优先级 5：name 编辑距离 ≤1（仅 typo 容错，如"可东"→"可乐"）
+    // 加严约束（防"雪花"→"雪碧"假阳性）：
+    //   ① query 长度 ≥3：2 字短名编辑距离 1 极易假阳性（雪花/雪碧、黄瓜/鸡蛋），禁用
+    //   ② target 与 query 等长：编辑距离只容错单字 typo，不容错"长度不同的相近名"
+    if (query.length >= 3 && query.length <= 8) {
       FoodItem? editHit;
       int best = 2;
       for (final item in all) {
-        final d = _editDistance(query, _normalize(item.name));
+        final n = _normalize(item.name);
+        if (n.length != query.length) continue; // 等长才比，避免长短名互相干扰
+        final d = _editDistance(query, n);
         if (d < best) {
           best = d;
           editHit = item;
@@ -70,8 +74,48 @@ class FoodItemRepository {
     return null;
   }
 
-  /// 归一化：去空白 + 小写
-  String _normalize(String s) => s.replaceAll(RegExp(r'\s'), '').toLowerCase();
+  /// 精确匹配（仅 name/alias 归一化后相等，不走模糊）。
+  /// 供反馈回流 [addAlias] 使用：只有用户纠正名精确命中库中某条记录，
+  /// 才把 AI 错误名作为该记录别名写入，避免模糊命中错对象导致反向错配
+  /// （如"雪花啤酒"模糊命中"雪碧"后把"雪碧"写成雪碧的别名 → 永久错配）。
+  Future<FoodItem?> findExactByNameOrAlias(String name) async {
+    final query = _normalize(name);
+    if (query.isEmpty) return null;
+    final all = await _db.foodItems.select().get();
+    for (final item in all) {
+      if (_normalize(item.name) == query) return item;
+    }
+    for (final item in all) {
+      for (final a in _decodeAliases(item.aliasesJson)) {
+        if (_normalize(a) == query) return item;
+      }
+    }
+    return null;
+  }
+
+  /// 归一化：全角→半角 + 去空白 + 小写
+  /// 全角转换：避免 AI 返回全角数字/字母/括号导致精确匹配 miss 而降级模糊匹配
+  /// （如"雪碧"全角 vs 半角，精确不命中 → 编辑距离误命中他菜）
+  String _normalize(String s) {
+    final buf = StringBuffer();
+    for (var i = 0; i < s.length; i++) {
+      final code = s.codeUnitAt(i);
+      if (code == 0x3000) {
+        buf.write(' '); // 全角空格
+      } else if ((code >= 0xFF10 && code <= 0xFF19) ||
+          (code >= 0xFF21 && code <= 0xFF3A) ||
+          (code >= 0xFF41 && code <= 0xFF5A)) {
+        buf.writeCharCode(code - 0xFEE0); // 全角数字/字母→半角
+      } else if (s[i] == '（') {
+        buf.write('(');
+      } else if (s[i] == '）') {
+        buf.write(')');
+      } else {
+        buf.write(s[i]);
+      }
+    }
+    return buf.toString().replaceAll(RegExp(r'\s'), '').toLowerCase();
+  }
 
   /// 解析 aliasesJson 为字符串列表（容错）
   List<String> _decodeAliases(String? json) {

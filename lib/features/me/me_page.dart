@@ -209,6 +209,7 @@ class _MePageState extends ConsumerState<MePage> {
         result.add(Divider(
           height: 1,
           indent: 56,
+          endIndent: 16,
           color: Theme.of(context).dividerColor,
         ));
       }

@@ -36,8 +36,9 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（v0.11.1 已发布，包含 v0.11.0 之后 6 个修复/优化）
+**工作区状态**：clean（v0.11.1 已发布；v0.11.1 之后又提交了 1 个修复但**未发布**）
 **最近 commit**：
+- （待提交）fix: 识别精准度修复+界面偏右修正（雪花啤酒→雪碧假阳性，未发布）
 - `a907625` chore: 版本号 bump 到 0.11.1+12 准备发布 v0.11.1
 - `fe60bed` docs: 更新 HANDOFF——记录个人档案特殊人群适配
 - `84cc29a` feat: 个人档案特殊人群适配（孕期/哺乳/老年/青少年/糖尿病/肾病/素食，schema v1→v2，未发布）
@@ -72,7 +73,10 @@
 4. **启动与首屏加载性能优化**（`d1e5970`）：用户反馈"点开软件要黑屏一两秒"。三个瓶颈：① main.dart 的 getThemeSeed 和 appConfig 两次独立 secure_storage 读取原串行，改提前触发 appConfigProvider 并行；② AppConfig.load() 原 10+ 次串行 platform channel read 改"同时启动 7 future + 分别 await"并行，并复用结果省 3 次重复 read；③ DashboardPage/TodayMealsPage 食物名反查 N+1 → FoodItemRepository.getByIds 批量 IN 查询，首屏三查询并行；④ Android launch_background 纯白底改 @color/splash_background 匹配 app 默认 surface 色（亮 #FCF9F9/暗 #1C1B1F）。**坑提醒：Future.wait 因多类型 future 会退化为 List<Object?>，并行不同类型 future 应用"同时启动 + 分别 await"模式保留类型。**
 5. **折线图美化与智能推荐算法升级**（`c6a76be`）：用户反馈"折线图不够美观有数字重叠"+"智能推荐不够智能"。折线图：Y 轴固定 interval（热量 maxCal/4 取整 50 倍数 / 体重范围/4 至少 0.2）彻底消除重叠，参考线标签左对齐+padding(left:44) 避开 Y 轴 + 上下错开，边框只留左下，网格只水平虚线半透明，数据点变小+surface 描边，belowBarData 改 LinearGradient 渐变，加 lineTouchData 触摸 tooltip。推荐算法 v2：四维评分（相对缺口匹配 remaining/goal 比例取最缺宏量加权 / 历史频次 log2 压缩封顶 4 分 / 排除今日已吃 / 具体理由"补蛋白 32%"），新增 `MealLogRepository.getRecentFoodCounts`（最近 30 天引用次数）。**坑提醒：推荐算法蛋白缺口触发阈值用 hasProteinGap（remainingProtein>5）而非 ratio<0.3，无记录时 ratio=1.0 但仍应触发，否则高蛋白食物不被推荐（测试已覆盖）。**
 6. **个人档案特殊人群适配**（`84cc29a`）：用户反馈"个人信息太简单，不能应用在不同人群"。profile 表 schema v1→v2 加 3 个 nullable 列（specialCondition/dietPreference/healthCondition，null 视为 'none' 向后兼容）。NutritionCalculator 按权威来源调整：孕期 +340 / 哺乳期 +500 kcal（IOM 2006）、老年蛋白 1.2g/kg 防肌少症（ISSN）、肾病蛋白 cap 0.8g/kg（KDOQI）、糖尿病碳水 cap 45%（ADA）。ProfilePage 加"特殊状况"段（3 个 DropdownMenu + 风险提示卡片）+ 活动量描述优化（步数/锻炼频率）+ 保存时孕期/哺乳/肾病减脂风险警告。JsonExporter/Importer 同步 3 字段导出导入；版本检查从严格相等放宽为只拒绝高于当前版本（支持旧备份恢复到新版本）。**坑提醒：JsonExporter 加新字段必须同步 JsonImporter 读取，否则备份恢复丢数据；DropdownMenu 测试用 find.byKey 定位，不要用 .last/.first（新增菜单会让索引漂移）。**
-- 验证：`flutter analyze` No issues + `flutter test` 324 passed (3 skipped)。
+
+**v0.11.1 之后未发布的修复**：
+7. **识别精准度修复 + 界面偏右修正**（待提交）：用户反馈"雪花啤酒被识别成雪碧"+"界面整体偏右"。识别错配根因有三：①findByNameOrAlias 优先级 5 编辑距离 ≤1 对 2 字短名假阳性（"雪花"vs"雪碧"编辑距离恰好 1 → 误命中）；②反馈回流 addAlias 用 5 级模糊查"正确菜"，模糊命中错对象后把 AI 错误名写成错对象别名 → 永久错配（无法自愈）；③_normalize 不处理全角半角（AI 返回全角字符精确匹配 miss → 降级模糊匹配增加误命中）。修复：①优先级 5 加严——query 长度 ≥3 且 target 与 query 等长才走编辑距离（2 字短名禁用，typo 容错仅保留 3+ 字等长如"蕃茄炒蛋"→"番茄炒蛋"）；②新增 findExactByNameOrAlias（只走 name/alias 精确匹配），today_meals_page 反馈回流改用它，避免模糊命中错对象导致反向错配；③_normalize 加全角→半角转换（数字/字母/空格/括号）。界面偏右根因：SectionTitle padding `fromLTRB(24,20,16,8)` 左 24 右 16 不对称，被 6 页面 14 处复用，标题相对下方卡片（padding 16）右移 8px → 改 `fromLTRB(16,20,16,8)` 对称；dashboard/me_page 的 Divider 缺 endIndent → 补 `endIndent: 16`。新增 4 个精准度专项测试（雪花不命中雪碧/typo 容错保留/findExact 只精确/全角括号归一化）。**坑提醒：2 字短名编辑距离 1 无法区分"假阳性（雪花/雪碧）"与"typo（可东/可乐）"，取舍上禁用 2 字短名编辑距离（牺牲罕见 2 字 typo 容错换取防常见相近名误判）；反馈回流别名必须用精确匹配查库，绝不能用模糊匹配（否则反向错配永久污染别名表）。**
+- 验证：`flutter analyze` No issues + `flutter test` 328 passed (3 skipped)。
 
 **识别智能化批次 1-3 修复清单**（本次 commit，用户选择"全部融入"）：
 - 批次 1 图片预检 + 字段校验：
@@ -204,6 +208,12 @@
 - 能量加成在 deficit/surplus 之前加（避免减脂目标抵消孕期加成）
 - JsonImporter 版本兼容：只拒绝高于当前的版本，允许旧备份导入（旧 JSON 缺新字段用 `as String?` 兜底 null）
 
+### 3.9 食物查库匹配 5 级优先级 + 精确/模糊分离
+- findByNameOrAlias（5 级模糊，识别主流程用）：①name 精确 → ②alias 精确 → ③name 双向 contains（长度约束）→ ④alias 双向 contains → ⑤name 编辑距离 ≤1（加严：query≥3 字且 target 等长，2 字短名禁用防雪花/雪碧假阳性）
+- findExactByNameOrAlias（仅精确，反馈回流用）：只走 ①②，绝不模糊——避免模糊命中错对象导致 addAlias 反向错配永久污染别名表
+- _normalize：全角→半角（数字/字母/空格/括号）+ 去空白 + 小写，避免全角字符精确 miss 降级模糊
+- 反馈回流方向：AI 错误名 → 正确菜的别名（addAlias(correctFood.id, aiName)），查正确菜必须精确匹配
+
 ---
 
 ## 4. 已知陷阱（踩过的坑）
@@ -222,6 +232,9 @@
 12. **JsonExporter/Importer 新增字段必须同步**：profile 表加列后，JsonExporter._profileToJson 要导出新字段，JsonImporter._profileFromJson 要读取新字段（用 `as String?` 兼容旧 JSON 无此字段）。否则备份恢复丢数据。本次 schema v2 漏导出 3 个特殊人群字段，已补修复
 13. **DropdownMenu 测试用 find.byKey 定位**：不要用 `find.byType(DropdownMenu<String>).last` 或 `.first`，因为新增菜单会让索引漂移。本次 profile_page 新增 3 个 DropdownMenu 导致 .last 从 goal 漂移到饮食偏好菜单，测试失效。修复：给 goal 菜单加 `key: const Key('goal_dropdown')`，测试用 `find.byKey`
 14. **JsonImporter 版本检查只拒绝高于当前**：`if (schemaVersion > _db.schemaVersion)` 而非严格相等，允许旧版本备份导入新版本 DB（向后兼容，老用户升级后可恢复旧备份）。旧 JSON 缺新字段由 _profileFromJson 用 `as String?` 兜底为 null
+15. **findByNameOrAlias 优先级 5 编辑距离对 2 字短名禁用**：2 字短名编辑距离 1 无法区分"假阳性（雪花/雪碧）"与"typo（可东/可乐）"，禁用 2 字短名编辑距离（query.length>=3 且 target 与 query 等长才走）。typo 容错仅保留 3+ 字等长场景（蕃茄炒蛋→番茄炒蛋）
+16. **反馈回流别名必须用 findExactByNameOrAlias 精确匹配查库**：today_meals_page 用户纠正菜名后调 addAlias 回流别名，查"正确菜"必须用精确匹配（name/alias 归一化相等），绝不能用 findByNameOrAlias 5 级模糊匹配。否则模糊命中错对象后把 AI 错误名写成错对象别名 → 永久错配且无法自愈（雪花啤酒模糊命中雪碧 → "雪碧"成雪碧别名 → 永久错配）
+17. **SectionTitle padding 必须左右对称且与下方 Card 对齐**：`fromLTRB(16,20,16,8)`，左缘与 Card 的 EdgeInsets.all(16)/symmetric(horizontal:16) 对齐。曾用 `fromLTRB(24,20,16,8)` 左 24 右 16 不对称，被 6 页面 14 处复用导致"界面整体偏右"。改公共组件 padding 必须考虑所有复用页面
 
 ---
 

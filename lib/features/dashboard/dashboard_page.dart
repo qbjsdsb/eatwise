@@ -377,7 +377,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                       ),
                       // 只在非"最后一条记录"时显示分割线
                       if (!(m == groups[mt]!.last && mt == lastPresentMt))
-                        Divider(height: 1, indent: 56, color: cs.outlineVariant),
+                        Divider(
+                            height: 1,
+                            indent: 56,
+                            endIndent: 16,
+                            color: cs.outlineVariant),
                     ],
               ],
             ),

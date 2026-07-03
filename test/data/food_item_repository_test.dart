@@ -213,4 +213,37 @@ void main() {
       expect(aliases.toLowerCase().split('apple').length - 1, 1);
     });
   });
+
+  // 识别精准度修复（防"雪花啤酒→雪碧"假阳性）专项测试
+  group('识别精准度（防假阳性 + typo 容错 + 全角归一化）', () {
+    test('2 字短名编辑距离假阳性已消除：雪花不命中雪碧', () async {
+      await seedFood('雪碧');
+      // "雪花"vs"雪碧"编辑距离=1，旧逻辑（2字走编辑距离≤1）会误命中
+      // 加严后：query 长度 <3 不走编辑距离 → 返回 null
+      expect(await repo.findByNameOrAlias('雪花'), isNull);
+    });
+
+    test('typo 容错保留：蕃茄炒蛋→番茄炒蛋（4字等长编辑距离1仍命中）', () async {
+      // 2 字短名 typo（可东→可乐）与假阳性（雪花→雪碧）无法区分，已禁用；
+      // 3+ 字短名的单字 typo 容错保留（如"蕃茄"为"番茄"形近 typo）
+      await seedFood('番茄炒蛋');
+      final hit = await repo.findByNameOrAlias('蕃茄炒蛋');
+      expect(hit, isNotNull);
+      expect(hit!.name, '番茄炒蛋');
+    });
+
+    test('findExactByNameOrAlias 只精确不模糊', () async {
+      await seedFood('雪碧');
+      // 精确命中
+      expect((await repo.findExactByNameOrAlias('雪碧'))?.name, '雪碧');
+      // 模糊不命中（"雪花"与"雪碧"不是精确匹配）
+      expect(await repo.findExactByNameOrAlias('雪花'), isNull);
+    });
+
+    test('全角括号归一化：可乐（罐）命中 可乐(罐)', () async {
+      await seedFood('可乐(罐)');
+      // 全角括号（）归一化为半角 ()，精确匹配命中
+      expect((await repo.findByNameOrAlias('可乐（罐）'))?.name, '可乐(罐)');
+    });
+  });
 }
