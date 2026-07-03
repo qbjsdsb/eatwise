@@ -8,9 +8,9 @@ import 'package:image_picker/image_picker.dart';
 import '../../ai/nutrition_lookup.dart';
 import '../../ai/prompts.dart';
 import '../../ai/vision_provider.dart';
-import '../../ai/food_density.dart';
 import '../../core/config/secure_config_store.dart';
 import '../../core/util/image_quality_checker.dart';
+import '../../core/util/recognition_post_processor.dart';
 import '../../core/util/recognition_validator.dart';
 import 'circuit_breaker.dart';
 
@@ -433,221 +433,46 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
     }
   }
 
-  /// 建议 3：包装液体食品按密度换算 ml→g
+  /// 批次 1 + 建议 3 + 建议 7：校验识别结果，必要时重试 + 修正
   ///
-  /// prompt v1.6 让 AI 读取包装净含量填 per_unit_g，但液体 ml 数值 ≠ g 数值：
-  ///   - 食用油 1ml≈0.92g → 100ml 按 100g 算低估 8%
-  ///   - 蜂蜜 1ml≈1.42g → 100ml 按 100g 算低估 42%
-  ///   - 烈酒 1ml≈0.79g → 100ml 按 100g 算高估 21%
+  /// 后处理（密度换算 + 校验修正）委托 RecognitionPostProcessor.process，
+  /// 本方法只保留"字段严重不合理 → 重试 1 次"的逻辑（重试需要 imageBase64 + provider）。
   ///
-  /// 换算条件：weight_source=package_label（包装标签）+ food_category 是液体类别
-  /// 换算后重算 perUnitG + estimatedWeightG*（按 quantity * realPerUnitG）
-  /// 区间按 ±3% 估算（包装标注误差）
-  ///
-  /// 水基饮料（carbonated/water/soup 密度=1.0）换算后无变化，直接返回不重建
-  VisionRecognitionResult _applyDensityConversion(VisionRecognitionResult original) {
-    // 主菜换算
-    final convertedMain = _convertDensityForDish(original);
-
-    // 附加菜换算
-    if (original.additionalDishes.isEmpty) return convertedMain;
-    final convertedAdditional =
-        original.additionalDishes.map(_convertDensityForDish).toList();
-
-    // 主菜无变化 + 附加菜无变化 → 直接返回（避免无谓重建）
-    // _convertDensityForDish 不换算时返回原引用，用 identical 比较即可
-    if (identical(convertedMain, original) &&
-        _listIdentical(convertedAdditional, original.additionalDishes)) {
-      return original;
-    }
-
-    // 重建带换算后的附加菜
-    return VisionRecognitionResult(
-      dishName: convertedMain.dishName,
-      brand: convertedMain.brand,
-      estimatedWeightGLow: convertedMain.estimatedWeightGLow,
-      estimatedWeightGMid: convertedMain.estimatedWeightGMid,
-      estimatedWeightGHigh: convertedMain.estimatedWeightGHigh,
-      foodComponents: convertedMain.foodComponents,
-      cookingMethod: convertedMain.cookingMethod,
-      isSingleItem: convertedMain.isSingleItem,
-      confidence: convertedMain.confidence,
-      promptVersion: convertedMain.promptVersion,
-      additionalDishes: convertedAdditional,
-      quantity: convertedMain.quantity,
-      unit: convertedMain.unit,
-      perUnitG: convertedMain.perUnitG,
-      estimatedCalories: convertedMain.estimatedCalories,
-      estimatedProteinG: convertedMain.estimatedProteinG,
-      estimatedFatG: convertedMain.estimatedFatG,
-      estimatedCarbsG: convertedMain.estimatedCarbsG,
-      weightSource: convertedMain.weightSource,
-      foodCategory: convertedMain.foodCategory,
-    );
-  }
-
-  /// 单个 dish 的密度换算（仅包装液体）
-  VisionRecognitionResult _convertDensityForDish(VisionRecognitionResult r) {
-    // 仅对包装标签 + 液体类别换算
-    if (r.weightSource != 'package_label') return r;
-    if (!isLiquidCategory(r.foodCategory)) return r;
-    final density = densityOf(r.foodCategory);
-    // 密度=1.0（水基饮料）无需换算
-    if (density == 1.0) return r;
-    // perUnitG 为 0 或负数不换算（防除零/异常）
-    if (r.perUnitG <= 0) return r;
-
-    final realPerUnitG = r.perUnitG * density;
-    final realMid = realPerUnitG * r.quantity;
-    // 区间按 ±3% 估算（包装标注误差）
-    final realLow = realMid * 0.97;
-    final realHigh = realMid * 1.03;
-
-    debugPrint('[DensityConversion] ${r.dishName}(${r.foodCategory}) '
-        'perUnitG: ${r.perUnitG}→${realPerUnitG.toStringAsFixed(1)}, '
-        'mid: ${r.estimatedWeightGMid}→${realMid.toStringAsFixed(1)} '
-        '(density=$density)');
-
-    return r.copyWith(
-      perUnitG: realPerUnitG,
-      estimatedWeightGLow: realLow,
-      estimatedWeightGMid: realMid,
-      estimatedWeightGHigh: realHigh,
-    );
-  }
-
-  /// 判断两个列表的元素是否引用相同（避免无谓重建）
-  bool _listIdentical(List<VisionRecognitionResult> a, List<VisionRecognitionResult> b) {
-    if (a.length != b.length) return false;
-    for (var i = 0; i < a.length; i++) {
-      if (!identical(a[i], b[i])) return false;
-    }
-    return true;
-  }
-
-  /// 批次 1：校验识别结果，必要时重试 + 修正
-  ///
-  /// 三层处理：
-  /// 1. 字段严重不合理（dishName 空 / confidence 越界 / weight 非正 / 区间倒置）
-  ///    → 重试 1 次（best-effort：重试异常用原结果，不阻塞用户）
-  /// 2. 营养素不自洽（|4p+9f+4c - cal|/cal > 10%）
-  ///    → 用宏量营养素反推修正 calories（重试赌运气不稳定，修正更可靠）
-  /// 3. additionalDishes 逐个校验修正（不单独重试，重试成本高且会整体重返）
+  /// 第二波修复：重试结果也走 PostProcessor.process（含密度换算），
+  /// 修复原代码"重试成功后用未换算的 retryResult"的 bug（油 500ml 重试后 mid 仍是 500 而非 460）。
   ///
   /// 校验失败原因 debugPrint（best-effort，不引入 Sentry 依赖避免循环）。
   Future<VisionRecognitionResult> _validateAndMaybeRetry(
     String imageBase64,
     VisionRecognitionResult original,
   ) async {
-    // 建议 3：包装液体食品按密度换算 ml→g（在校验和查库前执行，确保后续用真实克数）
-    // prompt v1.6 让 AI 读包装净含量填 per_unit_g，但液体的 ml 数值 ≠ g 数值
-    // 如 100ml 油 AI 填 per_unit_g=100（实为 ml），真实 92g，需按密度 0.92 换算
-    var result = _applyDensityConversion(original);
-
-    // 主菜校验
-    final mainValidation = RecognitionValidator.validate(result);
-    if (mainValidation.reasons.isNotEmpty) {
-      debugPrint('[RecognitionValidator] 主菜校验: ${mainValidation.reasons}');
-    }
+    // 后处理：密度换算 + 校验修正（calories + components + additionalDishes）
+    var result = RecognitionPostProcessor.process(original);
 
     // 字段严重不合理 → 重试 1 次（best-effort）
-    if (mainValidation.needsRetry) {
-      try {
-        final retryResult = await _primaryProvider.recognize(imageBase64);
-        final retryValidation = RecognitionValidator.validate(retryResult);
-        if (retryValidation.reasons.isNotEmpty) {
-          debugPrint('[RecognitionValidator] 重试后校验: ${retryValidation.reasons}');
-        }
-        // 重试结果有效则采用（即使重试后仍有营养素不自洽，下面会修正）
-        if (!retryValidation.needsRetry) {
-          result = retryResult;
-          // 用重试结果的校验做后续修正
-          if (retryValidation.correctedCalories != null) {
-            result = result.copyWith(
-                estimatedCalories: retryValidation.correctedCalories);
-          }
-          // 建议 7：组分份量交叉验证修正
-          if (retryValidation.correctedComponents != null) {
-            result =
-                result.copyWith(foodComponents: retryValidation.correctedComponents);
-          }
-          // additionalDishes 修正
-          result = _correctAdditionalDishes(result);
-          return result;
-        }
-        // 重试后仍 needsRetry → 用原结果继续（修正 calories 后返回，不阻塞用户）
-      } catch (e) {
-        debugPrint('[RecognitionValidator] 重试异常，用原结果: $e');
-        // 重试异常用原结果继续
+    final validation = RecognitionValidator.validate(result);
+    if (validation.reasons.isNotEmpty) {
+      debugPrint('[RecognitionValidator] 主菜校验: ${validation.reasons}');
+    }
+    if (!validation.needsRetry) return result;
+
+    try {
+      final retryResult = await _primaryProvider.recognize(imageBase64);
+      // 重试结果也走完整后处理（修复 bug：原代码重试跳过密度换算）
+      final processedRetry = RecognitionPostProcessor.process(retryResult);
+      final retryValidation = RecognitionValidator.validate(processedRetry);
+      if (retryValidation.reasons.isNotEmpty) {
+        debugPrint('[RecognitionValidator] 重试后校验: ${retryValidation.reasons}');
       }
+      // 重试结果有效则采用（即使重试后仍有营养素不自洽，process 已修正）
+      if (!retryValidation.needsRetry) {
+        return processedRetry;
+      }
+      // 重试后仍 needsRetry → 用原结果继续（不阻塞用户）
+    } catch (e) {
+      debugPrint('[RecognitionValidator] 重试异常，用原结果: $e');
     }
-
-    // 主菜 calories 修正（原结果或重试后仍 needsRetry 的结果）
-    if (mainValidation.correctedCalories != null) {
-      result = result.copyWith(
-          estimatedCalories: mainValidation.correctedCalories);
-    }
-
-    // 建议 7：主菜组分份量交叉验证修正
-    if (mainValidation.correctedComponents != null) {
-      result =
-          result.copyWith(foodComponents: mainValidation.correctedComponents);
-    }
-
-    // additionalDishes 修正
-    result = _correctAdditionalDishes(result);
     return result;
-  }
-
-  /// 批次 1 + 建议 7：校验并修正 additionalDishes（calories + 组分份量，不重试）
-  VisionRecognitionResult _correctAdditionalDishes(
-      VisionRecognitionResult result) {
-    if (result.additionalDishes.isEmpty) return result;
-    final corrected = <VisionRecognitionResult>[];
-    var changed = false;
-    for (final dish in result.additionalDishes) {
-      final v = RecognitionValidator.validate(dish);
-      if (v.reasons.isNotEmpty) {
-        debugPrint('[RecognitionValidator] 附加菜「${dish.dishName}」校验: ${v.reasons}');
-      }
-      var modified = dish;
-      var dishChanged = false;
-      if (v.correctedCalories != null) {
-        modified = modified.copyWith(estimatedCalories: v.correctedCalories);
-        dishChanged = true;
-      }
-      // 建议 7：组分份量交叉验证修正
-      if (v.correctedComponents != null) {
-        modified = modified.copyWith(foodComponents: v.correctedComponents);
-        dishChanged = true;
-      }
-      if (dishChanged) changed = true;
-      corrected.add(modified);
-    }
-    if (!changed) return result;
-    // 重建 result 带修正后的 additionalDishes
-    return VisionRecognitionResult(
-      dishName: result.dishName,
-      brand: result.brand,
-      estimatedWeightGLow: result.estimatedWeightGLow,
-      estimatedWeightGMid: result.estimatedWeightGMid,
-      estimatedWeightGHigh: result.estimatedWeightGHigh,
-      foodComponents: result.foodComponents,
-      cookingMethod: result.cookingMethod,
-      isSingleItem: result.isSingleItem,
-      confidence: result.confidence,
-      promptVersion: result.promptVersion,
-      additionalDishes: corrected,
-      quantity: result.quantity,
-      unit: result.unit,
-      perUnitG: result.perUnitG,
-      estimatedCalories: result.estimatedCalories,
-      estimatedProteinG: result.estimatedProteinG,
-      estimatedFatG: result.estimatedFatG,
-      estimatedCarbsG: result.estimatedCarbsG,
-      weightSource: result.weightSource,
-      foodCategory: result.foodCategory,
-    );
   }
 
   /// v1.4：库未命中时的 AI 整菜估算兜底（prompt v1.4 提供 estimated_calories 等字段）。

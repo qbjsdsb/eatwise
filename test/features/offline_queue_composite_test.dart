@@ -83,8 +83,10 @@ void main() {
     expect(mealLogs.first.actualCalories, greaterThan(0)); // 复合菜有热量
     expect(mealLogs.first.actualProteinG, greaterThan(0));
     expect(mealLogs.first.mealType, 'lunch');
-    // 组分份量累加：鸡肉 150g + 花生 30g = 180g
-    expect(mealLogs.first.actualServingG, 180);
+    // 第二波：PostProcessor 接入离线回补后，组分份量交叉验证生效
+    // 原 sum=180g(鸡肉150+花生30) vs mid=250g，偏差 38.9%>15% → 按 mid 缩放 1.389x
+    // 缩放后 鸡肉 208.3g + 花生 41.7g = 250g（= mid）
+    expect(mealLogs.first.actualServingG, closeTo(250, 0.5));
 
     // 验证 pending 标记 done
     final pending = await pendingRepo.listPending();
@@ -143,6 +145,75 @@ void main() {
     expect(all.first.retryCount, 1);
     expect(all.first.status, 'pending'); // 仍待重试
   });
+
+  test('第二波：离线回补密度换算生效（500ml 油 → 460g 写入 meal_log）', () async {
+    // 第一波盲区：离线回补原直接用原始 result，包装液体未换算 ml→g
+    // 第二波修复：接入 RecognitionPostProcessor，与前台一致
+    // 种子：食用油（889 kcal/100g，ediblePercent=null=100%）
+    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+          name: '食用油',
+          defaultServingG: 100,
+          caloriesPer100g: 889,
+          proteinPer100g: 0,
+          fatPer100g: 99.9,
+          carbsPer100g: 0,
+          source: 'manual',
+          sourceVersion: 'test',
+          createdAt: 1002,
+        ));
+
+    final pendingRepo = PendingRecognitionRepository(db);
+    final imgPath = await writeFakeImage('oil');
+    await pendingRepo.enqueue(
+      imagePath: imgPath,
+      mealType: 'breakfast',
+      date: '2026-07-02',
+      promptVersion: 'v1.7',
+    );
+
+    final controller = OfflineQueueController(
+      db: db,
+      visionProvider: _FakeOilProvider(),
+      nutritionLookup: lookup,
+    );
+    await controller.processPending();
+
+    final mealLogs = await db.select(db.mealLogs).get();
+    expect(mealLogs.length, 1);
+    // 密度换算后 mid = 500 * 0.92 = 460g（不再是原始 500）
+    expect(mealLogs.first.actualServingG, closeTo(460, 0.5));
+    // 库反算：889 * 460 / 100 = 4089.4 kcal
+    expect(mealLogs.first.actualCalories, closeTo(4089.4, 0.5));
+  });
+}
+
+/// 模拟识别 500ml 食用油（包装标签 + 液体类别，触发密度换算）
+class _FakeOilProvider implements VisionProvider {
+  @override
+  String get name => 'FakeOil';
+
+  @override
+  String get promptVersion => 'v1.7';
+
+  @override
+  Future<VisionRecognitionResult> recognize(String imageBase64) async {
+    return const VisionRecognitionResult(
+      dishName: '食用油',
+      estimatedWeightGLow: 485,
+      estimatedWeightGMid: 500, // ml 数值，后端按密度换算
+      estimatedWeightGHigh: 515,
+      foodComponents: [],
+      cookingMethod: 'raw',
+      isSingleItem: true,
+      confidence: 0.9,
+      promptVersion: 'v1.7',
+      quantity: 1,
+      unit: '瓶',
+      perUnitG: 500,
+      weightSource: 'package_label',
+      foodCategory: 'oil',
+    );
+  }
 }
 
 /// 模拟识别复合菜（宫保鸡丁 = 鸡肉 + 花生）

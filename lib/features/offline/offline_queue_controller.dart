@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
+import '../../core/util/recognition_post_processor.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
@@ -118,6 +119,11 @@ class OfflineQueueController {
               await _circuitBreaker.recordSuccess();
             } catch (_) {}
           }
+
+          // 第二波：后处理（密度换算 + 校验修正），与前台 recognize_controller 一致
+          // 修复第一波盲区：离线回补原直接用原始 result，包装液体未换算 ml→g、
+          // 营养素不自洽未修正、组分份量不自洽未缩放，导致前后台行为分叉。
+          result = RecognitionPostProcessor.process(result);
 
           // 查库回填营养素：区分单品 / 复合菜
           // （修复 bug：原无条件 lookupSingleItem 导致复合菜 nutrition==null 静默丢弃）
