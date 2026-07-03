@@ -170,10 +170,21 @@ class _CalibrationPageState extends State<CalibrationPage> {
                     if (isLowConfidence)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
-                        child: Text('⚠️ 待确认（置信度低，请仔细校准）',
-                            style: TextStyle(
-                                color:
-                                    Theme.of(context).colorScheme.error)),
+                        child: Row(
+                          children: [
+                            Icon(Icons.warning_amber_rounded,
+                                size: 16,
+                                color: Theme.of(context).colorScheme.error),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text('待确认（置信度低，请仔细校准）',
+                                  style: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .error)),
+                            ),
+                          ],
+                        ),
                       ),
                     // 多份识别警告：AI 识别为多份时显眼提示，避免用户忽略数量错识
                     // （如一罐芬达被识别成两罐，用户直接确认会记录两罐的克数）
@@ -290,10 +301,12 @@ class _CalibrationPageState extends State<CalibrationPage> {
               child: FilledButton(
                 onPressed: _isRecording ? null : _confirmManual,
                 child: _isRecording
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Theme.of(context).colorScheme.onPrimary),
                       )
                     : const Text('确认记录'),
               ),
@@ -414,9 +427,16 @@ class _CalibrationPageState extends State<CalibrationPage> {
           _buildComponentSlider(i, composite.componentHits[i]),
         if (composite.componentMisses.isNotEmpty) ...[
           const SizedBox(height: 8),
-          Text('⚠ 待确认组分（未在食物库找到）：',
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.error)),
+          Row(
+            children: [
+              Icon(Icons.warning_amber_rounded,
+                  size: 16, color: Theme.of(context).colorScheme.error),
+              const SizedBox(width: 6),
+              Text('待确认组分（未在食物库找到）：',
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.error)),
+            ],
+          ),
           for (final miss in composite.componentMisses)
             Padding(
               padding: const EdgeInsets.only(left: 16),

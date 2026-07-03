@@ -284,10 +284,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _isSaving ? null : _save,
         icon: _isSaving
-            ? const SizedBox(
+            ? SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer),
               )
             : const Icon(Icons.save),
         label: const Text('保存设置'),

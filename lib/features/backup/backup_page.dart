@@ -154,7 +154,9 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('⚠ 确认导入'),
+        icon: Icon(Icons.warning_amber_rounded,
+            color: Theme.of(ctx).colorScheme.error),
+        title: const Text('确认导入'),
         content: const Text('导入将清空当前所有数据（档案、食物库、餐次记录、体重、汇总、反馈），此操作不可撤销。\n\n确定继续？'),
         actions: [
           TextButton(
@@ -177,7 +179,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              '导入成功：${stats.profiles}档案 + ${stats.foodItems}食物 + ${stats.mealLogs}餐次 + ${stats.weightLogs}体重 + ${stats.insights}汇总 + ${stats.feedbacks}反馈${stats.imageCheckResult.totalMissing > 0 ? '\n⚠ ${stats.imageCheckResult.totalMissing} 张图片未迁移（原图未保留）' : ''}'),
+              '导入成功：${stats.profiles}档案 + ${stats.foodItems}食物 + ${stats.mealLogs}餐次 + ${stats.weightLogs}体重 + ${stats.insights}汇总 + ${stats.feedbacks}反馈${stats.imageCheckResult.totalMissing > 0 ? '\n注意：${stats.imageCheckResult.totalMissing} 张图片未迁移（原图未保留）' : ''}'),
           duration: const Duration(seconds: 5),
         ),
       );

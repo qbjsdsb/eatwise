@@ -342,10 +342,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
             FilledButton(
               onPressed: _busy ? null : _save,
               child: _busy
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 20,
                       height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Theme.of(context).colorScheme.onPrimary),
                     )
                   : const Text('保存并重算目标'),
             ),

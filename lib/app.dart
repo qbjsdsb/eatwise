@@ -64,6 +64,15 @@ class EatWiseApp extends ConsumerWidget {
           ),
         ),
       ),
+      // TextButton 触摸目标 ≥48dp（WCAG 2.5.5）：默认 36dp 不达标，
+      // 全局提升避免每个 TextButton 单独设 minimumSize
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+      ),
+      // OutlinedButton 同样提升到 48dp，与 FilledButton/TextButton 一致
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+      ),
       appBarTheme: const AppBarTheme(centerTitle: false),
       inputDecorationTheme: const InputDecorationTheme(
         border: OutlineInputBorder(),

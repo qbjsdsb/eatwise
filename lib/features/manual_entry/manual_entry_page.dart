@@ -33,12 +33,25 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
   final _carbsCtrl = TextEditingController();
   late bool _customMode;
   bool _busy = false; // 防重入：记录期间禁用按钮，避免双击重复写库
+  bool _dirty = false; // 用户是否改过任意字段（PopScope 未保存确认用）
+
+  void _markDirty() {
+    if (_dirty) return;
+    setState(() => _dirty = true);
+  }
 
   @override
   void initState() {
     super.initState();
     _customMode = widget.initialName != null;
     if (widget.initialName != null) _nameCtrl.text = widget.initialName!;
+    // listener 在初始赋值之后注册，避免 initialName 赋值误触发 _dirty
+    _servingCtrl.addListener(_markDirty);
+    _nameCtrl.addListener(_markDirty);
+    _calCtrl.addListener(_markDirty);
+    _proteinCtrl.addListener(_markDirty);
+    _fatCtrl.addListener(_markDirty);
+    _carbsCtrl.addListener(_markDirty);
   }
 
   @override
@@ -54,14 +67,25 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await confirmDiscardChanges(context) && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(title: const Text('手动录入')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
           MealTypeSelector(
             value: _mealType,
-            onChanged: (v) => setState(() => _mealType = v),
+            onChanged: (v) {
+              setState(() => _mealType = v);
+              _markDirty();
+            },
           ),
           const SizedBox(height: 16),
           if (!_customMode) ...[
@@ -83,7 +107,10 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                             const FoodLibraryPage(pickForReuse: true)),
                   );
                   if (!mounted) return;
-                  if (result != null) setState(() => _selected = result);
+                  if (result != null) {
+                    setState(() => _selected = result);
+                    _markDirty();
+                  }
                 },
               ),
             ),
@@ -97,10 +124,12 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
               FilledButton(
                   onPressed: _busy ? null : _logFromLibrary,
                   child: _busy
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Theme.of(context).colorScheme.onPrimary),
                         )
                       : const Text('记录')),
             ],
@@ -162,10 +191,12 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
             FilledButton(
                 onPressed: _busy ? null : _logCustom,
                 child: _busy
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Theme.of(context).colorScheme.onPrimary),
                       )
                     : const Text('存库并记录')),
             TextButton(
@@ -175,6 +206,7 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
           ],
         ],
       ),
+    ),
     );
   }
 
@@ -206,6 +238,7 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(
                 '已记录 ${_selected!.name} ${serving.toStringAsFixed(0)}g')));
+        _dirty = false; // 保存成功，允许返回不弹确认
         Navigator.of(context).pop();
       }
     } catch (e) {
@@ -278,6 +311,7 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('已存库并记录 ${_nameCtrl.text}')));
+        _dirty = false; // 保存成功，允许返回不弹确认
         Navigator.of(context).pop();
       }
     } catch (e) {

@@ -10,6 +10,7 @@ import '../../core/util/food_name.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
+import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/pending_recognition_repository.dart';
 import '../../data/repositories/recognition_feedback_repository.dart';
 import '../recognize/providers.dart' as recognize;
@@ -29,6 +30,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   List<MealLog> _meals = [];
   Map<int, String> _foodNames = {};
   bool _loading = true;
+  bool _loadError = false; // 加载失败标志：与空数据严格区分（避免误导用户以为今日无记录）
   bool _busy = false; // 编辑/删除防重入
 
   @override
@@ -63,10 +65,12 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       }
       _meals = meals;
       _foodNames = names;
+      _loadError = false;
     } catch (_) {
-      // 加载失败保持空列表，避免 _loading 永久 true 卡死
+      // 加载失败：置 _loadError 标志，build 中显 ErrorState（不静默显空态误导用户）
       _meals = [];
       _foodNames = {};
+      _loadError = true;
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -95,14 +99,28 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
 
     return Scaffold(
       appBar: widget.embedded ? null : AppBar(title: const Text('今日记录')),
-      body: _meals.isEmpty
+      body: _loadError
           ? EmptyState(
-              icon: Icons.restaurant_menu,
-              title: '今日暂无记录',
-              subtitle: '点下方拍照按钮开始记录',
-              actionLabel: '去拍照',
-              onAction: () => context.push('/recognize'),
+              icon: Icons.error_outline,
+              title: '数据加载失败',
+              subtitle: '请检查数据库后重试',
+              actionLabel: '重试',
+              onAction: () {
+                setState(() {
+                  _loading = true;
+                  _loadError = false;
+                });
+                _load();
+              },
             )
+          : _meals.isEmpty
+              ? EmptyState(
+                  icon: Icons.restaurant_menu,
+                  title: '今日暂无记录',
+                  subtitle: '点下方拍照按钮开始记录',
+                  actionLabel: '去拍照',
+                  onAction: () => context.push('/recognize'),
+                )
           : ListView(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               children: [
@@ -144,6 +162,21 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         // 若 4s 内未撤销则实际从 DB 删除。避免误删后无回头路。
         final index = _meals.indexOf(m);
         if (index < 0) return; // 已被移除（防重入）
+        // 提前获取 repo：await 4s 后 widget 可能已销毁，DB delete 不能依赖 mounted
+        // （否则用户离开页面后记录"复活"，与已显示的删除动画冲突）
+        final MealLogRepository repo;
+        try {
+          repo = await ref.read(recognize.mealLogRepoProvider.future);
+        } catch (_) {
+          // 获取 repo 失败，回滚 UI
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('删除失败：数据库不可用')),
+            );
+          }
+          return;
+        }
+        if (!mounted) return;
         setState(() => _meals.removeAt(index));
         final messenger = ScaffoldMessenger.of(context);
         var undone = false;
@@ -165,15 +198,13 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
             ),
           ),
         );
-        // 等待 SnackBar 时长；若未撤销则实际删除
+        // 等待 SnackBar 时长；若未撤销则实际删除（即使页面已销毁也要删，避免数据复活）
         await Future.delayed(const Duration(seconds: 4));
         if (undone) return;
-        if (!mounted) return; // 页面已销毁，跳过删除（下次加载会重新出现）
         try {
-          final repo = await ref.read(recognize.mealLogRepoProvider.future);
           await repo.deleteMealLog(m.id);
         } catch (e) {
-          // 删除失败：回滚 UI（重新加载）+ 提示
+          // 删除失败：页面已销毁则无法回滚 UI/提示（best-effort，下次加载会显示原记录）
           if (!mounted) return;
           await _load();
           if (!mounted) return;

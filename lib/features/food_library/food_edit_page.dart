@@ -119,20 +119,24 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
             FilledButton(
                 onPressed: _busy ? null : _saveAll,
                 child: _busy
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Theme.of(context).colorScheme.onPrimary),
                       )
                     : const Text('保存全部修改')),
           if (!editable)
             FilledButton(
                 onPressed: _busy ? null : _saveServingOnly,
                 child: _busy
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Theme.of(context).colorScheme.onPrimary),
                       )
                     : const Text('保存默认份量')),
         ],

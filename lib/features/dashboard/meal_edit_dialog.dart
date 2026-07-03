@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/util/date_format.dart';
 import '../../core/util/food_name.dart';
+import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../food_library/food_library_page.dart';
 
@@ -258,13 +259,6 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
-    const mealLabels = {
-      'breakfast': '早餐',
-      'lunch': '午餐',
-      'dinner': '晚餐',
-      'snack': '加餐',
-    };
     return AlertDialog(
       title: const Text('编辑餐次'),
       content: SizedBox(
@@ -300,22 +294,10 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
                 decoration: const InputDecoration(labelText: '份量 (g)'),
               ),
               const SizedBox(height: 12),
-              // 餐次切换器（SegmentedButton）
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    for (final mt in mealTypes)
-                      ChoiceChip(
-                        label: Text(mealLabels[mt]!),
-                        selected: _mealType == mt,
-                        onSelected: (_) =>
-                            setState(() => _mealType = mt),
-                      ),
-                  ],
-                ),
+              // 餐次切换器（复用共享 MealTypeSelector，与 recognize/manual_entry 一致）
+              MealTypeSelector(
+                value: _mealType,
+                onChanged: (v) => setState(() => _mealType = v),
               ),
               const SizedBox(height: 12),
               // 日期选择器

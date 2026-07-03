@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
 import '../../core/util/date_format.dart';
+import '../../core/widgets/m3_widgets.dart';
 import '../../data/seed/food_category_defaults.dart';
 import '../manual_entry/manual_entry_page.dart';
 import 'providers.dart';
@@ -46,6 +47,7 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
   late List<bool> _hitFlags;
   // 防重入：记录中禁止连点
   bool _isRecording = false;
+  bool _dirty = false; // 用户是否改过滑块份量/数量（PopScope 未保存确认用）
 
   @override
   void initState() {
@@ -91,7 +93,15 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
       totalCarbs += c;
     }
 
-    return Scaffold(
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await confirmDiscardChanges(context) && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text('一桌多菜（共 ${allDishes.length} 道）'),
         actions: [
@@ -161,6 +171,7 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
           ),
         ],
       ),
+    ),
     );
   }
 
@@ -212,6 +223,7 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
                 label: '${_servings[index].toStringAsFixed(0)} g',
                 onChanged: (v) => setState(() {
                   _servings[index] = v;
+                  _dirty = true; // 用户拖滑块改份量，标记 dirty（PopScope 未保存确认）
                   // v1.3：仅单品路径 + perUnitG > 0 时反推数量（复合菜无步进器，不写 _quantities）
                   if (_getSingleNutrition(index) != null && dish.perUnitG > 0) {
                     final q = (v / dish.perUnitG).round();
@@ -301,6 +313,7 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
     setState(() {
       _quantities[index] = newQ;
       _servings[index] = (dish.perUnitG * newQ).clamp(0.0, _sliderMaxFor(dish));
+      _dirty = true; // 用户改数量，标记 dirty（PopScope 未保存确认）
     });
   }
 
@@ -503,6 +516,7 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
               content: Text(
                   '已记录 $recordedCount 道菜，合计 ${totalCal.toStringAsFixed(0)} kcal')),
         );
+        _dirty = false; // 记录成功，允许返回不弹确认
         Navigator.of(context).pop();
       }
     } catch (e) {

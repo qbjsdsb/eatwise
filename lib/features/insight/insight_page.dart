@@ -20,6 +20,9 @@ class InsightPage extends ConsumerStatefulWidget {
 
 class _InsightPageState extends ConsumerState<InsightPage> {
   String? _summary;
+  // 错误信息独立字段：与 _summary 严格区分，避免错误文案伪装成 AI 汇总误导用户
+  // （原实现把错误塞进 _summary，与 AI 输出在同一 Card 渲染，用户误以为是 AI 汇总内容）
+  String? _error;
   bool _loading = false;
   String _periodType = 'weekly'; // 'weekly' | 'monthly'
   late String _periodStart;
@@ -119,7 +122,10 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     final repo = InsightRepository(db);
     final existing = await repo.find(_periodType, _periodStart, _periodEnd);
     if (existing != null && mounted) {
-      setState(() => _summary = existing.summaryText);
+      setState(() {
+        _summary = existing.summaryText;
+        _error = null; // 加载到已有汇总，清掉历史错误（如上次生成失败的提示）
+      });
     }
   }
 
@@ -134,7 +140,10 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       final baseUrl = ref.read(recognize.glmBaseUrlProvider);
       if (apiKey.isEmpty) {
         if (!mounted) return;
-        setState(() => _summary = '未配置 GLM API Key，请到设置页填写');
+        setState(() {
+          _error = '未配置 GLM API Key，请到设置页填写';
+          _summary = null;
+        });
         return;
       }
       // Sprint 7 T54：离线守卫——无网络直接提示，不调 GLM API
@@ -142,7 +151,10 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       final online = await ref.refresh(recognize.networkAvailableProvider.future);
       if (!online) {
         if (!mounted) return;
-        setState(() => _summary = '当前无网络，请联网后重试');
+        setState(() {
+          _error = '当前无网络，请联网后重试';
+          _summary = null;
+        });
         return;
       }
       final provider = GlmFlashProvider(
@@ -170,10 +182,16 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         summaryText: text,
       );
       if (!mounted) return;
-      setState(() => _summary = text);
+      setState(() {
+        _summary = text;
+        _error = null;
+      });
     } catch (e) {
       if (!mounted) return;
-      setState(() => _summary = '生成失败：$e');
+      setState(() {
+        _error = '生成失败：$e';
+        _summary = null;
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -295,7 +313,34 @@ class _InsightPageState extends ConsumerState<InsightPage> {
             _emptyChartHint('暂无足够体重数据，至少记录 2 次'),
             const SizedBox(height: 16),
           ],
-          if (_summary != null)
+          if (_error != null)
+            // 错误态独立 Card：errorContainer 背景 + error 图标，与 AI 汇总 Card 视觉区分
+            // （原实现把错误塞进 _summary 同一 Card 渲染，用户误以为是 AI 输出）
+            Card(
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.error_outline,
+                        color: Theme.of(context).colorScheme.onErrorContainer),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(_error!,
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.copyWith(
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onErrorContainer)),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else if (_summary != null)
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -315,12 +360,16 @@ class _InsightPageState extends ConsumerState<InsightPage> {
           const SizedBox(height: 16),
           // loading 内置按钮（与 calibration 一致），避免单独转圈占行
           FilledButton.icon(
-            onPressed: _loading ? null : (_summary == null ? _generate : _confirmRegenerate),
+            onPressed: _loading
+                ? null
+                : (_summary == null ? _generate : _confirmRegenerate),
             icon: _loading
-                ? const SizedBox(
+                ? SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Theme.of(context).colorScheme.onPrimary))
                 : const Icon(Icons.auto_awesome),
             label: Text(_summary == null ? '生成$periodLabel汇总' : '重新生成'),
           ),
