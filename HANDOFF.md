@@ -468,6 +468,14 @@
 
 44. **TextField 程序化设值前必须移除 listener 避免误触发 override 标记**：MealEditDialog 的 4 个营养 TextField 加了 `_markOverride` listener（用户手动改值时标记 `_nutritionOverridden=true`，让 advanced 覆盖优先级最高）。但程序化设值（如换食物后重算营养、展开 advanced 时回填当前值）也会触发 listener → 误标记 override → 份量/换食物重算被跳过。`_setCtrlSilently` 方法在 setText 前 `removeListener`，setText 后 `addListener`，保证只有用户真实输入才标记 override。controller 的 listener 必须区分"用户输入"与"程序设值"两种触发源
 
+45. **PopScope 编辑页 `_markDirty` 必须加 `_loading` 守卫**：编辑页（profile/settings/food_edit 等）在 initState 注册 controller listener 后才异步 `_loadXxx()` 给 controller.text 赋值。赋值会触发 listener → 若 `_markDirty` 无守卫会误标 `_dirty=true` → 首屏就拦截返回键弹"放弃修改"对话框（用户没改任何东西）。守卫模式：`void _markDirty() { if (_loading || _dirty) return; setState(() => _dirty = true); }`，`_loadXxx` 的 finally 块置 `_loading=false`。calibration_page 用滑块 onChanged 触发 dirty 不需守卫（无异步赋值），但 controller-based 的页面必须守卫
+
+46. **GroupCard 分隔线策略：dividerIndent 非null 自动插 / null 手动插**：`GroupCard(dividerIndent: 16, children: [...])` 在子项间自动插 Divider（适合纯 ListTile/TextField 均匀列表）；`GroupCard(children: [...])` 不自动插（适合混合 ListTile + 警告 Padding 等非均匀内容，调用方用 `GroupCard.divider(context)` 手动在指定位置插）。曾因 me_page 的"使用情况"段含 cost 警告 Padding，用自动插会在 Padding 上下出现多余分隔线，改手动插解决。新增 GroupCard 调用需根据子项类型选策略
+
+47. **app.dart inputDecorationTheme 是 OutlineInputBorder 全局单一源**：app.dart L68-71 的 `inputDecorationTheme: InputDecorationTheme(border: OutlineInputBorder())` 全局生效，各页 TextField 不再需要重复声明 `border: OutlineInputBorder()`。本次清除 6 文件 11 处冗余声明。改主题色/圆角只需改 app.dart 一处。新增 TextField 默认就用 OutlineInputBorder，无需显式声明 border（除非要 InputBorder.none 做内嵌 ListTile 样式）
+
+48. **Undo SnackBar 乐观删除必须捕获 messenger 引用 + 用 undone 标志**：Dismissible 的 `onDismissed` 回调里 `setState(() => _meals.removeAt(index))` 后立即 `showSnackBar`，但 await 4s 后 widget 可能已 unmounted。必须 `final messenger = ScaffoldMessenger.of(context)` 在 await 前捕获引用（context 可能失效但 messenger 仍可用），用 `var undone = false` 标志在 SnackBarAction.onPressed 置 true，await 后检查 `if (undone) return` 跳过 DB delete。删除失败要 `await _load()` 回滚 UI + 错误提示。比"立即删"多一个 4s 窗口给用户反悔
+
 ---
 
 ## 5. 常用命令
