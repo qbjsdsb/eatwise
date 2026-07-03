@@ -53,6 +53,30 @@ class VisionRecognitionResult {
   /// 是否多份（quantity > 1）
   bool get isMultiQuantity => quantity > 1;
 
+  /// 复制并覆盖部分字段（用于改菜名重试后透传新菜名给校准页）
+  VisionRecognitionResult copyWith({String? dishName}) {
+    return VisionRecognitionResult(
+      dishName: dishName ?? this.dishName,
+      brand: brand,
+      estimatedWeightGLow: estimatedWeightGLow,
+      estimatedWeightGMid: estimatedWeightGMid,
+      estimatedWeightGHigh: estimatedWeightGHigh,
+      foodComponents: foodComponents,
+      cookingMethod: cookingMethod,
+      isSingleItem: isSingleItem,
+      confidence: confidence,
+      promptVersion: promptVersion,
+      additionalDishes: additionalDishes,
+      quantity: quantity,
+      unit: unit,
+      perUnitG: perUnitG,
+      estimatedCalories: estimatedCalories,
+      estimatedProteinG: estimatedProteinG,
+      estimatedFatG: estimatedFatG,
+      estimatedCarbsG: estimatedCarbsG,
+    );
+  }
+
   factory VisionRecognitionResult.fromJson(Map<String, dynamic> json, String promptVersion) {
     final mid = (json['estimated_weight_g_mid'] as num).toDouble();
     // Low/High 缺失时回退 Mid（设计 5.6，避免区间显示异常）

@@ -58,12 +58,16 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
         .toList();
     // v1.3：数量初值取 AI 识别的 quantity（默认 1）
     _quantities = allDishes.map((d) => d.quantity).toList();
-    // 命中标志：主菜 single/composite 任一非空即命中；additionalDish 同理
+    // 命中标志：主菜 single 非空或 composite 有组分命中即命中；additionalDish 同理
+    // composite 永不返回 null，但 componentHits 为空表示组分全 miss（无有效营养数据）
     _hitFlags = [
-      widget.mainSingle != null || widget.mainComposite != null,
-      ...widget.additionalItems
-          .take(5)
-          .map((e) => e.singleNutrition != null || e.compositeNutrition != null),
+      widget.mainSingle != null ||
+          (widget.mainComposite != null &&
+              widget.mainComposite!.componentHits.isNotEmpty),
+      ...widget.additionalItems.take(5).map((e) =>
+          e.singleNutrition != null ||
+          (e.compositeNutrition != null &&
+              e.compositeNutrition!.componentHits.isNotEmpty)),
     ];
   }
 

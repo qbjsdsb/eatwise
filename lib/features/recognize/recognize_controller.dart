@@ -284,6 +284,16 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
           components: result.foodComponents,
           cookingMethod: result.cookingMethod,
         );
+        // v1.4：复合菜组分全 miss 时用 AI 整菜估算兜底（转走单品路径）
+        // lookupCompositeDish 永不返回 null，但 componentHits 为空表示无有效营养数据，
+        // 若不兜底会显示 0 kcal 误导用户
+        if (mainComposite.componentHits.isEmpty) {
+          final fallback = _aiFallbackNutrition(result);
+          if (fallback != null) {
+            mainSingle = fallback;
+            mainComposite = null;
+          }
+        }
       }
 
       // v1.2 一桌多菜：对每个 additionalDish 也查库回填
@@ -303,6 +313,14 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
             components: dish.foodComponents,
             cookingMethod: dish.cookingMethod,
           );
+          // v1.4：附加菜复合菜组分全 miss 也转 AI 兜底（走单品路径）
+          if (n.componentHits.isEmpty) {
+            final fallback = _aiFallbackNutrition(dish);
+            if (fallback != null) {
+              additionalItems.add(MultiDishItem(dish: dish, singleNutrition: fallback));
+              continue;
+            }
+          }
           additionalItems.add(MultiDishItem(dish: dish, compositeNutrition: n));
         }
       }

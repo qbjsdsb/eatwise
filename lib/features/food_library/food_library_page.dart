@@ -170,6 +170,8 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
         return '手动';
       case 'ai_recognized':
         return 'AI 入库';
+      case 'off':
+        return 'OFF 云查';
       default:
         return source;
     }

@@ -96,7 +96,11 @@ void main() {
 
     try {
       final db = await container.read(databaseProvider.future);
-      ImageCleanup.runIfBacklogLarge(db).catchError((e) {
+      // 读取用户配置的图片保留期（0=永久保留），与后台任务对齐
+      final store = container.read(secureConfigStoreProvider);
+      final retentionDays = await store.getImageRetentionDays();
+      ImageCleanup.runIfBacklogLarge(db, retentionDays: retentionDays)
+          .catchError((e) {
         debugPrint('ImageCleanup 失败：$e');
       });
     } catch (e, st) {

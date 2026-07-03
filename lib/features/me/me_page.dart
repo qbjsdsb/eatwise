@@ -172,7 +172,7 @@ class _MePageState extends ConsumerState<MePage> {
               _groupCard([
                 _listItem(
                   Icons.info_outline_rounded,
-                  '关于 EatWise',
+                  '关于慢慢吃',
                   () => _showAbout(context),
                 ),
                 _listItem(

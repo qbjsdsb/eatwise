@@ -421,10 +421,14 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
         ? null
         : await mealRepoForSuggest.getMedianServing(nutrition.foodItemId);
     if (!mounted) return;
+    // 若用户改了菜名，用新菜名构造 result（校准页标题显示用户输入的菜名，非原始识别名）
+    final resultForCalibration = newDishName != result.dishName
+        ? result.copyWith(dishName: newDishName)
+        : result;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => CalibrationPage(
-          recognitionResult: result,
+          recognitionResult: resultForCalibration,
           singleNutrition: nutrition,
           foodItemRepo: foodItemRepo,
           suggestedServingG: suggestedServingG,

@@ -141,6 +141,7 @@ class FoodItemRepository {
             fatPer100g: Value(fatPer100g),
             carbsPer100g: Value(carbsPer100g),
             confidence: Value(confidence),
+            componentsJson: Value(componentsJson),
           ),
         );
         return existing.id;

@@ -35,19 +35,29 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   }
 
   Future<void> _loadProfile() async {
-    final db = await ref.read(recognize.databaseProvider.future);
-    final repo = ProfileRepository(db);
-    final p = await repo.get();
-    _heightCtrl.text = p.heightCm.toString();
-    _weightCtrl.text = p.weightKg.toString();
-    _ageCtrl.text = p.age.toString();
-    _bodyFatCtrl.text = p.bodyFatPct?.toString() ?? '';
-    _goalRateCtrl.text =
-        p.goalRateKgPerWeek > 0 ? p.goalRateKgPerWeek.toString() : '';
-    _gender = p.gender;
-    _activity = p.activityLevel;
-    _goal = p.goal;
-    if (mounted) setState(() => _loading = false);
+    try {
+      final db = await ref.read(recognize.databaseProvider.future);
+      final repo = ProfileRepository(db);
+      final p = await repo.get();
+      _heightCtrl.text = p.heightCm.toString();
+      _weightCtrl.text = p.weightKg.toString();
+      _ageCtrl.text = p.age.toString();
+      _bodyFatCtrl.text = p.bodyFatPct?.toString() ?? '';
+      _goalRateCtrl.text =
+          p.goalRateKgPerWeek > 0 ? p.goalRateKgPerWeek.toString() : '';
+      _gender = p.gender;
+      _activity = p.activityLevel;
+      _goal = p.goal;
+    } catch (e) {
+      // DB 异常时不卡死 loading
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('档案加载失败：$e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -310,6 +320,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           SnackBar(content: Text('已保存，每日目标 $target kcal')),
         );
         Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存失败：$e')),
+        );
       }
     } finally {
       if (mounted) setState(() => _busy = false);

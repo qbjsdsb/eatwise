@@ -356,13 +356,22 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       children: kThemePresets.map((preset) {
         final (argb, name) = preset;
         return _colorDot(Color(argb), name, argb == currentSeed, () async {
+          // 同步换肤（即时响应）
           ref.read(themeSeedProvider.notifier).set(argb);
-          final store = ref.read(secureConfigStoreProvider);
-          await store.setThemeSeed(argb);
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('已切换主题：$name')),
-          );
+          // 持久化（失败不阻塞当次换肤，但提示用户下次启动会回退）
+          try {
+            final store = ref.read(secureConfigStoreProvider);
+            await store.setThemeSeed(argb);
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('已切换主题：$name')),
+            );
+          } catch (_) {
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('主题已临时切换，但保存失败，下次启动将恢复')),
+            );
+          }
         });
       }).toList(),
     );

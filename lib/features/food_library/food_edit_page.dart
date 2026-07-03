@@ -137,6 +137,8 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
             .showSnackBar(const SnackBar(content: Text('已保存默认份量')));
         Navigator.of(context).pop();
       }
+    } catch (e) {
+      _showError('保存失败：$e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -174,6 +176,8 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
             .showSnackBar(const SnackBar(content: Text('已保存')));
         Navigator.of(context).pop();
       }
+    } catch (e) {
+      _showError('保存失败：$e');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -195,6 +199,8 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
         return '手动';
       case 'ai_recognized':
         return 'AI 入库';
+      case 'off':
+        return 'OFF 云查';
       default:
         return source;
     }

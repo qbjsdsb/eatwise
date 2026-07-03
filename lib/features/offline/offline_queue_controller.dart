@@ -56,8 +56,9 @@ class OfflineQueueController {
     });
 
     // 启动时若已在线也尝试一次（处理上次崩溃残留）
+    // fire-and-forget：不 await，避免 pending 多时阻塞 app 启动序列数分钟
     if (!_wasOffline) {
-      await processPending();
+      processPending().catchError((_) {});
     }
   }
 
@@ -126,53 +127,94 @@ class OfflineQueueController {
               servingG: result.estimatedWeightGMid,
             );
             if (nutrition == null) {
-              // 单品未命中 → upsert 0 卡 + markDone（保留原逻辑：单品无营养数据无法记录热量）
+              // v1.4：单品库未命中，用 AI 整菜估算兜底（与前台 recognize_controller 对齐）
+              // 若 AI 无估算（旧 prompt），仍走原 0 卡 + markDone 路径（不写 meal_log）
+              final cal = result.estimatedCalories;
+              if (cal == null) {
+                final foodItemRepo = FoodItemRepository(_db);
+                final foodId = await foodItemRepo.upsertAiRecognized(
+                  name: result.dishName,
+                  caloriesPer100g: 0,
+                  proteinPer100g: 0,
+                  fatPer100g: 0,
+                  carbsPer100g: 0,
+                  confidence: result.confidence,
+                );
+                await pendingRepo.markDone(p.id, foodId);
+                continue;
+              }
+              // AI 兜底：per100g 基于 mid 份量反算（与 recognize_page 哨兵处理一致）
+              final mid = result.estimatedWeightGMid;
+              final per100 = mid > 0 ? 100.0 / mid : 0.0;
               final foodItemRepo = FoodItemRepository(_db);
-              final foodId = await foodItemRepo.upsertAiRecognized(
+              foodItemId = await foodItemRepo.upsertAiRecognized(
                 name: result.dishName,
-                caloriesPer100g: 0,
-                proteinPer100g: 0,
-                fatPer100g: 0,
-                carbsPer100g: 0,
+                caloriesPer100g: cal * per100,
+                proteinPer100g: (result.estimatedProteinG ?? 0) * per100,
+                fatPer100g: (result.estimatedFatG ?? 0) * per100,
+                carbsPer100g: (result.estimatedCarbsG ?? 0) * per100,
                 confidence: result.confidence,
               );
-              await pendingRepo.markDone(p.id, foodId);
-              continue;
+              actualCalories = cal;
+              actualProteinG = result.estimatedProteinG ?? 0;
+              actualFatG = result.estimatedFatG ?? 0;
+              actualCarbsG = result.estimatedCarbsG ?? 0;
+            } else {
+              foodItemId = nutrition.foodItemId;
+              actualCalories = nutrition.calories;
+              actualProteinG = nutrition.proteinG;
+              actualFatG = nutrition.fatG;
+              actualCarbsG = nutrition.carbsG;
             }
-            foodItemId = nutrition.foodItemId;
-            actualCalories = nutrition.calories;
-            actualProteinG = nutrition.proteinG;
-            actualFatG = nutrition.fatG;
-            actualCarbsG = nutrition.carbsG;
           } else {
             // 复合菜 → lookupCompositeDish（组分累加 + 烹饪用油）
             final composite = await _nutritionLookup.lookupCompositeDish(
               components: result.foodComponents,
               cookingMethod: result.cookingMethod,
             );
-            // 复合菜 upsert ai_recognized（存组分快照，热量在 meal_log）
-            final foodItemRepo = FoodItemRepository(_db);
-            componentsJson = jsonEncode({
-              'components': result.foodComponents
-                  .map((c) => {'name': c.name, 'estimated_g': c.estimatedG})
-                  .toList(),
-              'oil_g': composite.oilG,
-            });
-            foodItemId = await foodItemRepo.upsertAiRecognized(
-              name: result.dishName,
-              caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储
-              proteinPer100g: 0,
-              fatPer100g: 0,
-              carbsPer100g: 0,
-              confidence: result.confidence,
-              componentsJson: componentsJson,
-            );
-            actualCalories = composite.calories;
-            actualProteinG = composite.proteinG;
-            actualFatG = composite.fatG;
-            actualCarbsG = composite.carbsG;
-            actualServingG = result.foodComponents
-                .fold<double>(0, (s, c) => s + c.estimatedG);
+            if (composite.componentHits.isEmpty &&
+                result.estimatedCalories != null) {
+              // v1.4：复合菜组分全 miss 时用 AI 整菜估算兜底（与前台对齐）
+              final mid = result.estimatedWeightGMid;
+              final per100 = mid > 0 ? 100.0 / mid : 0.0;
+              final foodItemRepo = FoodItemRepository(_db);
+              foodItemId = await foodItemRepo.upsertAiRecognized(
+                name: result.dishName,
+                caloriesPer100g: result.estimatedCalories! * per100,
+                proteinPer100g: (result.estimatedProteinG ?? 0) * per100,
+                fatPer100g: (result.estimatedFatG ?? 0) * per100,
+                carbsPer100g: (result.estimatedCarbsG ?? 0) * per100,
+                confidence: result.confidence,
+              );
+              actualCalories = result.estimatedCalories!;
+              actualProteinG = result.estimatedProteinG ?? 0;
+              actualFatG = result.estimatedFatG ?? 0;
+              actualCarbsG = result.estimatedCarbsG ?? 0;
+            } else {
+              // 复合菜 upsert ai_recognized（存组分快照，热量在 meal_log）
+              final foodItemRepo = FoodItemRepository(_db);
+              componentsJson = jsonEncode({
+                'components': result.foodComponents
+                    .map((c) => {'name': c.name, 'estimated_g': c.estimatedG})
+                    .toList(),
+                'oil_g': composite.oilG,
+              });
+              foodItemId = await foodItemRepo.upsertAiRecognized(
+                name: result.dishName,
+                caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储
+                proteinPer100g: 0,
+                fatPer100g: 0,
+                carbsPer100g: 0,
+                confidence: result.confidence,
+                componentsJson: componentsJson,
+              );
+              actualCalories = composite.calories;
+              actualProteinG = composite.proteinG;
+              actualFatG = composite.fatG;
+              actualCarbsG = composite.carbsG;
+              actualServingG = result.foodComponents
+                  .fold<double>(0, (s, c) => s + c.estimatedG);
+            }
           }
 
           // 写 meal_log + 标记 done（事务包裹：原子化，防 insertMealLog 成功但 markDone

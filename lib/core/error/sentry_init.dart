@@ -10,11 +10,18 @@ import 'sentry_scrub.dart';
 /// 在 main() 中 runApp 前调用，用 SentryFlutter.init 包裹 runApp
 ///
 /// 若 DSN 为空或 sentryEnabled=false，则跳过初始化（直接 runApp）
+/// appConfig 加载失败时降级跳过 Sentry（不阻塞 runApp，避免白屏）
 Future<Widget> initSentryAndRunApp({
   required ProviderContainer container,
   required Widget app,
 }) async {
-  final config = await container.read(appConfigProvider.future);
+  AppConfig config;
+  try {
+    config = await container.read(appConfigProvider.future);
+  } catch (e) {
+    debugPrint('appConfig 加载失败，跳过 Sentry：$e');
+    return app;
+  }
   final dsn = config.sentryDsn;
 
   if (dsn.isEmpty || !config.sentryEnabled) {

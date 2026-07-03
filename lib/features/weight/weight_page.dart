@@ -43,24 +43,32 @@ class WeightPageState extends ConsumerState<WeightPage> {
   }
 
   Future<void> _load() async {
-    final db = await ref.read(recognize.databaseProvider.future);
-    final repo = WeightLogRepository(db);
-    _logs = await repo.getRecent(days: 30);
-    // 加载 30 天 meal_log 并按日聚合热量（双轴图用）
-    final mealRepo = MealLogRepository(db);
-    final now = DateTime.now();
-    final startDate = now.subtract(const Duration(days: 30));
-    final startStr =
-        '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
-    final endStr =
-        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    _meals = await mealRepo.getRange(startStr, endStr);
-    _dailyCalories = {};
-    for (final m in _meals) {
-      _dailyCalories[m.date] =
-          (_dailyCalories[m.date] ?? 0) + m.actualCalories;
+    try {
+      final db = await ref.read(recognize.databaseProvider.future);
+      final repo = WeightLogRepository(db);
+      _logs = await repo.getRecent(days: 30);
+      // 加载 30 天 meal_log 并按日聚合热量（双轴图用）
+      final mealRepo = MealLogRepository(db);
+      final now = DateTime.now();
+      final startDate = now.subtract(const Duration(days: 30));
+      final startStr =
+          '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
+      final endStr =
+          '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+      _meals = await mealRepo.getRange(startStr, endStr);
+      _dailyCalories = {};
+      for (final m in _meals) {
+        _dailyCalories[m.date] =
+            (_dailyCalories[m.date] ?? 0) + m.actualCalories;
+      }
+    } catch (e) {
+      // DB 异常时不卡死 loading，用空数据渲染（用户至少能看到空图表）
+      _logs = [];
+      _meals = [];
+      _dailyCalories = {};
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
-    if (mounted) setState(() => _loading = false);
   }
 
   @override

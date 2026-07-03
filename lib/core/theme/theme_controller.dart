@@ -9,9 +9,10 @@ class ThemeNotifier extends Notifier<int> {
   @override
   int build() => 0xFF5B8C7B; // 莫奈《睡莲》青绿
 
-  /// 设置主题种子色。非法值（0/负数）忽略，避免 Color(argb) 得到透明/异常色。
+  /// 设置主题种子色。非法值（0/负数/alpha=0 全透明）忽略，
+  /// 避免 Color(argb) 得到透明/异常色导致 UI 不可见。
   void set(int argb) {
-    if (argb <= 0) return; // ARGB int 必须高位有 alpha（0xFF...），0 或负数非法
+    if (argb <= 0 || (argb >> 24) == 0) return; // ARGB 高 8 位 alpha 必须非 0
     state = argb;
   }
 }

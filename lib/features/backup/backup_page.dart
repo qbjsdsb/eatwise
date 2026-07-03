@@ -151,6 +151,24 @@ class _BackupPageState extends ConsumerState<BackupPage> {
     if (jsonStr == null || jsonStr.trim().isEmpty) return;
     if (!mounted) return;
 
+    // 二次确认：导入会先清空当前所有数据（DELETE FROM 6 张表），破坏性操作需用户明确确认
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('⚠ 确认导入'),
+        content: const Text('导入将清空当前所有数据（档案、食物库、餐次记录、体重、汇总、反馈），此操作不可撤销。\n\n确定继续？'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('确定导入')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
     setState(() => _busy = true);
     try {
       final db = await ref.read(recognize.databaseProvider.future);

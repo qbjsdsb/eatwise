@@ -38,6 +38,10 @@ class NutritionLookup {
   }) async {
     final food = await _repo.findByNameOrAlias(dishName);
     if (food != null) {
+      // 复合菜以 per100g=0 占位存储（实际热量在 meal_log.componentsSnapshotJson），
+      // 单品查库命中这类记录会返回 0 热量造成数据污染。
+      // 视为未命中返回 null，让调用方走 AI 兜底或 OFF 云查。
+      if (food.componentsJson != null) return null;
       return NutritionResult(
         foodItemId: food.id,
         calories: food.caloriesPer100g * servingG / 100,
