@@ -38,7 +38,8 @@
 
 **工作区状态**：clean（v0.12.0 已发布；P0/P1/P2 食物识别增强 + 全 editable 第一批体重/餐次已提交，未发布）
 **最近 commit**：
-- `（待提交）` feat: 全 editable 第一批——体重记录可改值/改日期/删，餐次记录可改份量/营养/餐次/日期/换食物/高级覆盖
+- `db80dfb` feat: 全 editable 第一批——体重记录可改值/改日期/删，餐次记录可改份量/营养/餐次/日期/换食物/高级覆盖
+- `79a0ae6` feat: 食物识别增强四层自我进化架构（P0/P1/P2，未发布）
 - `7d1e8bd` docs: HANDOFF 补全 v0.12.0 release workflow run URL + APK 大小
 - `cbdc664` docs: HANDOFF 补充图标精致化详情（v0.12.0 已含）
 - `c37912b` feat: 启动器图标精致化 + bump v0.12.0（已发布 v0.12.0）
