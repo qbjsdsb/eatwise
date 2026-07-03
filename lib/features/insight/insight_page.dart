@@ -347,8 +347,16 @@ class _InsightPageState extends ConsumerState<InsightPage> {
 
   /// 热量折线图：每日摄入 + 目标热量参考线 + 均值参考线
   /// 周视图 X 轴 '一二三四五六日'，月视图按日期每 5 天一个标签。
+  ///
+  /// 美化要点（解决"数字重叠"和"不够美观"）：
+  /// - Y 轴设 interval（按 maxCal/4 取整到 50 的倍数），避免默认刻度挤成一堆
+  /// - 边框只留左 + 下（现代图表风格，去掉上/右多余的线）
+  /// - 网格线只画水平方向且按 Y 轴 interval，垂直网格去掉减少视觉噪音
+  /// - 数据点变小（radius 3）+ 描边，曲线 + 半透明渐变填充
+  /// - 触摸节点显示 tooltip（具体哪天多少 kcal）
+  /// - 参考线标签左对齐避开 Y 轴标签区，目标/均值上下错开防重叠
   Widget _buildCaloriesChart() {
-    final colorScheme = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final spots = <FlSpot>[];
     for (var i = 0; i < _dailyCal.length; i++) {
       spots.add(FlSpot(i.toDouble(), _dailyCal[i]));
@@ -357,11 +365,30 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     final avgCal = _dailyCal.reduce((a, b) => a + b) / _dailyCal.length;
     final start = DateTime.parse(_periodStart);
 
+    // Y 轴 interval：取 maxCal 的 1/4，向上取整到 50 的倍数（刻度整齐不重叠）
+    final yInterval = ((maxCal * 1.2 / 4) / 50).ceil() * 50.0;
+    final effectiveInterval = yInterval < 50 ? 50.0 : yInterval;
+
     return LineChart(LineChartData(
-      gridData: const FlGridData(show: true),
+      gridData: FlGridData(
+        show: true,
+        drawVerticalLine: false, // 只留水平网格，去掉垂直线减少噪音
+        horizontalInterval: effectiveInterval,
+        getDrawingHorizontalLine: (v) => FlLine(
+          color: cs.outlineVariant.withValues(alpha: 0.4),
+          strokeWidth: 1,
+          dashArray: [3, 3],
+        ),
+      ),
       borderData: FlBorderData(
         show: true,
-        border: Border.all(color: colorScheme.outlineVariant),
+        // 只留左 + 下边框（现代图表风格）
+        border: Border(
+          left: BorderSide(color: cs.outlineVariant),
+          bottom: BorderSide(color: cs.outlineVariant),
+          top: BorderSide.none,
+          right: BorderSide.none,
+        ),
       ),
       minX: 0,
       maxX: (_dailyCal.length - 1).toDouble(),
@@ -369,8 +396,10 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       maxY: maxCal * 1.2,
       titlesData: FlTitlesData(
         bottomTitles: AxisTitles(
+          axisNameWidget: const SizedBox.shrink(),
           sideTitles: SideTitles(
             showTitles: true,
+            reservedSize: 22,
             getTitlesWidget: (value, meta) {
               final idx = value.toInt();
               if (idx < 0 || idx >= _dailyCal.length) {
@@ -378,21 +407,40 @@ class _InsightPageState extends ConsumerState<InsightPage> {
               }
               if (_periodType == 'weekly') {
                 const days = ['一', '二', '三', '四', '五', '六', '日'];
-                return Text(days[idx],
-                    style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant));
+                return Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(days[idx],
+                      style: TextStyle(
+                          fontSize: 11, color: cs.onSurfaceVariant)),
+                );
               }
               // 月视图：每 5 天一个标签（1/5/10/15/20/25/30）
               final date = start.add(Duration(days: idx));
               if (date.day == 1 || date.day % 5 == 0) {
-                return Text('${date.day}',
-                    style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant));
+                return Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text('${date.day}',
+                      style: TextStyle(
+                          fontSize: 11, color: cs.onSurfaceVariant)),
+                );
               }
               return const SizedBox.shrink();
             },
           ),
         ),
-        leftTitles: const AxisTitles(
-          sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+        leftTitles: AxisTitles(
+          sideTitles: SideTitles(
+            showTitles: true,
+            reservedSize: 40,
+            interval: effectiveInterval, // 关键：固定间隔防重叠
+            getTitlesWidget: (value, meta) {
+              // 0 不显示（避免和 X 轴标签挤）
+              if (value == 0) return const SizedBox.shrink();
+              return Text('${value.round()}',
+                  style: TextStyle(
+                      fontSize: 10, color: cs.onSurfaceVariant));
+            },
+          ),
         ),
         topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         rightTitles:
@@ -400,44 +448,85 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       ),
       extraLinesData: ExtraLinesData(
         horizontalLines: [
-          // 目标热量参考线
+          // 目标热量参考线（标签左上，避开 Y 轴标签）
           HorizontalLine(
             y: _targetCal.toDouble(),
-            color: colorScheme.primary,
-            strokeWidth: 1,
-            dashArray: [5, 5],
+            color: cs.primary.withValues(alpha: 0.7),
+            strokeWidth: 1.5,
+            dashArray: [6, 4],
             label: HorizontalLineLabel(
               show: true,
-              alignment: Alignment.topRight,
-              style: TextStyle(fontSize: 9, color: colorScheme.primary),
+              alignment: Alignment.topLeft,
+              padding: const EdgeInsets.only(left: 44, bottom: 4),
+              style: TextStyle(fontSize: 10, color: cs.primary, fontWeight: FontWeight.w600),
               labelResolver: (_) => '目标 $_targetCal',
             ),
           ),
-          // 平均线
+          // 平均线（标签左下，与目标线错开防重叠）
           HorizontalLine(
             y: avgCal,
-            color: colorScheme.tertiary,
-            strokeWidth: 1,
-            dashArray: [5, 5],
+            color: cs.tertiary.withValues(alpha: 0.7),
+            strokeWidth: 1.5,
+            dashArray: [6, 4],
             label: HorizontalLineLabel(
               show: true,
-              alignment: Alignment.bottomRight,
-              style: TextStyle(fontSize: 9, color: colorScheme.tertiary),
+              alignment: Alignment.bottomLeft,
+              padding: const EdgeInsets.only(left: 44, top: 4),
+              style: TextStyle(fontSize: 10, color: cs.tertiary, fontWeight: FontWeight.w600),
               labelResolver: (_) => '均值 ${avgCal.round()}',
             ),
           ),
         ],
       ),
+      lineTouchData: LineTouchData(
+        // 触摸节点显示具体值
+        touchTooltipData: LineTouchTooltipData(
+          getTooltipItems: (touchedSpots) {
+            return touchedSpots.map((spot) {
+              final idx = spot.spotIndex;
+              final date = start.add(Duration(days: idx));
+              final label = _periodType == 'weekly'
+                  ? '周${['一', '二', '三', '四', '五', '六', '日'][idx % 7]}'
+                  : '${date.month}/${date.day}';
+              return LineTooltipItem(
+                '$label\n${spot.y.round()} kcal',
+                TextStyle(
+                  color: cs.onInverseSurface,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  height: 1.4,
+                ),
+              );
+            }).toList();
+          },
+        ),
+      ),
       lineBarsData: [
         LineChartBarData(
           spots: spots,
           isCurved: true,
-          color: colorScheme.primary,
-          barWidth: 3,
-          dotData: const FlDotData(show: true),
+          curveSmoothness: 0.35,
+          color: cs.primary,
+          barWidth: 2.5,
+          dotData: FlDotData(
+            show: true,
+            getDotPainter: (spot, _, __, ___) => FlDotCirclePainter(
+              radius: 3,
+              color: cs.primary,
+              strokeWidth: 1.5,
+              strokeColor: cs.surface,
+            ),
+          ),
           belowBarData: BarAreaData(
             show: true,
-            color: colorScheme.primary.withValues(alpha: 0.1),
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                cs.primary.withValues(alpha: 0.18),
+                cs.primary.withValues(alpha: 0.02),
+              ],
+            ),
           ),
         ),
       ],
@@ -445,41 +534,103 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   }
 
   /// 体重趋势折线图
+  /// 美化：Y 轴 interval 固定（防小数重叠）+ 边框只留左下 + 点变小 + 触摸 tooltip
   Widget _buildWeightChart() {
-    final colorScheme = Theme.of(context).colorScheme;
+    final cs = Theme.of(context).colorScheme;
     final spots = <FlSpot>[];
     for (var i = 0; i < _dailyWeight.length; i++) {
       spots.add(FlSpot(i.toDouble(), _dailyWeight[i]));
     }
     final minW = spots.map((s) => s.y).reduce((a, b) => a < b ? a : b);
     final maxW = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
-    final padding = (maxW - minW) * 0.1 + 0.5;
+    final padding = (maxW - minW) * 0.15 + 0.5;
+    // Y 轴 interval：范围/4，至少 0.2（体重波动小时刻度别太密）
+    final range = (maxW - minW) + padding * 2;
+    final yInterval = (range / 4).clamp(0.2, double.infinity);
 
     return LineChart(LineChartData(
-      gridData: const FlGridData(show: false),
+      gridData: FlGridData(
+        show: true,
+        drawVerticalLine: false,
+        horizontalInterval: yInterval,
+        getDrawingHorizontalLine: (v) => FlLine(
+          color: cs.outlineVariant.withValues(alpha: 0.4),
+          strokeWidth: 1,
+          dashArray: [3, 3],
+        ),
+      ),
       borderData: FlBorderData(
         show: true,
-        border: Border.all(color: colorScheme.outlineVariant),
+        border: Border(
+          left: BorderSide(color: cs.outlineVariant),
+          bottom: BorderSide(color: cs.outlineVariant),
+          top: BorderSide.none,
+          right: BorderSide.none,
+        ),
       ),
       minX: 0,
       maxX: (_dailyWeight.length - 1).toDouble(),
       minY: minW - padding,
       maxY: maxW + padding,
-      titlesData: const FlTitlesData(
-        bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+      titlesData: FlTitlesData(
+        bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
         leftTitles: AxisTitles(
-          sideTitles: SideTitles(showTitles: true, reservedSize: 40),
+          sideTitles: SideTitles(
+            showTitles: true,
+            reservedSize: 40,
+            interval: yInterval, // 固定间隔防小数重叠
+            getTitlesWidget: (value, meta) {
+              return Text(value.toStringAsFixed(1),
+                  style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant));
+            },
+          ),
         ),
-        topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+      ),
+      lineTouchData: LineTouchData(
+        touchTooltipData: LineTouchTooltipData(
+          getTooltipItems: (touchedSpots) {
+            return touchedSpots.map((spot) {
+              return LineTooltipItem(
+                '${spot.y.toStringAsFixed(1)} kg',
+                TextStyle(
+                  color: cs.onInverseSurface,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              );
+            }).toList();
+          },
+        ),
       ),
       lineBarsData: [
         LineChartBarData(
           spots: spots,
           isCurved: true,
-          color: colorScheme.secondary,
-          barWidth: 2,
-          dotData: const FlDotData(show: true),
+          curveSmoothness: 0.35,
+          color: cs.secondary,
+          barWidth: 2.5,
+          dotData: FlDotData(
+            show: true,
+            getDotPainter: (spot, _, __, ___) => FlDotCirclePainter(
+              radius: 3,
+              color: cs.secondary,
+              strokeWidth: 1.5,
+              strokeColor: cs.surface,
+            ),
+          ),
+          belowBarData: BarAreaData(
+            show: true,
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                cs.secondary.withValues(alpha: 0.15),
+                cs.secondary.withValues(alpha: 0.02),
+              ],
+            ),
+          ),
         ),
       ],
     ));

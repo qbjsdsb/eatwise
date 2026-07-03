@@ -61,7 +61,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     final today =
         '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
     final remaining = await service.getDailyRemaining(today);
-    return service.recommend(remaining: remaining, limit: 5);
+    return service.recommend(remaining: remaining, limit: 5, todayDate: today);
   }
 
   Future<DashboardData> _loadData() async {

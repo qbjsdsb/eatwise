@@ -143,4 +143,27 @@ class MealLogRepository {
     }
     return (servings[n ~/ 2 - 1] + servings[n ~/ 2]) / 2;
   }
+
+  /// 查询最近 N 天各食物的引用次数（智能推荐加权用）。
+  /// 返回 foodItemId → 引用次数。常吃的食物频次高，推荐时加分。
+  /// N 默认 30 天：覆盖一个月饮食习惯，太短样本少，太长不反映近期偏好变化。
+  Future<Map<int, int>> getRecentFoodCounts({int days = 30}) async {
+    final now = DateTime.now();
+    final start = now.subtract(Duration(days: days));
+    final startDate =
+        '${start.year}-${start.month.toString().padLeft(2, '0')}-${start.day.toString().padLeft(2, '0')}';
+    final countRows = await _db.customSelect(
+      'SELECT food_item_id, COUNT(id) AS cnt '
+      'FROM meal_logs '
+      'WHERE date >= ? '
+      'GROUP BY food_item_id',
+      variables: [Variable.withString(startDate)],
+      readsFrom: {_db.mealLogs},
+    ).get();
+    final result = <int, int>{};
+    for (final row in countRows) {
+      result[row.read<int>('food_item_id')] = row.read<int>('cnt');
+    }
+    return result;
+  }
 }
