@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/util/refresh_bus.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/repositories/profile_repository.dart';
 import 'nutrition_calculator.dart';
@@ -320,6 +321,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           SnackBar(content: Text('已保存，每日目标 $target kcal')),
         );
         Navigator.of(context).pop();
+        // 通知 dashboard/records/insight 等监听 RefreshBus 的页面刷新
+        // 修复：原代码 pop 后不通知，导致主页每日目标/宏量目标仍是旧值
+        RefreshBus.instance.notify();
       }
     } catch (e) {
       if (mounted) {

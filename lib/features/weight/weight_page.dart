@@ -3,9 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/util/refresh_bus.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/meal_log_repository.dart';
+import '../../data/repositories/profile_repository.dart';
 import '../../data/repositories/weight_log_repository.dart';
 import '../../nutrition/tdee_calibrator.dart';
 import '../recognize/providers.dart' as recognize;
@@ -272,6 +274,13 @@ class WeightPageState extends ConsumerState<WeightPage> {
           '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
       await repo.insert(date: today, weightKg: weight);
 
+      // 同步 profile.weightKg：让 dashboard 宏量目标（proteinGPerKg * weightKg）
+      // 随最新体重变化。原代码只写 weight_logs 表，profile.weightKg 不变，
+      // 导致即使主页刷新，宏量目标仍用旧体重算。
+      // 注意：不重算 dailyCalorieTarget（BMR 重算只在用户主动编辑档案时做，
+      // 日常体重波动通过 TDEE 校准 adjustmentKcal 微调）
+      await ProfileRepository(db).update(weightKg: weight);
+
       // 触发 TDEE 自适应校准（Sprint 3 T22）
       try {
         final config = await ref.read(appConfigProvider.future);
@@ -290,6 +299,9 @@ class WeightPageState extends ConsumerState<WeightPage> {
 
       _weightCtrl.clear();
       await _load();
+      // 通知 dashboard/records/insight 等监听 RefreshBus 的页面刷新
+      // 修复：原代码只刷新本页（_load），主页宏量目标/目标热量不更新
+      RefreshBus.instance.notify();
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('已记录体重')));
