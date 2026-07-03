@@ -38,6 +38,8 @@
 
 **工作区状态**：clean
 **最近 commit**：
+- `50d4cac` fix: 第四轮深度审查修复——主题色绿/常用食物无名/原图丢失/复合菜滑块/防重入
+- `baba3e1` feat: 项目分析与建议（prompt v1.5 + 反馈卡死修复 + 转手动入口）
 - `c015953` fix: 第三轮深度审查修复 + release 构建失败根因
 - `cddc9ff` docs: 更新 HANDOFF 第2节——v0.10.0 发布完成
 - `bd66ef3` docs: 添加跨会话交接文档 + Trae 项目规则
@@ -45,14 +47,19 @@
 - `79f4cfd` fix: v0.10.0 合并收尾——修复致命崩溃 + 数据正确性 + 防重入 + 一致性
 
 **已发布**：
-- v0.10.0 tag 已重新推送（2026-07-03，第二次），release.yml workflow 已触发构建
-- 第一次 release 因 colors.xml 空文件致 AAPT 解析崩溃，已修复
+- v0.10.0 已发布（2026-07-03，第二次 release 成功，APK 已上传）
 - 分支 v0.10.0-m3-merge 已同步到远程
-- workflow 监控（第二次）：https://github.com/qbjsdsb/eatwise/actions/runs/28650741254
-- 三轮深度审查修复（启动白屏、数据丢失/污染、异常处理、一致性、Sentry 脱敏、事务原子性）
+- 四轮深度审查修复完成
 - 发布前验证：flutter analyze No issues + flutter test 242 passed/3 skipped/0 failed
-- 版本号一致：pubspec 0.10.0+10 / sentry eatwise@0.10.0 / me_page 0.10.0 / settings_page v0.10.0
-- R8 禁用确认：isMinifyEnabled=false + isShrinkResources=false
+
+**第四轮审查修复清单**（commit 50d4cac，用户反馈驱动）：
+- 主题色绿根因：expressive→tonalSpot + secondaryContainer→primaryContainer + 默认色绿→紫
+- 常用食物无名根因：listFrequent 过滤0引用 + upsertAiRecognized 空串兜底 + Text兜底
+- 原图丢失：recognize_page 识别成功后持久化原图（避免临时缓存被清理致 broken image）
+- 复合菜主滑块无效：calibration_page 复合菜路径隐藏主份量 Slider
+- today_meals _load 补 try-catch-finally + _showEditDialog 补 _busy 防重入
+- multi_dish_page 转手动按钮补 _isRecording 防重入
+- prompt v1.5 示例 3 雪碧/美年达热量修正
 
 **第三轮审查修复清单**（commit c015953）：
 - release 根因：colors.xml 空文件 → 补 <resources> 根元素
