@@ -36,12 +36,12 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（食物热量计算优化第一波+第二波已提交，未发布 release，等用户确认）
+**工作区状态**：clean（食物热量计算优化第一波+第二波+主页刷新修复已提交，未发布 release，等用户确认）
 **最近 commit**：
+- `b167574` fix: 个人档案/体重页保存后通知主页刷新（profile/weight→RefreshBus→dashboard）
 - `62dd475` refactor: 提取 RecognitionPostProcessor 修复三路径行为分叉（第二波 2.0+2.1）
 - `47fd22c` feat: 食物热量计算优化第一波——可食部分系数+组分份量交叉验证+液体密度换算（建议1+3+7）
 - `c2510cb` feat: 识别智能化——图片预检+字段校验+营养素自洽+包装容量优先+反馈闭环（批次 1-3）
-- `50d4cac` fix: 第四轮深度审查修复——主题色绿/常用食物无名/原图丢失/复合菜滑块/防重入
 
 **已发布**：
 - v0.10.0 已发布（2026-07-03，第二次 release 成功，APK 已上传）
@@ -64,7 +64,7 @@
   - 下次 AI 识别返回错误名时，findByNameOrAlias 命中别名，直接返回正确菜营养数据
   - 6 个 addAlias 单元测试全过
 
-**验证**：flutter analyze No issues + flutter test 320 passed/3 skipped/0 failed
+**验证**：flutter analyze No issues + flutter test 324 passed/3 skipped/0 failed
 
 **食物热量计算优化第一波修复清单**（commit 47fd22c，等用户验收后发布 release）：
 - 建议 1 ediblePercent 可食部分系数：
@@ -103,8 +103,17 @@
 - 17 个 PostProcessor 单元测试 + 1 个离线回补密度换算专项测试，全过
 - 更新 1 个原有离线测试期望值（组分份量缩放后 actualServingG 180→250，新行为正确）
 
+**主页刷新修复清单**（commit b167574，profile/weight 保存后通知 dashboard）：
+- 问题：用户在 profile_page 录入体重身高年龄（重算 BMR/TDEE/目标）或在 weight_page 记录体重后，主页每日目标/宏量目标不更新
+- 根因1：profile_page._save() pop 后没调 RefreshBus.notify()（dashboard 唯一刷新入口是 RefreshBus 监听）
+- 根因2：weight_page._save() 只调本页 _load()，没调 RefreshBus.notify()
+- 根因3：weight_page 只写 weight_logs 表，不同步 profile.weightKg（即使刷新，宏量目标 proteinGPerKg*weightKg 仍用旧体重）
+- 修复：profile_page pop 后 + weight_page _save 末尾都加 RefreshBus.instance.notify()；weight_page insert 后同步 ProfileRepository.update(weightKg: weight)
+- 设计决策：weight_page 不同步重算 dailyCalorieTarget（BMR 重算只在用户主动编辑档案时做，日常体重波动通过 TDEE 校准 adjustmentKcal 微调）
+- 4 个 widget 测试全过（ProfilePage/WeightPage notify + weightKg 同步 + weight_logs 不影响）
+
 **未完成/待办**（按优先级）：
-1. ⬜ 用户验收测试（真机装 APK 验证第一波+第二波优化效果，等用户确认后发布 release）
+1. ⬜ 用户验收测试（真机装 APK 验证第一波+第二波+主页刷新修复效果，等用户确认后发布 release）
 2. 🔧 第三波（待用户确认后启动）：建议 6（接入 USDA FoodData Central API 替代部分 OFF 云查，免费但需 API key）—— 但需先评估 OFF 中文命中率，USDA 是英文 API 中文菜名需翻译层
 3. ⏸️ 建议 4 餐前/餐后双拍对比（DietDelta 思路）：用户明确暂不做
 4. 🔧 重构性优化（风险较高，不阻塞当前版本）：
@@ -173,6 +182,8 @@
 7. **复合菜组分克数已是可食克数，不能再乘 ediblePercent**：`lookupCompositeDish` 反算时不要加 edibleFactor（与单品 `lookupSingleItem` 不同），否则双重缩放
 8. **密度换算只对 weight_source=package_label + 液体类别触发**：散装菜（ai_estimate）即使 foodCategory=milk 也不换算（视觉估算已是克数）；水基（密度=1.0）跳过避免无谓重建
 9. **三路径必须走 RecognitionPostProcessor.process**：前台识别（recognize_controller）、重试结果、离线回补（offline_queue_controller）三条路径的 recognize 结果都必须经过 PostProcessor.process，否则行为分叉（第二波修复的关键约束）。重试结果若跳过 process 会导致密度换算被跳过（油 500ml 重试后 mid 仍是 500 而非 460）
+10. **profile/weight 页保存后必须调 RefreshBus.notify()**：dashboard 唯一刷新入口是 RefreshBus 监听（main_shell FAB 也用此机制）。profile_page._save 和 weight_page._save 末尾都必须 notify，否则主页每日目标/宏量目标不更新。weight_page 还需同步 profile.weightKg（否则宏量目标 proteinGPerKg*weightKg 仍用旧体重）
+11. **dashboard 用裸 FutureBuilder+setState，无响应式 provider**：当前 dashboard 不 watch 任何 profile provider，完全靠 RefreshBus 触发 _refresh() 重查库。若未来新增其他修改 profile 的入口，也必须调 RefreshBus.notify()
 
 ---
 
