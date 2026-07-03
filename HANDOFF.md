@@ -38,7 +38,7 @@
 
 **工作区状态**：clean（v0.11.1 已发布；v0.11.1 之后又提交了 4 个修复但**未发布**）
 **最近 commit**：
-- （待提交）fix: 深度审查修复 15 项——TdeeCalibrator 符号/insertManual 别名冲突/酒精热量清零/JsonImporter FK+Sentry try-catch/NaN 校验/硬下限/markFailed 事务等（未发布）
+- `f5e611a` fix: 深度审查修复 15 项——TdeeCalibrator 符号/insertManual 别名冲突/酒精热量清零/JsonImporter FK+Sentry try-catch/NaN 校验/硬下限/markFailed 事务等（未发布）
 - `a8aa1f5` feat: 界面 MD3 全面优化（协调性+合规+字体层级，未发布）
 - `a680241` feat: 智能推荐算法 v3 五维评分 + addAlias 冲突检测（未发布）
 - `1064449` fix: 识别精准度修复+界面偏右修正（雪花啤酒→雪碧假阳性，未发布）
