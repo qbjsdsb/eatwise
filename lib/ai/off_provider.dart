@@ -45,39 +45,56 @@ class OffProvider {
         _isOnline = isOnline;
 
   /// 云查 OFF。离线/超时/无命中/解析失败均返回 null。
-  Future<OffResult?> lookup(String dishName) async {
+  ///
+  /// P2-1 brand 组合查询：[brand] 非空时先查 "brand+name"（如"雪花 啤酒"），
+  /// OFF 有品牌产品名，命中率提升。未命中再回退查 name。
+  Future<OffResult?> lookup(String dishName, {String brand = ''}) async {
     if (dishName.trim().isEmpty) return null;
     try {
       if (!await _isOnline()) return null;
-      final url = Uri.parse('$_baseUrl/cgi/search.pl').replace(
-        queryParameters: {
-          'search_terms': dishName,
-          'search_simple': '1',
-          'action': 'process',
-          'json': '1',
-          'page_size': '5',
-        },
-      );
-      // OFF 要求 User-Agent 标识应用（否则可能被限流）
-      final resp = await _client
-          .get(url, headers: {'User-Agent': 'EatWise/0.4.0 (nutrition app)'})
-          .timeout(_timeout);
-      if (resp.statusCode != 200) return null;
-      final json = jsonDecode(resp.body) as Map<String, dynamic>;
-      final count = json['count'] as int? ?? 0;
-      if (count == 0) return null;
-      final products = json['products'] as List? ?? const [];
-      // 遍历前 5 个结果，取第一个营养素齐全且合理的
-      for (final p in products) {
-        if (p is! Map<String, dynamic>) continue;
-        final result = _parseProduct(p);
-        if (result != null) return result;
+
+      // P2-1：brand 非空时先查组合（brand+name），提升品牌包装食品命中率
+      final cleanBrand = brand.trim();
+      if (cleanBrand.isNotEmpty) {
+        final combined = '$cleanBrand $dishName';
+        final hit = await _searchOff(combined);
+        if (hit != null) return hit;
       }
-      return null;
+      // 回退查 name（brand miss 或 brand 为空）
+      return await _searchOff(dishName);
     } catch (_) {
       // 任何异常都不阻塞：返回 null，调用方走手动录入
       return null;
     }
+  }
+
+  /// OFF 搜索内部实现（单次查询）
+  Future<OffResult?> _searchOff(String terms) async {
+    final url = Uri.parse('$_baseUrl/cgi/search.pl').replace(
+      queryParameters: {
+        'search_terms': terms,
+        'search_simple': '1',
+        'action': 'process',
+        'json': '1',
+        'page_size': '5',
+      },
+    );
+    // OFF 要求 User-Agent 标识应用（否则可能被限流）
+    final resp = await _client
+        .get(url, headers: {'User-Agent': 'EatWise/0.4.0 (nutrition app)'})
+        .timeout(_timeout);
+    if (resp.statusCode != 200) return null;
+    final json = jsonDecode(resp.body) as Map<String, dynamic>;
+    final count = json['count'] as int? ?? 0;
+    if (count == 0) return null;
+    final products = json['products'] as List? ?? const [];
+    // 遍历前 5 个结果，取第一个营养素齐全且合理的
+    for (final p in products) {
+      if (p is! Map<String, dynamic>) continue;
+      final result = _parseProduct(p);
+      if (result != null) return result;
+    }
+    return null;
   }
 
   /// 解析单个产品。4 项营养素必须齐全且在合理区间，否则跳过。

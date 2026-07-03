@@ -12,6 +12,7 @@ import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/pending_recognition_repository.dart';
+import '../../data/seed/food_category_defaults.dart';
 import '../recognize/circuit_breaker.dart';
 import '../recognize/providers.dart' as recognize;
 
@@ -136,6 +137,7 @@ class OfflineQueueController {
             final nutrition = await _nutritionLookup.lookupSingleItem(
               dishName: result.dishName,
               servingG: result.estimatedWeightGMid,
+              brand: result.brand,
             );
             if (nutrition == null) {
               // v1.4：单品库未命中，用 AI 整菜估算兜底（与前台 recognize_controller 对齐）
@@ -148,15 +150,24 @@ class OfflineQueueController {
                 continue;
               }
               // AI 兜底：per100g 基于 mid 份量反算（与 recognize_page 哨兵处理一致）
+              // P0：品类默认值校准（防 AI 离谱估算）+ brand 持久化
               final mid = result.estimatedWeightGMid;
               final per100 = mid > 0 ? 100.0 / mid : 0.0;
+              final calibratedSingle = FoodCategoryDefaults.calibrate(
+                aiCaloriesPer100g: cal * per100,
+                aiProteinPer100g: (result.estimatedProteinG ?? 0) * per100,
+                aiFatPer100g: (result.estimatedFatG ?? 0) * per100,
+                aiCarbsPer100g: (result.estimatedCarbsG ?? 0) * per100,
+                category: result.foodCategory,
+              );
               final foodItemRepo = FoodItemRepository(_db);
               foodItemId = await foodItemRepo.upsertAiRecognized(
                 name: result.dishName,
-                caloriesPer100g: cal * per100,
-                proteinPer100g: (result.estimatedProteinG ?? 0) * per100,
-                fatPer100g: (result.estimatedFatG ?? 0) * per100,
-                carbsPer100g: (result.estimatedCarbsG ?? 0) * per100,
+                brand: result.brand,
+                caloriesPer100g: calibratedSingle.$1,
+                proteinPer100g: calibratedSingle.$2,
+                fatPer100g: calibratedSingle.$3,
+                carbsPer100g: calibratedSingle.$4,
                 confidence: result.confidence,
               );
               actualCalories = cal;
@@ -179,11 +190,13 @@ class OfflineQueueController {
             if (composite.componentHits.isEmpty &&
                 result.estimatedCalories != null) {
               // v1.4：复合菜组分全 miss 时用 AI 整菜估算兜底（与前台对齐）
+              // P0：brand 持久化（复合菜不做品类校准，per100g=0 占位）
               final mid = result.estimatedWeightGMid;
               final per100 = mid > 0 ? 100.0 / mid : 0.0;
               final foodItemRepo = FoodItemRepository(_db);
               foodItemId = await foodItemRepo.upsertAiRecognized(
                 name: result.dishName,
+                brand: result.brand,
                 caloriesPer100g: result.estimatedCalories! * per100,
                 proteinPer100g: (result.estimatedProteinG ?? 0) * per100,
                 fatPer100g: (result.estimatedFatG ?? 0) * per100,
@@ -212,6 +225,7 @@ class OfflineQueueController {
               });
               foodItemId = await foodItemRepo.upsertAiRecognized(
                 name: result.dishName,
+                brand: result.brand,
                 caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储
                 proteinPer100g: 0,
                 fatPer100g: 0,

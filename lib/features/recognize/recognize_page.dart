@@ -9,6 +9,7 @@ import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
 import '../../core/config/app_config.dart';
 import '../../data/repositories/pending_recognition_repository.dart';
+import '../../data/seed/food_category_defaults.dart';
 import '../manual_entry/manual_entry_page.dart';
 import 'calibration_page.dart';
 import 'multi_dish_page.dart';
@@ -260,12 +261,28 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
                         // 不能用 servingG（用户校准后的份量），否则密度会随用户调整反向偏差
                         final mid = result.estimatedWeightGMid;
                         final per100 = mid > 0 ? 100.0 / mid : 0.0;
+                        // P0：品类默认值校准——AI 估算的 per100g 偏离品类默认值 2 倍以上
+                        // 用默认值替代（防 AI 离谱估算，如啤酒估成 200 kcal/100g 实际 43）
+                        final rawCalPer100 = n.calories * per100;
+                        final calibrated = FoodCategoryDefaults.calibrate(
+                          aiCaloriesPer100g: rawCalPer100,
+                          aiProteinPer100g: n.proteinG * per100,
+                          aiFatPer100g: n.fatG * per100,
+                          aiCarbsPer100g: n.carbsG * per100,
+                          category: result.foodCategory,
+                        );
+                        if (calibrated.$1 != rawCalPer100) {
+                          debugPrint(
+                              '[FoodCategoryDefaults] ${result.dishName}(${result.foodCategory}) '
+                              'AI per100g=$rawCalPer100 偏离品类默认值，校准为 ${calibrated.$1}');
+                        }
                         foodItemId = await foodRepo.upsertAiRecognized(
                           name: result.dishName,
-                          caloriesPer100g: n.calories * per100,
-                          proteinPer100g: n.proteinG * per100,
-                          fatPer100g: n.fatG * per100,
-                          carbsPer100g: n.carbsG * per100,
+                          brand: result.brand,
+                          caloriesPer100g: calibrated.$1,
+                          proteinPer100g: calibrated.$2,
+                          fatPer100g: calibrated.$3,
+                          carbsPer100g: calibrated.$4,
                           confidence: result.confidence,
                         );
                       } else {
@@ -275,6 +292,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
                       // 复合菜：存入 food_item（source=ai_recognized，components_json 存组分快照）
                       foodItemId = await foodRepo.upsertAiRecognized(
                         name: result.dishName,
+                        brand: result.brand,
                         caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储，实际值在 meal_log
                         proteinPer100g: 0,
                         fatPer100g: 0,

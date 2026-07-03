@@ -1,0 +1,51 @@
+[
+  {"brand": "喜茶", "name": "多肉葡萄", "aliases": ["多肉葡萄（去糖）"], "size_ml": 480, "calories": 95, "protein": 1.2, "fat": 0.5, "carbs": 22},
+  {"brand": "喜茶", "name": "纯绿妍", "aliases": ["绿妍", "纯茶"], "size_ml": 480, "calories": 5, "protein": 0.1, "fat": 0, "carbs": 1},
+  {"brand": "喜茶", "name": "烤黑糖波波牛乳", "aliases": ["波波牛乳", "黑糖波波"], "size_ml": 500, "calories": 320, "protein": 5, "fat": 8, "carbs": 55},
+  {"brand": "喜茶", "name": "满瓶红柚", "aliases": ["红柚茶"], "size_ml": 480, "calories": 120, "protein": 0.5, "fat": 0.2, "carbs": 29},
+  {"brand": "喜茶", "name": "芋泥波波牛乳", "aliases": ["芋泥波波"], "size_ml": 500, "calories": 280, "protein": 4.5, "fat": 6, "carbs": 50},
+
+  {"brand": "霸王茶姬", "name": "伯牙绝弦", "aliases": ["茉莉奶茶", "伯牙"], "size_ml": 660, "calories": 154, "protein": 2.1, "fat": 3.8, "carbs": 18},
+  {"brand": "霸王茶姬", "name": "桂馥兰香", "aliases": ["桂花奶茶"], "size_ml": 660, "calories": 145, "protein": 2, "fat": 3.5, "carbs": 17},
+  {"brand": "霸王茶姬", "name": "寻香山茶", "aliases": ["山茶花奶茶"], "size_ml": 660, "calories": 160, "protein": 2.2, "fat": 4, "carbs": 19},
+  {"brand": "霸王茶姬", "name": "青云舞枚茶", "aliases": ["纯茶"], "size_ml": 660, "calories": 8, "protein": 0.1, "fat": 0, "carbs": 1.5},
+
+  {"brand": "奈雪", "name": "霸气橙子", "aliases": ["橙子茶"], "size_ml": 500, "calories": 130, "protein": 0.8, "fat": 0.3, "carbs": 31},
+  {"brand": "奈雪", "name": "霸气芝士草莓", "aliases": ["芝士草莓"], "size_ml": 500, "calories": 240, "protein": 3, "fat": 5, "carbs": 45},
+  {"brand": "奈雪", "name": "鸭屎香宝藏茶", "aliases": ["鸭屎香奶茶"], "size_ml": 500, "calories": 175, "protein": 2.5, "fat": 4, "carbs": 30},
+  {"brand": "奈雪", "name": "纯茶", "aliases": ["四季春茶"], "size_ml": 500, "calories": 6, "protein": 0.1, "fat": 0, "carbs": 1},
+
+  {"brand": "瑞幸", "name": "生椰拿铁", "aliases": ["生椰", "椰拿铁"], "size_ml": 480, "calories": 149, "protein": 2.5, "fat": 4.5, "carbs": 24},
+  {"brand": "瑞幸", "name": "丝绒拿铁", "aliases": ["丝绒"], "size_ml": 480, "calories": 165, "protein": 3, "fat": 5, "carbs": 26},
+  {"brand": "瑞幸", "name": "标准美式", "aliases": ["美式"], "size_ml": 480, "calories": 10, "protein": 0.5, "fat": 0, "carbs": 1.5},
+  {"brand": "瑞幸", "name": "卡布奇诺", "aliases": ["卡布"], "size_ml": 360, "calories": 75, "protein": 4, "fat": 4, "carbs": 6},
+  {"brand": "瑞幸", "name": "焦糖玛奇朵", "aliases": ["玛奇朵"], "size_ml": 480, "calories": 180, "protein": 3.5, "fat": 5, "carbs": 30},
+
+  {"brand": "星巴克", "name": "拿铁", "aliases": ["Caffè Latte"], "size_ml": 473, "calories": 190, "protein": 10, "fat": 7, "carbs": 19},
+  {"brand": "星巴克", "name": "美式", "aliases": ["Caffè Americano", "Americano"], "size_ml": 473, "calories": 15, "protein": 1, "fat": 0, "carbs": 2},
+  {"brand": "星巴克", "name": "卡布奇诺", "aliases": ["Cappuccino"], "size_ml": 355, "calories": 120, "protein": 8, "fat": 6, "carbs": 12},
+  {"brand": "星巴克", "name": "摩卡", "aliases": ["Caffè Mocha"], "size_ml": 473, "calories": 290, "protein": 13, "fat": 13, "carbs": 35},
+  {"brand": "星巴克", "name": "抹茶拿铁", "aliases": ["Matcha Latte"], "size_ml": 473, "calories": 240, "protein": 9, "fat": 7, "carbs": 36},
+
+  {"brand": "蜜雪冰城", "name": "柠檬水", "aliases": ["冰鲜柠檬水"], "size_ml": 500, "calories": 60, "protein": 0.2, "fat": 0, "carbs": 15},
+  {"brand": "蜜雪冰城", "name": "珍珠奶茶", "aliases": ["珍奶"], "size_ml": 500, "calories": 180, "protein": 1.5, "fat": 3, "carbs": 35},
+  {"brand": "蜜雪冰城", "name": "黑糖珍珠大圣代", "aliases": ["黑糖圣代", "珍珠圣代"], "size_ml": 350, "calories": 280, "protein": 3, "fat": 8, "carbs": 50},
+  {"brand": "蜜雪冰城", "name": "摇摇奶昔", "aliases": ["奶昔"], "size_ml": 400, "calories": 220, "protein": 3, "fat": 6, "carbs": 38},
+
+  {"brand": "古茗", "name": "古茗奶茶", "aliases": ["奶茶"], "size_ml": 500, "calories": 165, "protein": 1.8, "fat": 3.5, "carbs": 30},
+  {"brand": "古茗", "name": "百香双重奏", "aliases": ["百香果茶"], "size_ml": 500, "calories": 110, "protein": 0.5, "fat": 0.2, "carbs": 27},
+  {"brand": "古茗", "name": "布丁脆脆奶芙", "aliases": ["布丁奶茶", "奶芙"], "size_ml": 500, "calories": 250, "protein": 3, "fat": 6, "carbs": 45},
+
+  {"brand": "茶百道", "name": "豆乳玉麒麟", "aliases": ["豆乳奶茶", "玉麒麟"], "size_ml": 500, "calories": 230, "protein": 3.5, "fat": 6, "carbs": 40},
+  {"brand": "茶百道", "name": "杨枝甘露", "aliases": ["杨枝", "甘露"], "size_ml": 500, "calories": 210, "protein": 2, "fat": 5, "carbs": 40},
+  {"brand": "茶百道", "name": "茉莉奶绿", "aliases": ["奶绿"], "size_ml": 500, "calories": 150, "protein": 1.5, "fat": 3, "carbs": 28},
+
+  {"brand": "一点点", "name": "波霸奶茶", "aliases": ["波霸", "珍奶"], "size_ml": 500, "calories": 195, "protein": 1.8, "fat": 3.5, "carbs": 36},
+  {"brand": "一点点", "name": "四季春茶", "aliases": ["四季春", "纯茶"], "size_ml": 500, "calories": 8, "protein": 0.1, "fat": 0, "carbs": 1.5},
+  {"brand": "一点点", "name": "葡萄柚绿", "aliases": ["柚子绿", "葡萄柚"], "size_ml": 500, "calories": 110, "protein": 0.5, "fat": 0.2, "carbs": 27},
+
+  {"brand": "Manner", "name": "拿铁", "aliases": ["Latte"], "size_ml": 350, "calories": 130, "protein": 7, "fat": 5, "carbs": 13},
+  {"brand": "Manner", "name": "美式", "aliases": ["Americano"], "size_ml": 350, "calories": 10, "protein": 0.5, "fat": 0, "carbs": 1.5},
+  {"brand": "Manner", "name": "桂花拿铁", "aliases": ["桂花"], "size_ml": 350, "calories": 155, "protein": 6, "fat": 6, "carbs": 18},
+  {"brand": "Manner", "name": "燕麦拿铁", "aliases": ["燕麦"], "size_ml": 350, "calories": 145, "protein": 6, "fat": 5, "carbs": 16}
+]

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
+import '../../data/seed/food_category_defaults.dart';
 import '../manual_entry/manual_entry_page.dart';
 import 'providers.dart';
 import 'recognize_controller.dart';
@@ -393,14 +394,23 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
               if (n.foodItemId == 0) {
                 // 哨兵：AI 兜底结果 → 创建 ai_recognized food_item
                 // per100g 基于 mid 份量反算（n.calories 对应 mid 份量，不能用 servingG）
+                // P0：品类默认值校准（防 AI 离谱估算）+ brand 持久化
                 final mid = dish.estimatedWeightGMid;
                 final per100 = mid > 0 ? 100.0 / mid : 0.0;
+                final calibrated = FoodCategoryDefaults.calibrate(
+                  aiCaloriesPer100g: n.calories * per100,
+                  aiProteinPer100g: n.proteinG * per100,
+                  aiFatPer100g: n.fatG * per100,
+                  aiCarbsPer100g: n.carbsG * per100,
+                  category: dish.foodCategory,
+                );
                 foodItemId = await foodRepo.upsertAiRecognized(
                   name: dish.dishName,
-                  caloriesPer100g: n.calories * per100,
-                  proteinPer100g: n.proteinG * per100,
-                  fatPer100g: n.fatG * per100,
-                  carbsPer100g: n.carbsG * per100,
+                  brand: dish.brand,
+                  caloriesPer100g: calibrated.$1,
+                  proteinPer100g: calibrated.$2,
+                  fatPer100g: calibrated.$3,
+                  carbsPer100g: calibrated.$4,
                   confidence: dish.confidence,
                 );
               } else {
@@ -411,6 +421,7 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
               componentsSnapshot = _encodeComponents(dish, oilG: oilG);
               foodItemId = await foodRepo.upsertAiRecognized(
                 name: dish.dishName,
+                brand: dish.brand,
                 caloriesPer100g: 0,
                 proteinPer100g: 0,
                 fatPer100g: 0,
@@ -425,14 +436,23 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
               final n = item.singleNutrition!;
               if (n.foodItemId == 0) {
                 // 哨兵：附加菜 AI 兜底 → 创建 ai_recognized food_item
+                // P0：品类校准 + brand 持久化
                 final mid = dish.estimatedWeightGMid;
                 final per100 = mid > 0 ? 100.0 / mid : 0.0;
+                final calibrated = FoodCategoryDefaults.calibrate(
+                  aiCaloriesPer100g: n.calories * per100,
+                  aiProteinPer100g: n.proteinG * per100,
+                  aiFatPer100g: n.fatG * per100,
+                  aiCarbsPer100g: n.carbsG * per100,
+                  category: dish.foodCategory,
+                );
                 foodItemId = await foodRepo.upsertAiRecognized(
                   name: dish.dishName,
-                  caloriesPer100g: n.calories * per100,
-                  proteinPer100g: n.proteinG * per100,
-                  fatPer100g: n.fatG * per100,
-                  carbsPer100g: n.carbsG * per100,
+                  brand: dish.brand,
+                  caloriesPer100g: calibrated.$1,
+                  proteinPer100g: calibrated.$2,
+                  fatPer100g: calibrated.$3,
+                  carbsPer100g: calibrated.$4,
                   confidence: dish.confidence,
                 );
               } else {
@@ -443,6 +463,7 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
               componentsSnapshot = _encodeComponents(dish, oilG: oilG);
               foodItemId = await foodRepo.upsertAiRecognized(
                 name: dish.dishName,
+                brand: dish.brand,
                 caloriesPer100g: 0,
                 proteinPer100g: 0,
                 fatPer100g: 0,

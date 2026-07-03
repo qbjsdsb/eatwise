@@ -68,6 +68,7 @@ class EatWiseDatabase extends _$EatWiseDatabase {
             ));
             // 首次创建时导入食物种子库（1664 条中国食物成分表 + 22 组别名）
             // + 50 条品牌饮料零食（可乐/雪碧/薯片等，USDA 公开值）
+            // + 41 条连锁茶饮咖啡品牌官方热量（喜茶/霸王茶姬/瑞幸等 10 品牌招牌，P1）
             // try-catch：导入失败绝不阻塞 DB 创建（否则 app 起不来）。
             // 测试环境（seedOnCreate=false 或 binding 未初始化）静默跳过。
             if (seedOnCreate) {
@@ -75,6 +76,7 @@ class EatWiseDatabase extends _$EatWiseDatabase {
                 final importer = FoodSeedImporter(this);
                 await importer.importFromAssetsFirstTime();
                 await importer.importBrandFoodsFirstTime();
+                await importer.importChainDrinksFirstTime();
                 await importer.supplementAliases();
               } catch (_) {
                 // 测试环境 binding 未初始化 / 资源缺失 → 静默跳过（不阻塞 DB 创建）

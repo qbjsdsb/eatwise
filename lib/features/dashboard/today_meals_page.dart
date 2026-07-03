@@ -496,7 +496,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         try {
           final foodRepo = FoodItemRepository(db);
           final aiName = _foodNames[m.foodItemId];
-          // AI 识别名有效且与纠正名不同（归一化比较）→ 加别名
+          // AI 识别名有效且与纠正名不同（归一化比较）→ 加别名或创建新条目
           if (aiName != null &&
               aiName.isNotEmpty &&
               !aiName.startsWith('食物 #') &&
@@ -507,9 +507,25 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
             // 雪碧的别名导致反向错配（永久错配且无法自愈）。
             final correctFood =
                 await foodRepo.findExactByNameOrAlias(correctedDishName);
-            // 在库且不是同一条记录 → 把错误名 A 作为正确菜 B 的别名
             if (correctFood != null && correctFood.id != m.foodItemId) {
+              // 在库且不是同一条记录 → 把错误名 A 作为正确菜 B 的别名
               await foodRepo.addAlias(correctFood.id, aiName);
+            } else if (correctFood == null) {
+              // P2-2：库里无此菜 → 创建新条目（source='manual'，自进化闭环）
+              // 营养用 meal_log 实际值反算 per100g，aliases 传 AI 错误名（下次 AI 返回错误名时命中别名）
+              // 仅在营养数据有效时创建（防 0 卡污染库）
+              final servingG = correctedServingG ?? m.actualServingG;
+              if (servingG > 0 && m.actualCalories > 0) {
+                final per100 = 100.0 / servingG;
+                await foodRepo.insertManual(
+                  name: correctedDishName,
+                  caloriesPer100g: m.actualCalories * per100,
+                  proteinPer100g: m.actualProteinG * per100,
+                  fatPer100g: m.actualFatG * per100,
+                  carbsPer100g: m.actualCarbsG * per100,
+                  aliases: [aiName],
+                );
+              }
             }
           }
         } catch (_) {

@@ -302,6 +302,7 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         mainSingle = await _nutritionLookup.lookupSingleItem(
           dishName: result.dishName,
           servingG: result.estimatedWeightGMid,
+          brand: result.brand,
         );
         // v1.4：库未命中时用 AI 整菜估算兜底；旧 prompt 无估算则保持 null 走弹窗
         mainSingle = mainSingle ?? _aiFallbackNutrition(result);
@@ -330,6 +331,7 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
           var n = await _nutritionLookup.lookupSingleItem(
             dishName: dish.dishName,
             servingG: dish.estimatedWeightGMid,
+            brand: dish.brand,
           );
           // v1.4：附加菜库未命中也用 AI 兜底
           n = n ?? _aiFallbackNutrition(dish);

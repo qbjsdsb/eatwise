@@ -203,4 +203,50 @@ class FoodSeedImporter {
     });
     return jsonList.length;
   }
+
+  /// 首次安装批量导入连锁茶饮/咖啡品牌官方热量（assets/chain_drink_menu.json）
+  ///
+  /// P1：解决现制茶饮热量不准。头部 10 品牌（喜茶/霸王茶姬/奈雪/瑞幸/星巴克/
+  /// 蜜雪冰城/古茗/茶百道/一点点/Manner）的招牌产品，数据来自各品牌小程序官方公示。
+  ///
+  /// 命名规则：name 存"品牌+品名"（如"喜茶多肉葡萄"），aliases 含简写（如"多肉葡萄"）。
+  /// 这样 AI 返回 brand="喜茶"+dish_name="多肉葡萄" 时，brand 字段参与匹配能直接命中。
+  /// AI 返回纯 dish_name="多肉葡萄"（无 brand）时，alias 也能命中。
+  ///
+  /// per100g 反算：calories/(size_ml/100)，defaultServingG=size_ml（每杯总毫升数）。
+  /// 现制茶饮密度近似水（1.0），ml=g。
+  Future<int> importChainDrinksFirstTime() async {
+    final jsonStr = await rootBundle.loadString('assets/chain_drink_menu.json');
+    final jsonList = (jsonDecode(jsonStr) as List).cast<Map<String, dynamic>>();
+    await _db.batch((b) {
+      for (final raw in jsonList) {
+        final brand = raw['brand'] as String;
+        final name = raw['name'] as String;
+        final aliases = (raw['aliases'] as List?)?.cast<String>() ?? const [];
+        final sizeMl = (raw['size_ml'] as num).toDouble();
+        final calories = (raw['calories'] as num).toDouble();
+        final protein = (raw['protein'] as num).toDouble();
+        final fat = (raw['fat'] as num).toDouble();
+        final carbs = (raw['carbs'] as num).toDouble();
+        // per100g 反算（现制茶饮密度≈1，ml=g）
+        final per100 = sizeMl > 0 ? 100.0 / sizeMl : 1.0;
+        // 全名 = 品牌+品名（精确匹配用），aliases 含品牌简写和品名简写
+        final fullName = '$brand$name';
+        final allAliases = <String>[name, ...aliases];
+        b.insert(_db.foodItems, FoodItemsCompanion.insert(
+          name: fullName,
+          defaultServingG: sizeMl,
+          caloriesPer100g: calories * per100,
+          proteinPer100g: protein * per100,
+          fatPer100g: fat * per100,
+          carbsPer100g: carbs * per100,
+          aliasesJson: Value(allAliases.isEmpty ? null : jsonEncode(allAliases)),
+          source: 'chain_brand',
+          sourceVersion: 'chain_brand_v1',
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+        ));
+      }
+    });
+    return jsonList.length;
+  }
 }

@@ -38,6 +38,7 @@ class _FakeNutritionLookup implements NutritionLookup {
   Future<NutritionResult?> lookupSingleItem({
     required String dishName,
     required double servingG,
+    String brand = '',
   }) async => null;
 
   @override

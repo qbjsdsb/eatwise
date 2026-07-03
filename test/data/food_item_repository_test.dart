@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/data/repositories/food_item_repository.dart';
@@ -278,6 +281,134 @@ void main() {
       final b = await repo.getById(idB);
       expect(b!.aliasesJson, isNotNull);
       expect(b.aliasesJson!.contains('柠檬汽水'), isTrue);
+    });
+  });
+
+  // P1-2：brand 字段参与匹配测试
+  group('findByNameOrAlias brand 字段参与匹配', () {
+    test('brand+name 精确命中连锁品牌条目（优先级 0）', () async {
+      // 模拟品牌库：name="喜茶多肉葡萄"，aliases=["多肉葡萄"]
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+            name: '喜茶多肉葡萄',
+            defaultServingG: 480,
+            caloriesPer100g: 19.8,
+            proteinPer100g: 0.25,
+            fatPer100g: 0.1,
+            carbsPer100g: 4.6,
+            aliasesJson: Value('[${jsonEncode("多肉葡萄")}]'),
+            source: 'chain_brand',
+            sourceVersion: 'chain_brand_v1',
+            createdAt: 0,
+          ));
+      // 也插一条通用"多肉葡萄"（别名冲突场景）
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+            name: '多肉葡萄',
+            defaultServingG: 480,
+            caloriesPer100g: 60,
+            proteinPer100g: 0.5,
+            fatPer100g: 0.2,
+            carbsPer100g: 14,
+            source: 'usda_brand',
+            sourceVersion: 'usda_brand_v1',
+            createdAt: 0,
+          ));
+
+      // brand="喜茶" + name="多肉葡萄" → 命中"喜茶多肉葡萄"（优先级 0）
+      final hit = await repo.findByNameOrAlias('多肉葡萄', brand: '喜茶');
+      expect(hit, isNotNull);
+      expect(hit!.name, '喜茶多肉葡萄');
+      expect(hit.caloriesPer100g, 19.8); // 品牌官方值，不是通用 60
+    });
+
+    test('brand 为空走原 name 匹配（向后兼容）', () async {
+      await seedFood('可乐');
+      final hit = await repo.findByNameOrAlias('可乐');
+      expect(hit, isNotNull);
+      expect(hit!.name, '可乐');
+    });
+
+    test('brand+name 未命中再走 name 匹配', () async {
+      // 库里有"啤酒"但无"雪花啤酒"
+      await seedFood('啤酒');
+      final hit = await repo.findByNameOrAlias('啤酒', brand: '雪花');
+      expect(hit, isNotNull);
+      expect(hit!.name, '啤酒'); // brand+name miss → name 精确命中"啤酒"
+    });
+  });
+
+  // P0-3：upsertAiRecognized brand 持久化测试
+  group('upsertAiRecognized brand 持久化', () {
+    test('brand 非空 → brand+name 存为 alias', () async {
+      final id = await repo.upsertAiRecognized(
+        name: '啤酒',
+        brand: '雪花',
+        caloriesPer100g: 43,
+        proteinPer100g: 0.5,
+        fatPer100g: 0,
+        carbsPer100g: 3.1,
+      );
+      final item = await repo.getById(id);
+      expect(item, isNotNull);
+      expect(item!.name, '啤酒');
+      // alias 含"雪花啤酒"
+      expect(item.aliasesJson, isNotNull);
+      expect(item.aliasesJson!.contains('雪花啤酒'), isTrue);
+    });
+
+    test('brand 为空 → 不存 alias（向后兼容）', () async {
+      final id = await repo.upsertAiRecognized(
+        name: '番茄炒蛋',
+        caloriesPer100g: 138,
+        proteinPer100g: 7.2,
+        fatPer100g: 10,
+        carbsPer100g: 4.6,
+      );
+      final item = await repo.getById(id);
+      expect(item, isNotNull);
+      expect(item!.aliasesJson, isNull);
+    });
+
+    test('brand+name 已是其他食物 name → 不存 alias（防冲突）', () async {
+      // 库里已有"雪花啤酒"
+      await seedFood('雪花啤酒');
+      final id = await repo.upsertAiRecognized(
+        name: '啤酒',
+        brand: '雪花',
+        caloriesPer100g: 43,
+        proteinPer100g: 0.5,
+        fatPer100g: 0,
+        carbsPer100g: 3.1,
+      );
+      final item = await repo.getById(id);
+      expect(item, isNotNull);
+      expect(item!.name, '啤酒');
+      // "雪花啤酒"已是其他食物 name，不写入 alias
+      expect(item.aliasesJson, isNull);
+    });
+
+    test('重复 upsert 同 name+brand → alias 不重复（幂等）', () async {
+      await repo.upsertAiRecognized(
+        name: '啤酒',
+        brand: '雪花',
+        caloriesPer100g: 43,
+        proteinPer100g: 0.5,
+        fatPer100g: 0,
+        carbsPer100g: 3.1,
+      );
+      final id = await repo.upsertAiRecognized(
+        name: '啤酒',
+        brand: '雪花',
+        caloriesPer100g: 45, // 营养值更新
+        proteinPer100g: 0.5,
+        fatPer100g: 0,
+        carbsPer100g: 3.2,
+      );
+      final item = await repo.getById(id);
+      expect(item, isNotNull);
+      expect(item!.caloriesPer100g, 45); // 营养值已更新
+      // alias 只有一个"雪花啤酒"（去重）
+      final aliases = item.aliasesJson!;
+      expect(aliases.split('雪花啤酒').length - 1, 1);
     });
   });
 }

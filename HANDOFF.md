@@ -36,14 +36,26 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（v0.12.0 已发布）
+**工作区状态**：clean（v0.12.0 已发布，本次 P0/P1/P2 食物识别增强已提交，未发布）
 **最近 commit**：
+- `7d1e8bd` docs: HANDOFF 补全 v0.12.0 release workflow run URL + APK 大小
+- `cbdc664` docs: HANDOFF 补充图标精致化详情（v0.12.0 已含）
 - `c37912b` feat: 启动器图标精致化 + bump v0.12.0（已发布 v0.12.0）
 - `932c56c` docs: HANDOFF 补充深度审查修复 commit hash f5e611a
 - `f5e611a` fix: 深度审查修复 15 项——TdeeCalibrator 符号/insertManual 别名冲突/酒精热量清零/JsonImporter FK+Sentry try-catch/NaN 校验/硬下限/markFailed 事务等（已随 v0.12.0 发布）
 - `a8aa1f5` feat: 界面 MD3 全面优化（协调性+合规+字体层级，已随 v0.12.0 发布）
 - `a680241` feat: 智能推荐算法 v3 五维评分 + addAlias 冲突检测（已随 v0.12.0 发布）
 - `1064449` fix: 识别精准度修复+界面偏右修正（雪花啤酒→雪碧假阳性，已随 v0.12.0 发布）
+
+**本次 P0/P1/P2 食物识别增强（本次 commit，未发布）**：
+解决"雪花啤酒识别成雪碧 + 奶茶/网红零食能否准确分辨 + 热量能否严谨计算"三问。
+核心思路：不追求库覆盖所有食物，建立"AI 估算(品类校准) + 品牌库(头部覆盖) + OFF(包装食品) + 用户纠错(长尾自进化)"四层闭环。
+- **P0 品类校准 + brand 持久化**：新建 `food_category_defaults.dart`（beer=43/wine=83/carbonated=43/milk=61 等 13 品类默认值），AI 兜底 per100g 偏离默认值 2 倍用默认值替代；`upsertAiRecognized` 加 brand 参数，"品牌+菜名"存为 alias（如"雪花啤酒"），下次精确命中
+- **P1 品牌官方热量库**：新建 `assets/chain_drink_menu.json`（10 品牌 41 招牌：喜茶/霸王茶姬/奈雪/瑞幸/星巴克/蜜雪/古茗/茶百道/一点点/Manner，数据来自各品牌小程序官方公示），`FoodSeedImporter.importChainDrinksFirstTime` 首次启动导入；`findByNameOrAlias` 加 brand 参数，优先级 0 按 brand+name 精确查品牌条目
+- **P2 OFF brand 组合查询 + 反馈回流创建新条目**：`OffProvider.lookup` 加 brand 参数，先查"brand+name"再回退 name；`today_meals_page` 反馈回流精确 miss 时 `insertManual` 创建新条目（source='manual'，aliases=AI 错误名），实现长尾自进化
+- **prompt v1.8**：补啤酒/茶饮剥离示例（雪花啤酒→dish_name=啤酒/brand=雪花，喜茶多肉葡萄→dish_name=多肉葡萄/brand=喜茶），强调连锁品牌 brand 必填
+- **测试**：新增 18 个测试（品类校准 11 + brand 匹配 3 + brand 持久化 4），全量 358 passed (3 skipped)
+- **文件**：新建 2（food_category_defaults.dart / chain_drink_menu.json），修改 8（prompts/food_item_repository/nutrition_lookup/off_provider/recognize_page/recognize_controller/multi_dish_page/offline_queue_controller/today_meals_page/database/food_seed_importer/pubspec）
 - `52dc876` docs: 更新 HANDOFF——v0.11.1 已发布
 - `84cc29a` feat: 个人档案特殊人群适配（孕期/哺乳/老年/青少年/糖尿病/肾病/素食，schema v1→v2，未发布）
 - `c6a76be` feat: 折线图美化与智能推荐算法升级（Y 轴 interval 防重叠+渐变填充+触摸 tooltip+推荐四维评分，未发布）
@@ -284,6 +296,39 @@
 - 实现：vector drawable（API 26+ 现代设备）+ Pillow 4x 超采样生成 5 密度 PNG fallback（API 21-25 旧设备，48/72/96/144/192）
 - monochrome 复用前景供 Android 13+ 主题图标（用户可让图标跟随壁纸取色）
 
+### 3.15 食物识别增强四层自我进化架构（P0/P1/P2，本次 commit，未发布）
+
+解决"雪花啤酒识别成雪碧 + 奶茶/网红零食能否准确分辨 + 热量能否严谨计算"三问。
+
+核心思路：不追求本地库覆盖所有食物（不可能也无需），建立四层闭环：
+1. **AI 估算（品类校准兜底）**——离谱估算用 13 品类默认值拦截
+2. **品牌库（头部覆盖）**——10 品牌 41 招牌产品官方热量精确
+3. **OFF（包装食品）**——百万级云查补漏 + brand 组合查询
+4. **用户纠错（长尾自进化）**——反馈回流精确 miss 时创建新条目
+
+**P0 品类校准 + brand 持久化**：
+- 新建 `lib/data/seed/food_category_defaults.dart`——13 品类 per100g 默认值（beer=43/wine=83/alcohol=298/carbonated=43/juice=46/milk=61/yogurt=72/cream=345/oil=889/honey=321/sauce=63/soup=30/water=0），solid 不提供（差异太大）；`calibrate` 方法按 2 倍阈值校准（AI 估算偏离默认值 2 倍以上用默认值替代，否则保留 AI 估算）
+- `food_item_repository.upsertAiRecognized` 加 `brand` 参数——把"品牌+菜名"（如"雪花啤酒"）存为 alias，下次 AI 返回完整品牌名精确命中；冲突检测复用 addAlias 全表遍历逻辑（防 brand+name 已是其他食物 name/alias）；新增 `_mergeAliasSafely` 异步方法做更新路径的冲突检测（事务内 select 全表）
+- recognize_page / multi_dish_page / offline_queue_controller **三路径同步品类校准 + brand 传递**（违反硬约束 3 会导致后台回补路径热量偏差）
+
+**P1 品牌官方热量库**：
+- 新建 `assets/chain_drink_menu.json`——10 品牌 41 招牌产品（喜茶/霸王茶姬/奈雪/瑞幸/星巴克/蜜雪冰城/古茗/茶百道/一点点/Manner），数据来自各品牌小程序官方公示
+- `FoodSeedImporter.importChainDrinksFirstTime`——name 存"品牌+品名"（如"喜茶多肉葡萄"），aliases 含品名简写；per100g 反算 `calories/(size_ml/100)`，defaultServingG=size_ml（现制茶饮密度≈水）；database wasCreated 调用
+- `findByNameOrAlias` 加 `brand` 参数——优先级 0 按 brand+name 精确查（高于 name 精确），避免通用"奶茶"条目抢先命中"喜茶奶茶"；brand 为空时行为不变（向后兼容）
+- `nutrition_lookup.lookupSingleItem` 加 `brand` 参数透传查库和 OFF
+- `recognize_controller` 主菜和附加菜查库传 brand（L302/L330）
+
+**P2 OFF brand 组合查询 + 反馈回流创建新条目**：
+- `OffProvider.lookup` 加 `brand` 参数——先查"brand+name"（如"雪花 啤酒"），未命中回退查 name；提升品牌包装食品命中率
+- `today_meals_page` 反馈回流——`findExactByNameOrAlias` 精确 miss 时（库里无此菜）调 `insertManual` 创建新条目（source='manual'，aliases=AI 错误名），实现长尾自进化；营养用 meal_log 实际值反算 per100g，仅在 `servingG>0 && actualCalories>0` 时创建（防 0 卡污染库）
+
+**prompt v1.8（v1.7 → v1.8）**：
+- 补充啤酒/茶饮剥离示例——示例 5 雪花啤酒（dish_name=啤酒/brand=雪花，强调瓶身文字"雪花"不是"雪碧"）、示例 6 喜茶多肉葡萄（dish_name=多肉葡萄/brand=喜茶）
+- 规则 1 补充啤酒/葡萄酒/白酒剥离说明 + 现制茶饮/咖啡剥离说明
+- 强调连锁品牌 brand 必填（后端按 brand+name 查品牌库）
+
+**测试**：新增 18 个测试（品类校准 11 + brand 匹配 3 + brand 持久化 4），全量 358 passed (3 skipped)。FakeOffProvider.lookup 和 _FakeNutritionLookup.lookupSingleItem 签名同步加 `{String brand = ''}` 防止 invalid_override
+
 ---
 
 ## 4. 已知陷阱（踩过的坑）
@@ -336,6 +381,18 @@
 33. **Android Adaptive Icon 前景必须在 66dp 安全区内**：108dp 画布，安全区中心 (54,54) 半径 33（即 21-87 范围）。OEM 蒙版（圆/方圆角）会裁掉安全区外内容。前景图形越界 → 部分 OEM 设备图标被裁残缺。改图标坐标后必须核对所有图形在 (21,21)-(87,87) 内
 
 34. **Android vector 碗口环形用 evenOdd 而非纯色挖空**：背景是渐变色，碗口内椭圆若用纯色 `#5B8C7B` 挖空会与渐变背景色差。用 `android:fillType="evenOdd"` + 两个嵌套椭圆子路径（外椭圆 + 内椭圆），系统自动渲染环形（内椭圆区域不填充，露出背景渐变）。`fillType="evenOdd"` API 24+ 支持，自适应图标 API 26+ 兼容无问题
+
+35. **品类校准阈值用 2 倍比例而非绝对偏差**：`FoodCategoryDefaults.calibrate` 按 `aiCal/defCal > 2.0 || < 0.5` 判断离谱，不用绝对偏差（如 `|aiCal-defCal|>50`）。原因：各品类默认值跨度大（water=0 vs oil=889），绝对偏差对低卡品类过严、高卡品类过松。2 倍阈值对啤酒（默认 43）容忍 AI 估 22-86，对油（默认 889）容忍 445-1778，比例统一合理。water 特殊：defCal=0 时 AI 任何正值都算偏离（ratio=999）→ 用 0 卡替代，避免把水估成有热量。仅校准 calories 偏离，蛋白/脂肪/碳水跟随品类默认值一并替换（差异大，AI 单项离谱也需拦截）
+
+36. **upsertAiRecognized brand 别名冲突检测必须事务内做**：`_mergeAliasSafely` 在 `_db.transaction` 内调 `_db.foodItems.select().get()` 遍历全表，事务保证读到的快照一致。若在事务外做冲突检测再写库，期间其他事务可能写入同名 alias → 冲突检测失效。drift 事务对 SQLite 是 SERIALIZABLE（实际是 journal 锁），事务内 select-then-update 原子。`_mergeAliasSafely` 返回 `Future<List<String>?>`，调用方必须 `await`（曾因漏 await 致类型不匹配编译错误）
+
+37. **品牌库 per100g 反算基于 size_ml 不是 calories 总值**：`importChainDrinksFirstTime` 用 `per100 = 100.0 / size_ml`（每毫升对应多少 100g 单位）反算 per100g，因为现制茶饮密度≈水（1ml≈1g），ml=g。若用 `calories / 总热量` 反算会循环引用。defaultServingG=size_ml（每杯总毫升数），用户调整份量时按 ml 缩放正确。改密度换算必须同步改反算公式（如咖啡密度 1.05 需 `size_ml*1.05` 转克）
+
+38. **OFF brand 组合查询必须先 brand+name 再 name 回退**：`OffProvider.lookup` brand 非空时先查 `"$brand $dishName"`（如"雪花 啤酒"），OFF 有品牌产品名字段命中率高。若先查 name 再查 brand+name 会浪费一次 API 调用，且 name 单查可能命中通用"啤酒"而非"雪花啤酒"品牌产品。组合查询 miss 才回退 name 查询，最多 2 次 API 调用。`_searchOff` 是从原 `lookup` 内部逻辑提取的独立方法，避免组合/回退两路径代码重复
+
+39. **反馈回流精确 miss 必须用 insertManual 创建新条目而非 addAlias**：`today_meals_page` 用户纠正菜名时，`findExactByNameOrAlias(correctedDishName)` 返回 null（库里无此菜）→ 必须调 `insertManual` 创建新条目（source='manual'，aliases=AI 错误名），不能调 `addAlias`（addAlias 需要 foodItemId，无条目可绑）。这是长尾自进化入口——用户每纠正一次新菜，库就多一条。仅在 `servingG>0 && actualCalories>0` 时创建（防 0 卡污染库）。反算 per100g = `100.0 / servingG`（用 `m.actualServingG` 用户校准后的真实克数，不是 defaultServingG）
+
+40. **prompt v1.8 啤酒剥离示例必须强调瓶身文字**：雪花啤酒瓶身绿色与雪碧瓶身绿色视觉相似，AI 视觉模型仅看颜色易混淆。prompt 必须明确"读瓶身标签文字是'雪花'不是'雪碧'"，dish_name=啤酒/brand=雪花。仅靠品类校准（beer 默认 43）不够——若 AI 识别成雪碧（carbonated 默认 43，巧合热量相近），品类校准无法拦截，必须靠 prompt 引导 AI 读文字。同时 brand 字段必填连锁品牌（喜茶/瑞幸等），后端按 brand+name 查品牌库精确命中。prompt 改版本必须同步 bump `Prompts.version`（v1.7→v1.8），离线入队存 promptVersion 字段以便后续兼容
 
 ---
 

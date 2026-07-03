@@ -16,7 +16,7 @@ class FakeOffProvider extends OffProvider {
   FakeOffProvider(this.result) : super(isOnline: () async => true);
 
   @override
-  Future<OffResult?> lookup(String dishName) async {
+  Future<OffResult?> lookup(String dishName, {String brand = ''}) async {
     callCount++;
     return result;
   }

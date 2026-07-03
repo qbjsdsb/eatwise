@@ -42,8 +42,9 @@ class NutritionLookup {
   Future<NutritionResult?> lookupSingleItem({
     required String dishName,
     required double servingG,
+    String brand = '',
   }) async {
-    final food = await _repo.findByNameOrAlias(dishName);
+    final food = await _repo.findByNameOrAlias(dishName, brand: brand);
     if (food != null) {
       // 复合菜以 per100g=0 占位存储（实际热量在 meal_log.componentsSnapshotJson），
       // 单品查库命中这类记录会返回 0 热量造成数据污染。
@@ -62,9 +63,9 @@ class NutritionLookup {
       );
     }
 
-    // miss → OFF 云查兜底
+    // miss → OFF 云查兜底（P2-1：传 brand+name 组合查询提升命中率）
     if (_offProvider != null) {
-      final off = await _offProvider.lookup(dishName);
+      final off = await _offProvider.lookup(dishName, brand: brand);
       if (off != null) {
         // 命中落库：aliases 传菜名本身，下次同名精确命中（避免重复云查）
         final foodId = await _repo.insertOff(

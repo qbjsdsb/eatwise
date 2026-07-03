@@ -1,0 +1,113 @@
+import 'package:eatwise/data/seed/food_category_defaults.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+/// FoodCategoryDefaults 品类默认值校准测试（P0-1/P0-2）
+void main() {
+  group('FoodCategoryDefaults', () {
+    test('啤酒默认值 43 kcal/100g', () {
+      expect(FoodCategoryDefaults.caloriesPer100g('beer'), 43);
+      expect(FoodCategoryDefaults.proteinPer100g('beer'), 0.5);
+      expect(FoodCategoryDefaults.fatPer100g('beer'), 0);
+      expect(FoodCategoryDefaults.carbsPer100g('beer'), 3.1);
+    });
+
+    test('solid 无默认值（差异太大，AI 估算优先）', () {
+      expect(FoodCategoryDefaults.caloriesPer100g('solid'), isNull);
+    });
+
+    test('未知品类无默认值', () {
+      expect(FoodCategoryDefaults.caloriesPer100g('unknown'), isNull);
+    });
+
+    test('calibrate 啤酒 AI 估算合理（43-86）保留 AI 值', () {
+      final result = FoodCategoryDefaults.calibrate(
+        aiCaloriesPer100g: 50,
+        aiProteinPer100g: 0.5,
+        aiFatPer100g: 0,
+        aiCarbsPer100g: 3.5,
+        category: 'beer',
+      );
+      expect(result.$1, 50); // 50/43≈1.16，在 0.5-2 倍区间，保留
+    });
+
+    test('calibrate 啤酒 AI 估算离谱（200）用默认值 43', () {
+      final result = FoodCategoryDefaults.calibrate(
+        aiCaloriesPer100g: 200,
+        aiProteinPer100g: 2,
+        aiFatPer100g: 1,
+        aiCarbsPer100g: 15,
+        category: 'beer',
+      );
+      expect(result.$1, 43); // 200/43≈4.65，超 2 倍，用默认值
+      expect(result.$2, 0.5); // 蛋白也用默认
+    });
+
+    test('calibrate 啤酒 AI 估算过低（10）用默认值 43', () {
+      final result = FoodCategoryDefaults.calibrate(
+        aiCaloriesPer100g: 10,
+        aiProteinPer100g: 0.1,
+        aiFatPer100g: 0,
+        aiCarbsPer100g: 1,
+        category: 'beer',
+      );
+      expect(result.$1, 43); // 10/43≈0.23，低于 0.5 倍，用默认值
+    });
+
+    test('calibrate solid 不校准，保留 AI 值', () {
+      final result = FoodCategoryDefaults.calibrate(
+        aiCaloriesPer100g: 547, // 薯片
+        aiProteinPer100g: 6,
+        aiFatPer100g: 35,
+        aiCarbsPer100g: 53,
+        category: 'solid',
+      );
+      expect(result.$1, 547); // solid 无默认值，不校准
+    });
+
+    test('calibrate 水（默认 0）AI 任何正值都算偏离', () {
+      final result = FoodCategoryDefaults.calibrate(
+        aiCaloriesPer100g: 50, // 水不可能 50 kcal
+        aiProteinPer100g: 0,
+        aiFatPer100g: 0,
+        aiCarbsPer100g: 12,
+        category: 'water',
+      );
+      expect(result.$1, 0); // 水默认 0，AI 估 50 离谱，用 0
+    });
+
+    test('calibrate 碳酸饮料 AI 估算合理（43）保留', () {
+      final result = FoodCategoryDefaults.calibrate(
+        aiCaloriesPer100g: 43,
+        aiProteinPer100g: 0,
+        aiFatPer100g: 0,
+        aiCarbsPer100g: 10.6,
+        category: 'carbonated',
+      );
+      expect(result.$1, 43); // 43/43=1.0，保留
+    });
+
+    test('calibrate 碳酸饮料 AI 估算 100 保留（2.3 倍边界）', () {
+      // 100/43≈2.3，超 2 倍，用默认值
+      final result = FoodCategoryDefaults.calibrate(
+        aiCaloriesPer100g: 100,
+        aiProteinPer100g: 0,
+        aiFatPer100g: 0,
+        aiCarbsPer100g: 25,
+        category: 'carbonated',
+      );
+      expect(result.$1, 43);
+    });
+
+    test('calibrate 碳酸饮料 AI 估算 85 保留（1.98 倍）', () {
+      // 85/43≈1.98，未超 2 倍，保留 AI 值
+      final result = FoodCategoryDefaults.calibrate(
+        aiCaloriesPer100g: 85,
+        aiProteinPer100g: 0,
+        aiFatPer100g: 0,
+        aiCarbsPer100g: 21,
+        category: 'carbonated',
+      );
+      expect(result.$1, 85);
+    });
+  });
+}

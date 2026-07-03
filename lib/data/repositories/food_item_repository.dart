@@ -10,7 +10,12 @@ class FoodItemRepository {
 
   /// 按 name 或 aliases 多级模糊匹配（解决"可口可乐/可乐/cola"同物异名 + 品牌前缀/量词/typo）
   ///
-  /// 5 级优先级（防假阳性，逐级降级）：
+  /// P1-2 brand 字段参与匹配：[brand] 非空时，先尝试 "brand+name"（如"喜茶多肉葡萄"）
+  /// 精确匹配连锁品牌库条目（source='chain_brand'），命中则直接返回（优先级 0）。
+  /// 未命中再走原 5 级 name/alias 匹配。brand 为空时行为不变（向后兼容）。
+  ///
+  /// 6 级优先级（防假阳性，逐级降级）：
+  /// 0. brand+name 精确（仅 brand 非空时，命中连锁品牌库条目）
   /// 1. name 精确（归一化后）
   /// 2. alias 精确（归一化后）
   /// 3. name 双向 contains + 长度约束（防"可乐"误命中"可乐鸡翅"）
@@ -18,12 +23,31 @@ class FoodItemRepository {
   /// 5. name 编辑距离 ≤1（仅短名 ≤8 字，typo 容错，如"可东"→"可乐"）
   ///
   /// 归一化：去空白 + 小写（中文不受影响）。1714 条全表遍历 <50ms。
-  Future<FoodItem?> findByNameOrAlias(String name) async {
+  Future<FoodItem?> findByNameOrAlias(String name, {String brand = ''}) async {
     final query = _normalize(name);
     if (query.isEmpty) return null;
 
     final all = await _db.foodItems.select().get();
     if (all.isEmpty) return null;
+
+    // 优先级 0：brand+name 精确匹配（P1-2，命中连锁品牌库条目）
+    // 如 brand="喜茶"+name="多肉葡萄" → 精确查"喜茶多肉葡萄"
+    // 比 name 精确优先级高，避免"奶茶"（通用条目）抢先命中"喜茶奶茶"
+    final cleanBrand = brand.trim();
+    if (cleanBrand.isNotEmpty) {
+      final combined = _normalize('$cleanBrand$name');
+      if (combined.isNotEmpty) {
+        for (final item in all) {
+          if (_normalize(item.name) == combined) return item;
+        }
+        // brand+name 也可能是某条目的 alias（如 alias="多肉葡萄"但用户传 brand+name）
+        for (final item in all) {
+          for (final a in _decodeAliases(item.aliasesJson)) {
+            if (_normalize(a) == combined) return item;
+          }
+        }
+      }
+    }
 
     // 优先级 1：name 精确
     for (final item in all) {
@@ -208,6 +232,10 @@ class FoodItemRepository {
   /// 插入或更新（去重键 name + source）
   /// 事务包裹：select-then-insert 原子化，防并发产生重复记录
   /// name 空串兜底为"未命名菜品"，避免 AI 返回空 dish_name 时落库空名记录污染列表
+  ///
+  /// P0-3 brand 持久化：[brand] 非空时，把 "品牌+菜名"（如"雪花啤酒"）存为 alias，
+  /// 下次 AI 返回完整品牌名时精确命中别名，不重复估。brand 与 name 相同/为空则不存。
+  /// 冲突检测：brand+name 若已是其他食物的 name/alias，跳过（防反向错配，与 addAlias 一致）。
   Future<int> upsertAiRecognized({
     required String name,
     required double caloriesPer100g,
@@ -216,14 +244,26 @@ class FoodItemRepository {
     required double carbsPer100g,
     double? confidence,
     String? componentsJson,
+    String brand = '',
   }) async {
     final cleanName = name.trim().isEmpty ? '未命名菜品' : name.trim();
+    final cleanBrand = brand.trim();
+    // 构造 brand+name 别名（如"雪花啤酒"），用于精确命中
+    String? brandAlias;
+    if (cleanBrand.isNotEmpty && cleanBrand != cleanName) {
+      final combined = '$cleanBrand$cleanName';
+      if (combined != cleanName) brandAlias = combined;
+    }
+
     return _db.transaction(() async {
       final existing = await (_db.foodItems.select()
             ..where((f) => f.name.equals(cleanName) & f.source.equals('ai_recognized')))
           .getSingleOrNull();
 
       if (existing != null) {
+        // 更新营养素 + 合并 brand 别名（去重 + 冲突检测）
+        final existingAliases = _decodeAliases(existing.aliasesJson);
+        final mergedAliases = await _mergeAliasSafely(existingAliases, brandAlias, existing.name, existing.id);
         await (_db.foodItems.update()..where((f) => f.id.equals(existing.id))).write(
           FoodItemsCompanion(
             caloriesPer100g: Value(caloriesPer100g),
@@ -232,9 +272,26 @@ class FoodItemRepository {
             carbsPer100g: Value(carbsPer100g),
             confidence: Value(confidence),
             componentsJson: Value(componentsJson),
+            aliasesJson: Value(mergedAliases == null ? null : jsonEncode(mergedAliases)),
           ),
         );
         return existing.id;
+      }
+
+      // 新建记录：brand 别名先做冲突检测（防与已有食物 name/alias 冲突）
+      List<String>? initAliases;
+      if (brandAlias != null) {
+        final all = await _db.foodItems.select().get();
+        final occupied = <String>{};
+        for (final other in all) {
+          occupied.add(_normalize(other.name));
+          for (final a in _decodeAliases(other.aliasesJson)) {
+            occupied.add(_normalize(a));
+          }
+        }
+        if (!occupied.contains(_normalize(brandAlias))) {
+          initAliases = [brandAlias];
+        }
       }
 
       return _db.into(_db.foodItems).insert(FoodItemsCompanion.insert(
@@ -244,6 +301,9 @@ class FoodItemRepository {
             proteinPer100g: proteinPer100g,
             fatPer100g: fatPer100g,
             carbsPer100g: carbsPer100g,
+            aliasesJson: Value(initAliases == null || initAliases.isEmpty
+                ? null
+                : jsonEncode(initAliases)),
             source: 'ai_recognized',
             sourceVersion: 'ai',
             confidence: Value(confidence),
@@ -251,6 +311,42 @@ class FoodItemRepository {
             createdAt: DateTime.now().millisecondsSinceEpoch,
           ));
     });
+  }
+
+  /// 合并别名（去重 + 冲突检测），用于 upsert 更新已有记录时追加 brand 别名。
+  /// 返回合并后的别名列表（可能为空 null），调用方写库前判断。
+  /// 冲突检测：新别名若已是其他食物的 name/alias，不加入（防反向错配）。
+  Future<List<String>?> _mergeAliasSafely(
+    List<String> existingAliases,
+    String? newAlias,
+    String selfName,
+    int selfId,
+  ) async {
+    if (newAlias == null || newAlias.isEmpty) {
+      return existingAliases.isEmpty ? null : existingAliases;
+    }
+    final normalizedNew = _normalize(newAlias);
+    // 已是自身 name 或已有别名 → 不重复加
+    if (_normalize(selfName) == normalizedNew) {
+      return existingAliases.isEmpty ? null : existingAliases;
+    }
+    if (existingAliases.any((a) => _normalize(a) == normalizedNew)) {
+      return existingAliases.isEmpty ? null : existingAliases;
+    }
+    // 冲突检测：遍历全表（事务内已锁），若已是其他食物 name/alias 不加
+    final all = await _db.foodItems.select().get();
+    for (final other in all) {
+      if (other.id == selfId) continue;
+      if (_normalize(other.name) == normalizedNew) {
+        return existingAliases.isEmpty ? null : existingAliases;
+      }
+      for (final a in _decodeAliases(other.aliasesJson)) {
+        if (_normalize(a) == normalizedNew) {
+          return existingAliases.isEmpty ? null : existingAliases;
+        }
+      }
+    }
+    return [...existingAliases, newAlias];
   }
 
   /// 模糊搜索食物（名称 LIKE，MVP 够用，数据量 ≤3000 条）

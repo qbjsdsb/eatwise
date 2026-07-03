@@ -16,11 +16,16 @@
 //   新增 food_category 字段——标识食物类别（water/carbonated/juice/milk/cream/oil/honey/sauce/
 //   alcohol/beer/wine/yogurt/soup/solid），用于包装液体食品的 ml→g 密度换算
 //   包装液体 per_unit_g 填 ml 数值（如 500ml 油 per_unit_g=500），后端按密度换算成真实克数
+// v1.8（P0/P1/P2 食物识别增强）：
+//   a) 补充啤酒/茶饮剥离示例——雪花啤酒→dish_name=啤酒/brand=雪花，喜茶多肉葡萄→dish_name=多肉葡萄/brand=喜茶
+//      解决"雪花啤酒识别成雪碧"的视觉混淆（绿色瓶身相似），AI 需读瓶身标签文字区分
+//   b) 强调 brand 字段必填——连锁品牌（喜茶/瑞幸/星巴克等）必须填 brand，后端按 brand+name 查品牌库
+//   c) 现制茶饮/咖啡 food_category 填 milk（含奶）或 juice（水果茶）或 solid（纯茶）
 
 class Prompts {
   Prompts._();
 
-  static const version = 'v1.7';
+  static const version = 'v1.8';
 
   /// Qwen-VL system prompt（response_format=json_object 模式）
   static const systemPrompt = '''
@@ -55,6 +60,15 @@ JSON schema：
    - 去量词：两瓶可乐→可乐（数量放 quantity 字段）
    - 去修饰词：冰镇可乐→可乐，原味薯片→薯片，无糖豆浆→无糖豆浆(保留"无糖"因营养不同)
    - 品牌信息放 brand 字段，不要放进 dish_name
+   - 啤酒/葡萄酒/白酒：dish_name=啤酒/葡萄酒/白酒，brand=雪花/青岛/百威/长城等
+     · 雪花啤酒→dish_name=啤酒, brand=雪花（不要识别成雪碧！瓶身文字是"雪花"不是"雪碧"）
+     · 青岛啤酒→dish_name=啤酒, brand=青岛
+     · 红酒→dish_name=葡萄酒, brand=张裕/长城等
+   - 现制茶饮/咖啡：dish_name=品名（多肉葡萄/生椰拿铁/美式等），brand=喜茶/瑞幸/星巴克等
+     · 喜茶多肉葡萄→dish_name=多肉葡萄, brand=喜茶
+     · 瑞幸生椰拿铁→dish_name=生椰拿铁, brand=瑞幸
+     · 星巴克拿铁→dish_name=拿铁, brand=星巴克
+   - 连锁品牌（喜茶/瑞幸/星巴克/霸王茶姬/奈雪/蜜雪冰城等）brand 必填，后端按 brand+name 查品牌官方热量库
 2. quantity 数量（v1.3 新增，v1.5 严格定义）：
    - quantity 仅用于"完全相同"的物品：同品牌、同口味、同规格、同包装
    - 例：2 罐可口可乐（同款）→ dish_name=可乐, brand=可口可乐, quantity=2
@@ -122,5 +136,13 @@ JSON schema：
 示例4（500ml 食用油-液体密度换算 v1.7）：
 {"dish_name":"食用油","brand":"金龙鱼","quantity":1,"unit":"瓶","per_unit_g":500,"estimated_weight_g_low":485,"estimated_weight_g_mid":500,"estimated_weight_g_high":515,"weight_source":"package_label","food_category":"oil","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.9,"estimated_calories":4094,"estimated_protein_g":0,"estimated_fat_g":460,"estimated_carbs_g":0,"additional_dishes":[]}
 注：500ml 油密度 0.92 → 真实 460g，热量 889*460/100=4089≈4094；4*0+9*460+4*0=4140（偏差<5%自洽）
+
+示例5（500ml 雪花啤酒-啤酒剥离 v1.8，不要识别成雪碧！）：
+{"dish_name":"啤酒","brand":"雪花","quantity":1,"unit":"瓶","per_unit_g":500,"estimated_weight_g_low":490,"estimated_weight_g_mid":500,"estimated_weight_g_high":510,"weight_source":"package_label","food_category":"beer","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.9,"estimated_calories":215,"estimated_protein_g":2.5,"estimated_fat_g":0,"estimated_carbs_g":15.5,"additional_dishes":[]}
+注：雪花啤酒→dish_name=啤酒(通用名), brand=雪花(品牌), food_category=beer；500ml 啤酒 per100g≈43kcal → 500ml≈215kcal；4*2.5+9*0+4*15.5=72≠215（酒精 7kcal/g 不在 Atwater 系数内，自洽约束对啤酒不适用，热量按酒精含量估算）
+
+示例6（喜茶多肉葡萄-现制茶饮剥离 v1.8）：
+{"dish_name":"多肉葡萄","brand":"喜茶","quantity":1,"unit":"杯","per_unit_g":480,"estimated_weight_g_low":470,"estimated_weight_g_mid":480,"estimated_weight_g_high":490,"weight_source":"package_label","food_category":"juice","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.85,"estimated_calories":95,"estimated_protein_g":1.2,"estimated_fat_g":0.5,"estimated_carbs_g":22,"additional_dishes":[]}
+注：喜茶多肉葡萄→dish_name=多肉葡萄(品名), brand=喜茶(品牌)；后端按 brand+name 查品牌官方热量库（95kcal/中杯 来自喜茶官方公示）；food_category=juice（水果茶）
 ''';
 }

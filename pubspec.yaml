@@ -69,4 +69,5 @@ flutter:
   assets:
     - assets/sanotsu_common.json
     - assets/brand_foods.json
+    - assets/chain_drink_menu.json
     - assets/privacy_policy.md
