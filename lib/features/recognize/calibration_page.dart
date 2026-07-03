@@ -160,6 +160,63 @@ class _CalibrationPageState extends State<CalibrationPage> {
                                 color:
                                     Theme.of(context).colorScheme.error)),
                       ),
+                    // 多份识别警告：AI 识别为多份时显眼提示，避免用户忽略数量错识
+                    // （如一罐芬达被识别成两罐，用户直接确认会记录两罐的克数）
+                    if (_quantity > 1) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .tertiaryContainer
+                              .withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onTertiaryContainer
+                                .withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.inventory_2_outlined,
+                                size: 20,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onTertiaryContainer),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '识别为 $_quantity ${widget.recognitionResult.unit}，对吗？',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onTertiaryContainer),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '若实际只有 1 ${widget.recognitionResult.unit}，点下方 − 调整数量',
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .onTertiaryContainer),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     // 复合菜：份量由各组分滑块累加，主滑块无效故隐藏，避免"调了没反应"困惑
                     if (widget.singleNutrition != null) ...[
