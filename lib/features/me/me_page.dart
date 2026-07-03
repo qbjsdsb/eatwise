@@ -241,7 +241,7 @@ class _MePageState extends ConsumerState<MePage> {
     showAboutDialog(
       context: context,
       applicationName: '慢慢吃',
-      applicationVersion: '0.11.1',
+      applicationVersion: '0.12.0',
       applicationLegalese: '拍照识别食物热量 + 营养记录 + AI 汇总建议',
     );
   }

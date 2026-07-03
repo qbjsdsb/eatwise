@@ -42,7 +42,7 @@ Future<Widget> initSentryAndRunApp({
         // Release 版本配合 --split-debug-info 解符号
         // TODO: 后续从 PackageInfo 读取版本号替代硬编码（HANDOFF 待办）
         options.release = const String.fromEnvironment('SENTRY_RELEASE',
-            defaultValue: 'eatwise@0.11.1');
+            defaultValue: 'eatwise@0.12.0');
       },
       appRunner: () {},
     );

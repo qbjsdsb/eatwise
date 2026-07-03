@@ -1,9 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  自适应图标前景：白色简化「碗 + 升起蒸汽」。
+  自适应图标前景：奶白「碗 + 升起蒸汽」，精致化版本。
   语义：碗 = 食物，蒸汽 = 袅袅升起的温热感 = 「慢慢吃」。
-  画布 108x108dp，图形集中在 66x66 安全区内（中心 54,54）。
+  画布 108x108dp，图形集中在 66x66 安全区内（中心 54,54，半径 33）。
   Material 图标规范：几何简洁、单色、圆角线帽。
+
+  精致化（v0.12.0）：
+  - 前景色纯白 #FFFFFF → 奶白 #FDFBF7（温暖，与 splash #FCF9F9 协调）
+  - 碗口单椭圆 → 环形双线（外椭圆 evenOdd 挖内椭圆，厚度感）
+  - 碗底加小椭圆底座（稳重感）
+  - 蒸汽 stroke 3 → 2.8，曲线更柔和，错落（中间高两侧低）
+  - 全部图形严格在 66dp 安全区 (21,21)-(87,87) 内，OEM 蒙版不裁切
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -11,33 +18,39 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 蒸汽：3 条 S 形曲线，stroke 白色，圆头，体现「袅袅升起 = 慢」 -->
+    <!-- 蒸汽：3 条 S 形曲线，错落有致（中间高、两侧低），体现「袅袅升起 = 慢」 -->
     <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="3"
+        android:strokeColor="#FDFBF7"
+        android:strokeWidth="2.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M40,48 Q36,42 40,36 Q44,30 40,24" />
+        android:pathData="M42,50 Q38,44 42,38 Q46,32 42,27" />
     <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="3"
+        android:strokeColor="#FDFBF7"
+        android:strokeWidth="2.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M54,46 Q50,40 54,34 Q58,28 54,22" />
+        android:pathData="M54,48 Q50,42 54,36 Q58,30 54,25" />
     <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="3"
+        android:strokeColor="#FDFBF7"
+        android:strokeWidth="2.8"
         android:strokeLineCap="round"
         android:strokeLineJoin="round"
-        android:pathData="M68,48 Q64,42 68,36 Q72,30 68,24" />
+        android:pathData="M66,50 Q62,44 66,38 Q70,32 66,27" />
 
-    <!-- 碗身：U 形填充，顶部开口 -->
+    <!-- 碗身：U 形填充，下腹略弧 -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M30,60 Q30,86 54,86 Q78,86 78,60 Z" />
+        android:fillColor="#FDFBF7"
+        android:pathData="M31,60 Q31,83 54,83 Q77,83 77,60 Z" />
 
-    <!-- 碗口：椭圆边缘，盖在碗身顶部做厚度感 -->
+    <!-- 碗口：环形（外椭圆 evenOdd 挖内椭圆），形成厚度感（精致关键） -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M30,60 a24,5 0 1,0 48,0 a24,5 0 1,0 -48,0 Z" />
+        android:fillColor="#FDFBF7"
+        android:fillType="evenOdd"
+        android:pathData="M30,60 a24,4.5 0 1,0 48,0 a24,4.5 0 1,0 -48,0 Z M33,60 a21,3 0 1,0 42,0 a21,3 0 1,0 -42,0 Z" />
+
+    <!-- 碗底座：小椭圆，增加稳重感 -->
+    <path
+        android:fillColor="#FDFBF7"
+        android:pathData="M47,85 a7,1.8 0 1,0 14,0 a7,1.8 0 1,0 -14,0 Z" />
 </vector>

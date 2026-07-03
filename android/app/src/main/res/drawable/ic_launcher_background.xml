@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 自适应图标背景：莫奈《睡莲》青绿 seedColor，与 App 主题一致 -->
+<!-- 自适应图标背景：莫奈《睡莲》青绿渐变，与 App 主题一致。
+     对角线渐变（左上亮 → 右下暗）增加立体感，告别平面单调。 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#5B8C7B" />
+    <gradient
+        android:type="linear"
+        android:angle="135"
+        android:startColor="#6BA08C"
+        android:centerColor="#5B8C7B"
+        android:endColor="#4D7A6C" />
 </shape>
