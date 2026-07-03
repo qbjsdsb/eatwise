@@ -36,15 +36,17 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（v0.12.0 已发布；P0/P1/P2 食物识别增强 + 全 editable 第一批 + UI/UX 审查修复 Phase 3 [B+A+C+D 批] 已提交，未发布）
+**工作区状态**：clean（v0.13.0 已发布，workflow success；v0.12.0 已发布）
 **最近 commit**：
+- `1fdff0e` chore: bump 版本号到 0.13.0+14 准备发布 v0.13.0
+- `11a0cba` docs: HANDOFF 补 Phase 3 C/D 批详情 + 陷阱 49（confirmAction/showAppToast 抽象偏好）
 - `4252093` refactor: UI/UX 审查修复 D 批第三轮——confirmAction + showAppToast 公共抽象
 - `390d19a` refactor: UI/UX 审查修复 D 批第二轮——foodSourceLabel/EmptyChartHint/WarningBanner/_sectionTitle
 - `d46a1b9` fix: UI/UX 审查修复 C 批——数据安全 + 一致性 S 级
 - `4ad029c` docs: HANDOFF 补 Phase 3 陷阱 45-48
 - `（前次）` feat: UI/UX 审查修复 Phase 3——公共抽象层 B1-B6 + 数据安全 A1-A4
 - `db80dfb` feat: 全 editable 第一批——体重记录可改值/改日期/删，餐次记录可改份量/营养/餐次/日期/换食物/高级覆盖
-- `79a0ae6` feat: 食物识别增强四层自我进化架构（P0/P1/P2，未发布）
+- `79a0ae6` feat: 食物识别增强四层自我进化架构（P0/P1/P2，已随 v0.13.0 发布）
 - `7d1e8bd` docs: HANDOFF 补全 v0.12.0 release workflow run URL + APK 大小
 - `cbdc664` docs: HANDOFF 补充图标精致化详情（v0.12.0 已含）
 - `c37912b` feat: 启动器图标精致化 + bump v0.12.0（已发布 v0.12.0）
@@ -54,7 +56,7 @@
 - `a680241` feat: 智能推荐算法 v3 五维评分 + addAlias 冲突检测（已随 v0.12.0 发布）
 - `1064449` fix: 识别精准度修复+界面偏右修正（雪花啤酒→雪碧假阳性，已随 v0.12.0 发布）
 
-**本次全 editable 第一批（本次 commit，未发布）**：
+**本次全 editable 第一批（已随 v0.13.0 发布）**：
 解决用户反馈"所有功能都希望自己改，比如体重输错了点了确认后还能改"。
 4 批渐进实施，本次第一批（P0：体重 + 餐次全 editable）。
 - **体重记录全 editable**：`WeightLogRepository` 加 `getById`/`update`/`delete`（部分更新，null 跳过）；`weight_page` ListTile → Dismissible（左滑删除带二次确认 dialog）+ onTap 编辑 dialog（体重 TextField + 日期 DatePicker，StatefulBuilder 局部刷新）；编辑最新一条时同步 `ProfileRepository.update(weightKg:)`（与 _save 一致逻辑，保证 dashboard 宏量目标用最新体重）；删除/编辑后调 RefreshBus.notify 跨页刷新
@@ -63,7 +65,7 @@
 - **测试**：weight_log_repository 加 11 个测试（getById 2 + update 5 + delete 3 + 不存在 id 边界），meal_log_repository 加 9 个测试（date/mealType/foodItemId 部分更新 5 + 哨兵防御 4），全量 377 passed (3 skipped)
 - **文件**：新建 1（meal_edit_dialog.dart），修改 4（weight_log_repository/weight_page/meal_log_repository/today_meals_page）+ 2 测试文件
 
-**本次 UI/UX 审查修复 Phase 3（本次 commit，未发布）**：
+**本次 UI/UX 审查修复 Phase 3（已随 v0.13.0 发布）**：
 4 路并行 search agent 全面审查所有界面，识别 14 S 级 + 30+ M 级 + 10 L 级问题，分 6 批（A-F）渐进修复。本次完成公共抽象层（B1-B6）+ 数据安全（A1-A4）共 10 项。
 - **B1 date_format 公共工具**：新建 `lib/core/util/date_format.dart`——`parseYmd`（严格校验：regex + 月/日范围 + round-trip 检查，非法日期返回 null 不抛异常）+ `formatYmd`（DateTime → yyyy-MM-dd）；新增 5 个单元测试。替代各页散落的 `DateTime.parse` + 手写格式化，统一日期边界处理
 - **B2 food_name 公共工具**：新建 `lib/core/util/food_name.dart`——`placeholderFoodName(foodItemId)` 生成「未知食物#id」+ `isPlaceholderFoodName(name)` 判断；跨页统一食物名占位符（today_meals/dashboard/meal_edit_dialog 等），避免各页硬编码 `食物${id}` 字符串拼接不一致
@@ -79,8 +81,8 @@
 - **文件**：新建 2（date_format.dart / food_name.dart）+ 2 测试文件，修改 12（m3_widgets / recognize_page / recognize_controller / multi_dish_page / calibration_page / today_meals_page / dashboard_page / meal_edit_dialog / food_library_page / food_edit_page / profile_page / settings_page / me_page / weight_page / insight_page / backup_page / manual_entry_page）
 
 **未完成/待办**（按优先级）：
-1. ⬜ 用户真机验收 v0.12.0（装 APK 验证：图标精致化效果 + MD3 全面优化 + 智能推荐 v3 + 深度审查修复 15 项）
-2. 🔧 UI/UX 审查修复 F 批：输入校验——TextField → Form+TextFormField validator（待用户确认范围与校验规则，风险较高，会改 form 行为）
+1. ⬜ 用户真机验收 v0.13.0（装 APK 验证：食物识别四层闭环 + 体重/餐次全 editable + UI/UX 审查修复 Phase 3 五批）
+2. 🔧 UI/UX 审查修复 F 批：输入校验——TextField → Form+TextFormField validator（用户已确认范围=全部 7 页 + 实时校验+错误提示 MD3 模式；风险较高会改 form 行为，开工前需逐一确认每页校验规则）
 3. 🔧 全 editable 第二批：FoodItems 删除/归档 + name/aliases 编辑（用户已批准 4 批计划，第一批已完成）
 4. 🔧 全 editable 第三批：PendingRecognitions UI 页 + 重试/删除 + Feedbacks 历史/删除
 5. 🔧 全 editable 第四批：历史 InsightSummaries 查看页 + 份量校准回滚
@@ -97,7 +99,7 @@
    - RecognitionPostProcessor correctAdditionalDishes needsRetry 丢弃（深度审查 M3，暂不修复）
    - image_quality_checker 改 isolate（深度审查 core M1，暂不修复）
 
-**本次 P0/P1/P2 食物识别增强（本次 commit，未发布）**：
+**本次 P0/P1/P2 食物识别增强（已随 v0.13.0 发布）**：
 解决"雪花啤酒识别成雪碧 + 奶茶/网红零食能否准确分辨 + 热量能否严谨计算"三问。
 核心思路：不追求库覆盖所有食物，建立"AI 估算(品类校准) + 品牌库(头部覆盖) + OFF(包装食品) + 用户纠错(长尾自进化)"四层闭环。
 - **P0 品类校准 + brand 持久化**：新建 `food_category_defaults.dart`（beer=43/wine=83/carbonated=43/milk=61 等 13 品类默认值），AI 兜底 per100g 偏离默认值 2 倍用默认值替代；`upsertAiRecognized` 加 brand 参数，"品牌+菜名"存为 alias（如"雪花啤酒"），下次精确命中
@@ -107,13 +109,13 @@
 - **测试**：新增 18 个测试（品类校准 11 + brand 匹配 3 + brand 持久化 4），全量 358 passed (3 skipped)
 - **文件**：新建 2（food_category_defaults.dart / chain_drink_menu.json），修改 8（prompts/food_item_repository/nutrition_lookup/off_provider/recognize_page/recognize_controller/multi_dish_page/offline_queue_controller/today_meals_page/database/food_seed_importer/pubspec）
 - `52dc876` docs: 更新 HANDOFF——v0.11.1 已发布
-- `84cc29a` feat: 个人档案特殊人群适配（孕期/哺乳/老年/青少年/糖尿病/肾病/素食，schema v1→v2，未发布）
-- `c6a76be` feat: 折线图美化与智能推荐算法升级（Y 轴 interval 防重叠+渐变填充+触摸 tooltip+推荐四维评分，未发布）
+- `84cc29a` feat: 个人档案特殊人群适配（孕期/哺乳/老年/青少年/糖尿病/肾病/素食，schema v1→v2，已随 v0.11.1 发布）
+- `c6a76be` feat: 折线图美化与智能推荐算法升级（Y 轴 interval 防重叠+渐变填充+触摸 tooltip+推荐四维评分，已随 v0.11.1 发布）
 - `685fc9e` docs: 更新 HANDOFF——记录启动与首屏性能优化
-- `d1e5970` perf: 启动与首屏加载性能优化（secure_storage 并行+首屏查询并行+N+1→批量+splash 配色，未发布）
-- `fbcbf1e` fix: 修复 tab 页 dialog 按钮点击黑屏（嵌套 Navigator 误 pop 页面，未发布）
-- `b97eb89` style: 今日明细页卡片式重构（缩略图+营养素圆点+餐次小计，未发布）
-- `1f1fad0` fix: 校准页加多份识别警告横幅（避免一罐被识别成两罐时记录双倍克数，未发布）
+- `d1e5970` perf: 启动与首屏加载性能优化（secure_storage 并行+首屏查询并行+N+1→批量+splash 配色，已随 v0.11.1 发布）
+- `fbcbf1e` fix: 修复 tab 页 dialog 按钮点击黑屏（嵌套 Navigator 误 pop 页面，已随 v0.11.1 发布）
+- `b97eb89` style: 今日明细页卡片式重构（缩略图+营养素圆点+餐次小计，已随 v0.11.1 发布）
+- `1f1fad0` fix: 校准页加多份识别警告横幅（避免一罐被识别成两罐时记录双倍克数，已随 v0.11.1 发布）
 - `ec5d452` docs: 更新 HANDOFF——v0.11.0 已发布
 - `58db4e3` chore: 版本号 bump 到 0.11.0+11 准备发布 v0.11.0
 - `add3c42` docs: 更新 HANDOFF——主页刷新修复（profile/weight→RefreshBus→dashboard）
@@ -122,6 +124,11 @@
 - `47fd22c` feat: 食物热量计算优化第一波——可食部分系数+组分份量交叉验证+液体密度换算（建议1+3+7）
 
 **已发布**：
+- v0.13.0 已发布（2026-07-03，包含 v0.12.0 之后 3 大块：食物识别增强四层自我进化架构 P0/P1/P2 + 全 editable 第一批 体重+餐次 + UI/UX 审查修复 Phase 3 A+B+C+D+E 五批共 26 项）
+  - Release: https://github.com/qbjsdsb/eatwise/releases/tag/v0.13.0
+  - app-release.apk 74.1 MB / app-debug.apk 167.6 MB（debug 签名，自用版）
+  - workflow run: https://github.com/qbjsdsb/eatwise/actions/runs/28680625942（success，13 分钟，由 `git push tag v0.13.0` 触发）
+  - 新增能力：①食物识别四层闭环（品类校准兜底+品牌官方热量库 10 品牌 41 招牌+OFF brand 组合查询+反馈回流创建新条目）②体重记录全 editable（改值/改日期/删）③餐次记录 8 字段全 editable（份量/4 营养/餐次/日期/换食物/高级覆盖）④UI 公共抽象层（confirmAction/showAppToast/EmptyChartHint/WarningBanner 等 10+ 共享组件）⑤数据安全（乐观删除+Undo/PopScope 未保存确认/错误态可重试/加载失败显 ErrorState）
 - v0.12.0 已发布（2026-07-03，包含 v0.11.1 之后 5 个修复/优化：识别精准度+智能推荐 v3+MD3 全面优化+深度审查修复 15 项+启动器图标精致化）
   - Release: https://github.com/qbjsdsb/eatwise/releases/tag/v0.12.0
   - app-release.apk 73.4 MB / app-debug.apk 167.6 MB（debug 签名，自用版）
@@ -144,7 +151,7 @@
 5. **折线图美化与智能推荐算法升级**（`c6a76be`）：用户反馈"折线图不够美观有数字重叠"+"智能推荐不够智能"。折线图：Y 轴固定 interval（热量 maxCal/4 取整 50 倍数 / 体重范围/4 至少 0.2）彻底消除重叠，参考线标签左对齐+padding(left:44) 避开 Y 轴 + 上下错开，边框只留左下，网格只水平虚线半透明，数据点变小+surface 描边，belowBarData 改 LinearGradient 渐变，加 lineTouchData 触摸 tooltip。推荐算法 v2：四维评分（相对缺口匹配 remaining/goal 比例取最缺宏量加权 / 历史频次 log2 压缩封顶 4 分 / 排除今日已吃 / 具体理由"补蛋白 32%"），新增 `MealLogRepository.getRecentFoodCounts`（最近 30 天引用次数）。**坑提醒：推荐算法蛋白缺口触发阈值用 hasProteinGap（remainingProtein>5）而非 ratio<0.3，无记录时 ratio=1.0 但仍应触发，否则高蛋白食物不被推荐（测试已覆盖）。**
 6. **个人档案特殊人群适配**（`84cc29a`）：用户反馈"个人信息太简单，不能应用在不同人群"。profile 表 schema v1→v2 加 3 个 nullable 列（specialCondition/dietPreference/healthCondition，null 视为 'none' 向后兼容）。NutritionCalculator 按权威来源调整：孕期 +340 / 哺乳期 +500 kcal（IOM 2006）、老年蛋白 1.2g/kg 防肌少症（ISSN）、肾病蛋白 cap 0.8g/kg（KDOQI）、糖尿病碳水 cap 45%（ADA）。ProfilePage 加"特殊状况"段（3 个 DropdownMenu + 风险提示卡片）+ 活动量描述优化（步数/锻炼频率）+ 保存时孕期/哺乳/肾病减脂风险警告。JsonExporter/Importer 同步 3 字段导出导入；版本检查从严格相等放宽为只拒绝高于当前版本（支持旧备份恢复到新版本）。**坑提醒：JsonExporter 加新字段必须同步 JsonImporter 读取，否则备份恢复丢数据；DropdownMenu 测试用 find.byKey 定位，不要用 .last/.first（新增菜单会让索引漂移）。**
 
-**v0.11.1 之后未发布的修复**：
+**v0.11.1 之后的修复（已随 v0.12.0/v0.13.0 发布）**：
 7. **识别精准度修复 + 界面偏右修正**（`1064449`）：用户反馈"雪花啤酒被识别成雪碧"+"界面整体偏右"。识别错配根因有三：①findByNameOrAlias 优先级 5 编辑距离 ≤1 对 2 字短名假阳性（"雪花"vs"雪碧"编辑距离恰好 1 → 误命中）；②反馈回流 addAlias 用 5 级模糊查"正确菜"，模糊命中错对象后把 AI 错误名写成错对象别名 → 永久错配（无法自愈）；③_normalize 不处理全角半角（AI 返回全角字符精确匹配 miss → 降级模糊匹配增加误命中）。修复：①优先级 5 加严——query 长度 ≥3 且 target 与 query 等长才走编辑距离（2 字短名禁用，typo 容错仅保留 3+ 字等长如"蕃茄炒蛋"→"番茄炒蛋"）；②新增 findExactByNameOrAlias（只走 name/alias 精确匹配），today_meals_page 反馈回流改用它，避免模糊命中错对象导致反向错配；③_normalize 加全角→半角转换（数字/字母/空格/括号）。界面偏右根因：SectionTitle padding `fromLTRB(24,20,16,8)` 左 24 右 16 不对称，被 6 页面 14 处复用，标题相对下方卡片（padding 16）右移 8px → 改 `fromLTRB(16,20,16,8)` 对称；dashboard/me_page 的 Divider 缺 endIndent → 补 `endIndent: 16`。新增 4 个精准度专项测试（雪花不命中雪碧/typo 容错保留/findExact 只精确/全角括号归一化）。**坑提醒：2 字短名编辑距离 1 无法区分"假阳性（雪花/雪碧）"与"typo（可东/可乐）"，取舍上禁用 2 字短名编辑距离（牺牲罕见 2 字 typo 容错换取防常见相近名误判）；反馈回流别名必须用精确匹配查库，绝不能用模糊匹配（否则反向错配永久污染别名表）。**
 
 8. **智能推荐算法 v3 五维评分 + addAlias 冲突检测**（`a680241`）：用户反馈"推荐冷门食物，不学习习惯，参考业界成熟方案优化"。WebSearch 调研业界（MyFitnessPal/Yazio/薄荷/Lifesum/Carbon Diet Coach），严谨筛选：弃用协同过滤（单机无用户群）、AI 生成食谱（离线 app）、替换建议（需建替代图谱留后续）；采用内容推荐+频次+约束过滤+时段感知+多样性（全离线，基于现有数据）。v3 五维：①冷门降权——常吃蛋白加权 *4，基础食材 *3，冷门 *1.5（直击"冷门霸榜"痛点，原 v2 全部 *4 致冷门高密度食物盖过常吃基础食材）；②基础食材白名单——硬编码 ~50 个中式家常食材关键词（鸡蛋/鸡胸/牛奶/燕麦/米饭/豆腐/苹果/西兰花…）命中 +3 底分，保证常见食物不沉底；③profile 约束过滤——素食/纯素/乳糖不耐/无麸质硬排除违规食物（按名称关键词），糖尿病高糖降权 *0.3，肾病极高蛋白降权 *0.5（软降权避免列表空）；④时段感知——MealLogRepository 新增 getMealTypeDistribution 学习每食物历史 mealType 分布（ratio>0.5 加 3 分），dashboard 按当前小时推断 mealType 传入；⑤多样性——排除今日已吃（已有）+ 昨日已吃降权 -2。addAlias 冲突检测（防反向错配第二道防线，findExact 是第一道）：写入前遍历全表，若别名已是其他食物的 name/alias 则拒绝写入，防止反馈回流把同一错误名绑多食物致永久错配。新增 9 个专项测试（冷门降权/白名单底分/素食过滤/乳糖过滤/时段感知/多样性 + addAlias 冲突检测 3 个）。**坑提醒：recommend() 新增 profile/mealType/yesterdayDate 全是可选参数，不传时退化到 v2 行为（向后兼容现有测试）；时段感知是数据驱动（学历史 mealType 分布）非硬编码"早餐食物"，样本<2 不返回避免单次误判；糖尿病/肾病用软降权而非硬排除，避免推荐列表空；addAlias 冲突检测遍历全表 O(n) 但在 addAlias 事务内，反馈回流低频调用可接受。**
@@ -295,7 +302,7 @@
 - 权衡：records_tab/insight 用普通 AppBar+bottom 而非 SliverAppBar（IndexedStack/ListView 子页有自己滚动，SliverAppBar 需 CustomScrollView 重构成本大，bottom pinned 已满足"切换器常驻"需求）
 - 验证：flutter analyze lib/ No issues + flutter test 337 passed (3 skipped)
 
-### 3.13 深度审查修复 15 项（本次 commit，未发布）
+### 3.13 深度审查修复 15 项（已随 v0.12.0 发布）
 - 审查方法：4 路并行 search agent 分领域逐文件核对（features / ai+nutrition+data / core+main / test）
 - 严重问题修复（S1-S6）：
   - S1 `TdeeCalibrator.runAndApply` 符号转换——calibrate 算法期望"减脂负/增肌正"但 profile.goalRateKgPerWeek 存正值，runAndApply 加 `signedGoalRate = goal=='cut' ? -rate : goal=='bulk' ? rate : 0` 转换
@@ -331,7 +338,7 @@
 - 实现：vector drawable（API 26+ 现代设备）+ Pillow 4x 超采样生成 5 密度 PNG fallback（API 21-25 旧设备，48/72/96/144/192）
 - monochrome 复用前景供 Android 13+ 主题图标（用户可让图标跟随壁纸取色）
 
-### 3.15 食物识别增强四层自我进化架构（P0/P1/P2，本次 commit，未发布）
+### 3.15 食物识别增强四层自我进化架构（P0/P1/P2，已随 v0.13.0 发布）
 
 解决"雪花啤酒识别成雪碧 + 奶茶/网红零食能否准确分辨 + 热量能否严谨计算"三问。
 
@@ -364,11 +371,11 @@
 
 **测试**：新增 18 个测试（品类校准 11 + brand 匹配 3 + brand 持久化 4），全量 358 passed (3 skipped)。FakeOffProvider.lookup 和 _FakeNutritionLookup.lookupSingleItem 签名同步加 `{String brand = ''}` 防止 invalid_override
 
-### 3.16 全 editable 架构（4 批渐进，第一批已实施，本次 commit 未发布）
+### 3.16 全 editable 架构（4 批渐进，第一批已随 v0.13.0 发布）
 
 解决用户反馈"所有功能都希望自己改，比如体重输错了点了确认后还能改"。审计现状：weight_logs 无 update/delete（ListTile 无交互）、meal_logs updateMealLog 只接受 5 营养字段（无 date/mealType/foodItemId）、food_items 无 delete/无 name 编辑、pending_recognitions 无 UI 页、recognition_feedbacks 无 list/delete、insight_summaries 无历史访问。4 批渐进实施。
 
-**第一批（P0：体重 + 餐次全 editable，本次 commit）**：
+**第一批（P0：体重 + 餐次全 editable，已随 v0.13.0 发布）**：
 - `WeightLogRepository` 加 `getById(id)` / `update(id, weightKg?, date?)` / `delete(id)` —— 部分更新模式（null 跳过用 `Value.absent()`，非 null 用 `Value(x)`）
 - `weight_page` ListTile → Dismissible（confirmDismiss 二次确认 dialog 比 Undo SnackBar 更适合低频数据）+ onTap 编辑 dialog（StatefulBuilder 局部刷新避免重建整个页面）
 - **编辑最新一条体重必须同步 ProfileRepository.update(weightKg:)**（与 _save 一致逻辑，否则 dashboard 宏量目标 proteinGPerKg*weightKg 仍用旧体重）；判断"最新"用 `_logs.isEmpty || log.id == _logs.last.id`（_logs 已按日期升序）
@@ -390,7 +397,7 @@
 - 现状：insight_summaries 只显示当前周期，历史 insight 无访问入口；meal_log 份量校准后无法回滚到 AI 原始估算
 - 计划：insight_page 加历史周期 SegmentedButton（weekly/monthly 切换 + 滚动历史），meal_log 加 estimatedServingGAiOriginal 字段记录 AI 原始值供回滚
 
-### 3.17 UI/UX 审查修复 Phase 3（A+B+C+D 四批，本次 commit，未发布）
+### 3.17 UI/UX 审查修复 Phase 3（A+B+C+D 四批，已随 v0.13.0 发布）
 4 路并行 search agent 全面审查所有界面，识别 14 S + 30+ M + 10 L 级问题，分 6 批（A-F）渐进修复。本次完成 A+B+C+D 四批共 26 项（E 评估后跳过、F 待用户确认）。
 
 **公共抽象层模式**：把跨页重复的 UI 模式/工具函数提取到共享文件（m3_widgets.dart / core/util/），防止各页实现漂移。
