@@ -36,8 +36,10 @@
 
 **最后更新**：2026-07-03
 
-**工作区状态**：clean（v0.11.0 已发布；v0.11.0 之后又提交了 4 个修复/优化但**未发布**，等用户验收后再决定是否打 v0.11.1）
+**工作区状态**：clean（v0.11.0 已发布；v0.11.0 之后又提交了 5 个修复/优化但**未发布**，等用户验收后再决定是否打 v0.11.1）
 **最近 commit**：
+- `c6a76be` feat: 折线图美化与智能推荐算法升级（Y 轴 interval 防重叠+渐变填充+触摸 tooltip+推荐四维评分，未发布）
+- `685fc9e` docs: 更新 HANDOFF——记录启动与首屏性能优化
 - `d1e5970` perf: 启动与首屏加载性能优化（secure_storage 并行+首屏查询并行+N+1→批量+splash 配色，未发布）
 - `fbcbf1e` fix: 修复 tab 页 dialog 按钮点击黑屏（嵌套 Navigator 误 pop 页面，未发布）
 - `b97eb89` style: 今日明细页卡片式重构（缩略图+营养素圆点+餐次小计，未发布）
@@ -56,11 +58,12 @@
   - workflow run: https://github.com/qbjsb/eatwise/actions/runs/28658030594（success）
 - v0.10.0 已发布（2026-07-03）
 
-**未发布的四个修复（v0.11.0 之后）**：
+**未发布的五个修复（v0.11.0 之后）**：
 1. **校准页多份识别警告**（`1f1fad0`）：用户反馈"一罐芬达显示两罐克数"。根因是 AI 偶发误判 quantity=2，校准页默认用 `estimatedWeightGMid`（已含 quantity 乘积）作初值，数量步进器在底部不显眼，用户未调整直接确认会写入双倍克数。修复方式：quantity>1 时在标题下方加 tertiaryContainer 警告横幅，提示用户检查数量。
 2. **今日明细页卡片式重构**（`b97eb89`）：用户反馈"明细界面不够美观"。ListTile → Card 卡片布局：56x56 圆角缩略图、份量/热量 chip、三大宏量营养素彩色圆点、餐次分组带竖条+小计热量。纯 UI 层重构，不动写入逻辑。
 3. **tab 页 dialog 按钮点击黑屏**（`fbcbf1e`）：用户反馈"识别准不准"的准/不准按钮、"关于"里的隐私政策按钮点击后黑屏，退出重进才恢复。根因：GoRouter 的 `StatefulShellRoute.indexedStack` 给每个 tab 配嵌套 Navigator，`showDialog` 默认 `useRootNavigator:true` 把 dialog push 到 root Navigator，但按钮 `Navigator.pop(context)` 用页面 context，`Navigator.of(context)` 找到 tab 嵌套 Navigator，把栈顶页面本身（MePage / RecordsTabPage）pop 掉了。修复 3 处（me_page._showPrivacy、today_meals_page._showEditDialog、today_meals_page._showFeedbackDialog 准/不准），统一改 `builder:(ctx)=>` + `Navigator.pop(ctx)`。**坑提醒：今后在 tab 页（dashboard/records/insight/me 分支下）写 dialog，关闭按钮必须用 dialog 的 ctx，不能用页面 context。**
 4. **启动与首屏加载性能优化**（`d1e5970`）：用户反馈"点开软件要黑屏一两秒"。三个瓶颈：① main.dart 的 getThemeSeed 和 appConfig 两次独立 secure_storage 读取原串行，改提前触发 appConfigProvider 并行；② AppConfig.load() 原 10+ 次串行 platform channel read 改"同时启动 7 future + 分别 await"并行，并复用结果省 3 次重复 read；③ DashboardPage/TodayMealsPage 食物名反查 N+1 → FoodItemRepository.getByIds 批量 IN 查询，首屏三查询并行；④ Android launch_background 纯白底改 @color/splash_background 匹配 app 默认 surface 色（亮 #FCF9F9/暗 #1C1B1F）。**坑提醒：Future.wait 因多类型 future 会退化为 List<Object?>，并行不同类型 future 应用"同时启动 + 分别 await"模式保留类型。**
+5. **折线图美化与智能推荐算法升级**（`c6a76be`）：用户反馈"折线图不够美观有数字重叠"+"智能推荐不够智能"。折线图：Y 轴固定 interval（热量 maxCal/4 取整 50 倍数 / 体重范围/4 至少 0.2）彻底消除重叠，参考线标签左对齐+padding(left:44) 避开 Y 轴 + 上下错开，边框只留左下，网格只水平虚线半透明，数据点变小+surface 描边，belowBarData 改 LinearGradient 渐变，加 lineTouchData 触摸 tooltip。推荐算法 v2：四维评分（相对缺口匹配 remaining/goal 比例取最缺宏量加权 / 历史频次 log2 压缩封顶 4 分 / 排除今日已吃 / 具体理由"补蛋白 32%"），新增 `MealLogRepository.getRecentFoodCounts`（最近 30 天引用次数）。**坑提醒：推荐算法蛋白缺口触发阈值用 hasProteinGap（remainingProtein>5）而非 ratio<0.3，无记录时 ratio=1.0 但仍应触发，否则高蛋白食物不被推荐（测试已覆盖）。**
 - 验证：`flutter analyze` No issues + `flutter test` 324 passed (3 skipped)。
 
 **识别智能化批次 1-3 修复清单**（本次 commit，用户选择"全部融入"）：
