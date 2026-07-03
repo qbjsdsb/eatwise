@@ -62,8 +62,8 @@
 **已发布**：
 - v0.12.0 已发布（2026-07-03，包含 v0.11.1 之后 5 个修复/优化：识别精准度+智能推荐 v3+MD3 全面优化+深度审查修复 15 项+启动器图标精致化）
   - Release: https://github.com/qbjsdsb/eatwise/releases/tag/v0.12.0
-  - app-release.apk / app-debug.apk（debug 签名，自用版）
-  - workflow run: release.yml 由 `git push tag v0.12.0` 触发
+  - app-release.apk 73.4 MB / app-debug.apk 167.6 MB（debug 签名，自用版）
+  - workflow run: https://github.com/qbjsdsb/eatwise/actions/runs/28669494536（success，由 `git push tag v0.12.0` 触发）
 - v0.11.1 已发布（2026-07-03，包含 v0.11.0 之后 6 个修复/优化：校准页警告+明细页卡片重构+dialog 黑屏修复+启动性能优化+折线图美化与推荐算法升级+个人档案特殊人群适配）
   - Release: https://github.com/qbjsdsb/eatwise/releases/tag/v0.11.1
   - app-release.apk 73.3 MB / app-debug.apk 167.5 MB
