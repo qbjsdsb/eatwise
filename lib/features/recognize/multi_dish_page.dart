@@ -340,12 +340,14 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
   }
 
   /// 全部记录：对每个命中菜品写一条 meal_log（同日期同餐次）
+  /// 事务包裹整个循环：保证原子性，避免部分成功部分失败导致重复写入
   Future<void> _recordAll() async {
     if (_isRecording) return; // 防重入
     setState(() => _isRecording = true);
     try {
       final mealRepo = await ref.read(mealLogRepoProvider.future);
       final foodRepo = await ref.read(foodItemRepoProvider.future);
+      final db = await ref.read(databaseProvider.future);
       final now = DateTime.now();
       final today =
           '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
@@ -356,94 +358,102 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
 
       int recordedCount = 0;
       double totalCal = 0;
-      for (var i = 0; i < allDishes.length; i++) {
-        if (!_hitFlags[i]) continue; // 未命中跳过
-        if (!mounted) return; // 页面销毁则中止
-        final dish = allDishes[i];
-        final serving = _servings[i];
-        final (cal, p, f, c) = _calcNutrition(i, dish);
+      // 事务包裹：所有菜品 upsert + insertMealLog 原子化，任一失败整体回滚不产生部分记录
+      await db.transaction(() async {
+        for (var i = 0; i < allDishes.length; i++) {
+          if (!_hitFlags[i]) continue; // 未命中跳过
+          final dish = allDishes[i];
+          final serving = _servings[i];
+          final (cal, p, f, c) = _calcNutrition(i, dish);
 
-        // 获取 foodItemId：单品用查库命中的 foodItemId，复合菜 upsert ai_recognized
-        // v1.4：单品若库未命中走 AI 兜底，foodItemId=0 是哨兵，写库前必须替换为真实 id
-        // （meal_log.food_item_id 是非空 FK，PRAGMA foreign_keys=ON 时 id=0 触发外键违规崩溃）
-        int foodItemId;
-        if (i == 0) {
-          if (widget.mainSingle != null) {
-            final n = widget.mainSingle!;
-            if (n.foodItemId == 0) {
-              // 哨兵：AI 兜底结果 → 创建 ai_recognized food_item
-              // per100g 基于 mid 份量反算（n.calories 对应 mid 份量，不能用 servingG）
-              final mid = dish.estimatedWeightGMid;
-              final per100 = mid > 0 ? 100.0 / mid : 0.0;
+          // 获取 foodItemId：单品用查库命中的 foodItemId，复合菜 upsert ai_recognized
+          // v1.4：单品若库未命中走 AI 兜底，foodItemId=0 是哨兵，写库前必须替换为真实 id
+          // （meal_log.food_item_id 是非空 FK，PRAGMA foreign_keys=ON 时 id=0 触发外键违规崩溃）
+          int foodItemId;
+          String? componentsSnapshot;
+          if (i == 0) {
+            if (widget.mainSingle != null) {
+              final n = widget.mainSingle!;
+              if (n.foodItemId == 0) {
+                // 哨兵：AI 兜底结果 → 创建 ai_recognized food_item
+                // per100g 基于 mid 份量反算（n.calories 对应 mid 份量，不能用 servingG）
+                final mid = dish.estimatedWeightGMid;
+                final per100 = mid > 0 ? 100.0 / mid : 0.0;
+                foodItemId = await foodRepo.upsertAiRecognized(
+                  name: dish.dishName,
+                  caloriesPer100g: n.calories * per100,
+                  proteinPer100g: n.proteinG * per100,
+                  fatPer100g: n.fatG * per100,
+                  carbsPer100g: n.carbsG * per100,
+                  confidence: dish.confidence,
+                );
+              } else {
+                foodItemId = n.foodItemId;
+              }
+            } else {
+              final oilG = widget.mainComposite?.oilG ?? 0;
+              componentsSnapshot = _encodeComponents(dish, oilG: oilG);
               foodItemId = await foodRepo.upsertAiRecognized(
                 name: dish.dishName,
-                caloriesPer100g: n.calories * per100,
-                proteinPer100g: n.proteinG * per100,
-                fatPer100g: n.fatG * per100,
-                carbsPer100g: n.carbsG * per100,
+                caloriesPer100g: 0,
+                proteinPer100g: 0,
+                fatPer100g: 0,
+                carbsPer100g: 0,
                 confidence: dish.confidence,
+                componentsJson: componentsSnapshot,
               );
-            } else {
-              foodItemId = n.foodItemId;
             }
           } else {
-            foodItemId = await foodRepo.upsertAiRecognized(
-              name: dish.dishName,
-              caloriesPer100g: 0,
-              proteinPer100g: 0,
-              fatPer100g: 0,
-              carbsPer100g: 0,
-              confidence: dish.confidence,
-              componentsJson: _encodeComponents(dish),
-            );
-          }
-        } else {
-          final item = widget.additionalItems[i - 1];
-          if (item.singleNutrition != null) {
-            final n = item.singleNutrition!;
-            if (n.foodItemId == 0) {
-              // 哨兵：附加菜 AI 兜底 → 创建 ai_recognized food_item
-              final mid = dish.estimatedWeightGMid;
-              final per100 = mid > 0 ? 100.0 / mid : 0.0;
+            final item = widget.additionalItems[i - 1];
+            if (item.singleNutrition != null) {
+              final n = item.singleNutrition!;
+              if (n.foodItemId == 0) {
+                // 哨兵：附加菜 AI 兜底 → 创建 ai_recognized food_item
+                final mid = dish.estimatedWeightGMid;
+                final per100 = mid > 0 ? 100.0 / mid : 0.0;
+                foodItemId = await foodRepo.upsertAiRecognized(
+                  name: dish.dishName,
+                  caloriesPer100g: n.calories * per100,
+                  proteinPer100g: n.proteinG * per100,
+                  fatPer100g: n.fatG * per100,
+                  carbsPer100g: n.carbsG * per100,
+                  confidence: dish.confidence,
+                );
+              } else {
+                foodItemId = n.foodItemId;
+              }
+            } else {
+              final oilG = item.compositeNutrition?.oilG ?? 0;
+              componentsSnapshot = _encodeComponents(dish, oilG: oilG);
               foodItemId = await foodRepo.upsertAiRecognized(
                 name: dish.dishName,
-                caloriesPer100g: n.calories * per100,
-                proteinPer100g: n.proteinG * per100,
-                fatPer100g: n.fatG * per100,
-                carbsPer100g: n.carbsG * per100,
+                caloriesPer100g: 0,
+                proteinPer100g: 0,
+                fatPer100g: 0,
+                carbsPer100g: 0,
                 confidence: dish.confidence,
+                componentsJson: componentsSnapshot,
               );
-            } else {
-              foodItemId = n.foodItemId;
             }
-          } else {
-            foodItemId = await foodRepo.upsertAiRecognized(
-              name: dish.dishName,
-              caloriesPer100g: 0,
-              proteinPer100g: 0,
-              fatPer100g: 0,
-              carbsPer100g: 0,
-              confidence: dish.confidence,
-              componentsJson: _encodeComponents(dish),
-            );
           }
+
+          await mealRepo.insertMealLog(
+            date: today,
+            mealType: widget.mealType,
+            foodItemId: foodItemId,
+            actualServingG: serving,
+            actualCalories: cal,
+            actualProteinG: p,
+            actualFatG: f,
+            actualCarbsG: c,
+            originalImagePath: i == 0 ? widget.imagePath : null,
+            recognitionConfidence: dish.confidence,
+            componentsSnapshotJson: componentsSnapshot,
+          );
+          recordedCount++;
+          totalCal += cal;
         }
-
-        await mealRepo.insertMealLog(
-          date: today,
-          mealType: widget.mealType,
-          foodItemId: foodItemId,
-          actualServingG: serving,
-          actualCalories: cal,
-          actualProteinG: p,
-          actualFatG: f,
-          actualCarbsG: c,
-          originalImagePath: i == 0 ? widget.imagePath : null,
-          recognitionConfidence: dish.confidence,
-        );
-        recordedCount++;
-        totalCal += cal;
-      }
+      });
 
       if (!mounted) return;
       if (recordedCount == 0) {
@@ -460,7 +470,7 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
         Navigator.of(context).pop();
       }
     } catch (e) {
-      // 异常处理：提示用户，不静默失败
+      // 异常处理：提示用户，事务已回滚无部分记录
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('记录失败：$e')),
@@ -471,11 +481,15 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
     }
   }
 
-  /// 把复合菜组分序列化为 JSON 字符串（落库 food_item.components_json 用）
-  String? _encodeComponents(VisionRecognitionResult dish) {
+  /// 把复合菜组分序列化为 JSON 字符串（落库 food_item.components_json + meal_log.components_snapshot_json 用）
+  /// 格式与 offline_queue_controller 一致：{components:[{name,estimated_g}], oil_g}
+  String? _encodeComponents(VisionRecognitionResult dish, {double oilG = 0}) {
     if (dish.foodComponents.isEmpty) return null;
-    return jsonEncode(dish.foodComponents
-        .map((c) => {'name': c.name, 'estimated_g': c.estimatedG})
-        .toList());
+    return jsonEncode({
+      'components': dish.foodComponents
+          .map((c) => {'name': c.name, 'estimated_g': c.estimatedG})
+          .toList(),
+      'oil_g': oilG,
+    });
   }
 }

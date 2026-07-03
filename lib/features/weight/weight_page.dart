@@ -294,6 +294,11 @@ class WeightPageState extends ConsumerState<WeightPage> {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('已记录体重')));
       }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('记录失败：$e')));
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

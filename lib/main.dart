@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:workmanager/workmanager.dart';
 
 import 'app.dart';
@@ -109,8 +110,10 @@ void main() {
     }
     // 注意：不 dispose container，它随 app 生命周期存活
   }, (error, stack) {
-    // zone 兜底：未捕获错误记日志（不 runApp 错误页，避免覆盖已起来的 UI）
+    // zone 兜底：未捕获错误记日志 + 上报 Sentry（未初始化时 no-op，安全）
+    // 不 runApp 错误页，避免覆盖已起来的 UI
     debugPrint('Zone 未捕获错误: $error');
     _writeBootLog('ZoneError: $error\n$stack');
+    Sentry.captureException(error, stackTrace: stack);
   });
 }

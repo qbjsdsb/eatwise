@@ -94,7 +94,7 @@ class OfflineQueueController {
           //   断路器 open 30s 期间多次 processPending 会触发上限导致 pending 永久 failed。
           //   正确做法：直接 continue，保留 pending 状态，等断路器恢复后下次 processPending 重试。
           if (_circuitBreaker != null && !await _circuitBreaker.allowCall) {
-            continue; // 保留 pending，不调 markFailed，等断路器恢复
+            break; // 断路器 open：跳过本批所有 pending，等恢复后下次 processPending 重试
           }
 
           // 调视觉模型（30s 超时，避免单条卡死整队列）
@@ -112,7 +112,12 @@ class OfflineQueueController {
           }
 
           // T37 断路器：视觉调用成功记录成功（halfOpen → closed）
-          if (_circuitBreaker != null) await _circuitBreaker.recordSuccess();
+          // best-effort：断路器持久化失败不影响主流程（与 recognize_controller 一致）
+          if (_circuitBreaker != null) {
+            try {
+              await _circuitBreaker.recordSuccess();
+            } catch (_) {}
+          }
 
           // 查库回填营养素：区分单品 / 复合菜
           // （修复 bug：原无条件 lookupSingleItem 导致复合菜 nutrition==null 静默丢弃）
@@ -128,19 +133,12 @@ class OfflineQueueController {
             );
             if (nutrition == null) {
               // v1.4：单品库未命中，用 AI 整菜估算兜底（与前台 recognize_controller 对齐）
-              // 若 AI 无估算（旧 prompt），仍走原 0 卡 + markDone 路径（不写 meal_log）
+              // 若 AI 无估算（旧 prompt）：不创建 0 卡 food_item（会污染未来查库），不写 meal_log，
+              // 标记 failed 让用户后续手动处理，避免静默丢失餐次
               final cal = result.estimatedCalories;
               if (cal == null) {
-                final foodItemRepo = FoodItemRepository(_db);
-                final foodId = await foodItemRepo.upsertAiRecognized(
-                  name: result.dishName,
-                  caloriesPer100g: 0,
-                  proteinPer100g: 0,
-                  fatPer100g: 0,
-                  carbsPer100g: 0,
-                  confidence: result.confidence,
-                );
-                await pendingRepo.markDone(p.id, foodId);
+                await pendingRepo.markFailed(
+                    p.id, 'AI 无估算且库未命中，需手动录入', permanent: true);
                 continue;
               }
               // AI 兜底：per100g 基于 mid 份量反算（与 recognize_page 哨兵处理一致）
@@ -190,6 +188,13 @@ class OfflineQueueController {
               actualProteinG = result.estimatedProteinG ?? 0;
               actualFatG = result.estimatedFatG ?? 0;
               actualCarbsG = result.estimatedCarbsG ?? 0;
+            } else if (composite.componentHits.isEmpty) {
+              // 复合菜组分全 miss 且 AI 无估算（旧 prompt）：不写近 0 卡 meal_log，
+              // 标记 failed 让用户手动处理（与前台 recognize_controller 行为一致）
+              await pendingRepo.markFailed(
+                  p.id, '复合菜组分全 miss 且 AI 无估算，需手动录入',
+                  permanent: true);
+              continue;
             } else {
               // 复合菜 upsert ai_recognized（存组分快照，热量在 meal_log）
               final foodItemRepo = FoodItemRepository(_db);

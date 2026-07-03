@@ -45,10 +45,14 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
   }
 
   Future<void> _loadFrequent() async {
-    final db = await ref.read(recognize.databaseProvider.future);
-    final repo = FoodItemRepository(db);
-    _frequent = await repo.listFrequent();
-    if (mounted) setState(() {});
+    try {
+      final db = await ref.read(recognize.databaseProvider.future);
+      final repo = FoodItemRepository(db);
+      _frequent = await repo.listFrequent();
+      if (mounted) setState(() {});
+    } catch (_) {
+      // 加载失败保持空列表，UI 显示空态
+    }
   }
 
   /// 防抖搜索：300ms 内连续输入只发最后一次查询；
@@ -74,15 +78,24 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
 
   Future<void> _doSearch(String keyword) async {
     final seq = ++_searchSeq;
-    final db = await ref.read(recognize.databaseProvider.future);
-    final repo = FoodItemRepository(db);
-    final results = await repo.searchByName(keyword);
-    // 序列号校验：若期间用户又输入了新关键词，丢弃本次结果
-    if (seq != _searchSeq || !mounted) return;
-    setState(() {
-      _searchResults = results;
-      _searchLoading = false;
-    });
+    try {
+      final db = await ref.read(recognize.databaseProvider.future);
+      final repo = FoodItemRepository(db);
+      final results = await repo.searchByName(keyword);
+      // 序列号校验：若期间用户又输入了新关键词，丢弃本次结果
+      if (seq != _searchSeq || !mounted) return;
+      setState(() {
+        _searchResults = results;
+        _searchLoading = false;
+      });
+    } catch (_) {
+      // 查询异常：关闭 loading，清空结果，避免 UI 永久卡转圈
+      if (seq != _searchSeq || !mounted) return;
+      setState(() {
+        _searchResults = [];
+        _searchLoading = false;
+      });
+    }
   }
 
   @override

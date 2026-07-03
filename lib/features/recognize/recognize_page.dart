@@ -191,7 +191,10 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
           return;
         }
         // Sprint 4 T29：单品 + 复合菜均未命中 → 弹窗（改菜名重试 / 转手动录入）
-        if (state.singleNutrition == null && state.compositeNutrition == null) {
+        // v1.4：复合菜组分全 miss 且 AI 兜底返回 null（旧 prompt）时 componentHits 为空，也算未命中
+        if (state.singleNutrition == null &&
+            (state.compositeNutrition == null ||
+                state.compositeNutrition!.componentHits.isEmpty)) {
           await _showNotFoundDialog(
             state.recognitionResult!,
             mealType: state.mealType,

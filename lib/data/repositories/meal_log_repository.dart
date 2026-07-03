@@ -19,6 +19,11 @@ class MealLogRepository {
     double? recognitionConfidence,
     String? componentsSnapshotJson,
   }) async {
+    // 哨兵防御：foodItemId=0 是 AI 兜底哨兵，写库前必须调 upsertAiRecognized 替换为真实 id，
+    // 否则 SQLite FK 约束违规崩溃。提前抛清晰错误便于定位。
+    if (foodItemId <= 0) {
+      throw ArgumentError('foodItemId 必须为真实 id，不能是 0 哨兵');
+    }
     return _db.into(_db.mealLogs).insert(MealLogsCompanion.insert(
           date: date,
           mealType: mealType,

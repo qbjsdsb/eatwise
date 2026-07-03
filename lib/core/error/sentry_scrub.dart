@@ -50,6 +50,16 @@ SentryEvent? scrubBeforeSend(SentryEvent event, Hint hint) {
     }
   }
 
+  // 5. 脱敏顶层 message（Sentry.captureMessage 上报的原文）
+  if (event.message != null) {
+    final scrubbed = _scrubString(event.message!.formatted) ?? '';
+    event.message = SentryMessage(scrubbed);
+  }
+
+  // 6. 丢弃 request（HTTP 请求的 url/headers/cookies/body 可能含 API key，
+  // 食物 app 不需要 HTTP 请求信息调试，直接置空最安全）
+  event.request = null;
+
   return event;
 }
 
