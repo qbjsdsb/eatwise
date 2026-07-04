@@ -14,6 +14,7 @@ import '../../data/repositories/pending_recognition_repository.dart';
 import '../../data/seed/food_category_defaults.dart';
 import '../manual_entry/manual_entry_page.dart';
 import 'calibration_page.dart';
+import 'dish_name_editor.dart';
 import 'multi_dish_page.dart';
 import 'providers.dart';
 import 'recognize_controller.dart';
@@ -25,7 +26,8 @@ class RecognizePage extends ConsumerStatefulWidget {
   ConsumerState<RecognizePage> createState() => _RecognizePageState();
 }
 
-class _RecognizePageState extends ConsumerState<RecognizePage> {
+class _RecognizePageState extends ConsumerState<RecognizePage>
+    with DishNameEditor<RecognizePage> {
   RecognizeController? _controller;
   String _mealType = 'snack'; // Sprint 2 T0：餐次选择，默认加餐
   bool _isRecognizing = false; // 识别中遮罩：防重复点击 + 给用户反馈
@@ -518,7 +520,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
     }
 
     // 改菜名重试：模糊搜库 + 候选列表选择 + 5 级模糊兜底
-    final newDishName = await _promptNewDishName(displayName);
+    final newDishName = await promptNewDishName(displayName);
     if (newDishName == null || newDishName.isEmpty || !mounted) return;
 
     final foodRepo = await ref.read(foodItemRepoProvider.future);
@@ -536,15 +538,15 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       );
     } else if (candidates.length == 1) {
       // 唯一候选 → 直接用
-      nutrition = _nutritionFromFoodItem(
+      nutrition = nutritionFromFoodItem(
         candidates.first,
         result.estimatedWeightGMid,
       );
     } else {
       // 多候选 → 列表选择
-      final selected = await _showFoodSelectionDialog(candidates);
+      final selected = await showFoodSelectionDialog(candidates);
       if (selected == null || !mounted) return;
-      nutrition = _nutritionFromFoodItem(selected, result.estimatedWeightGMid);
+      nutrition = nutritionFromFoodItem(selected, result.estimatedWeightGMid);
     }
 
     if (nutrition == null) {
@@ -612,83 +614,6 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
         ),
       ),
     );
-  }
-
-  /// 用 FoodItem + 份量构造 NutritionResult（候选列表选中后用）
-  /// 建议 1：同步 lookupSingleItem 的可食部分系数（servingG 为 AI 整重，需乘 ediblePercent）
-  NutritionResult _nutritionFromFoodItem(FoodItem food, double servingG) {
-    final edibleFactor = (food.ediblePercent ?? 100).clamp(1, 100) / 100;
-    final effectiveG = servingG * edibleFactor;
-    return NutritionResult(
-      foodItemId: food.id,
-      calories: food.caloriesPer100g * effectiveG / 100,
-      proteinG: food.proteinPer100g * effectiveG / 100,
-      fatG: food.fatPer100g * effectiveG / 100,
-      carbsG: food.carbsPer100g * effectiveG / 100,
-      oilG: 0,
-    );
-  }
-
-  /// 食物候选列表选择对话框（多候选时让用户选）
-  Future<FoodItem?> _showFoodSelectionDialog(List<FoodItem> candidates) async {
-    return showDialog<FoodItem>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('选择匹配的食物'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: candidates.length,
-            itemBuilder: (ctx, i) {
-              final f = candidates[i];
-              return ListTile(
-                title: Text(f.name),
-                subtitle: Text(
-                  '${f.caloriesPer100g.toStringAsFixed(0)} kcal/100g',
-                ),
-                onTap: () => Navigator.pop(ctx, f),
-              );
-            },
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<String?> _promptNewDishName(String original) async {
-    final ctrl = TextEditingController(text: original);
-    try {
-      return await showDialog<String>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('修改菜名'),
-          content: TextField(
-            controller: ctrl,
-            decoration: const InputDecoration(labelText: '菜名'),
-            autofocus: true,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              child: const Text('重试'),
-            ),
-          ],
-        ),
-      );
-    } finally {
-      ctrl.dispose();
-    }
   }
 
 }
