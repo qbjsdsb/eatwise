@@ -36,7 +36,7 @@
 
 **最后更新**：2026-07-04
 
-**工作区状态**：v1.10 深度审查 + 测试补强已完成（待 commit）；commit 8058012 已含 multi_dish_page 守卫 + OCR "糖"模式修复；commit e9dacaf 已含 HANDOFF v1.10 详情 + validator warning 修复
+**工作区状态**：v0.15.0 release 已完成（UI 优化 + 图标重设计 + 版本号 bump），待 push；v1.10 深度审查已 commit 7b649f2
 **当前分支**：trae/agent-wX1X6Q（与 v0.10.0-m3-merge 同步在 2cc8249；v0.14.0 tag 指向 8bccee4 版本号 bump commit）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
@@ -259,6 +259,57 @@
 - 修改测试：`test/core/recognition_validator_test.dart` / `test/features/recognize_controller_test.dart` / `test/ai/food_density_test.dart` / `test/ai/package_nutrition_ocr_parser_test.dart`
 - 新建测试：`test/ai/prompts_schema_test.dart`
 
+**Phase 2.9 v0.15.0 release：UI 优化 + 图标重设计（2026-07-04，待 commit）**：
+
+用户要求"整体软件界面再次进行优化，严谨一点，反复检查，还有软件的图标还是丑，我希望能更谷歌味道一点"。通过 Task agent 深度审查 13 个 UI 文件列出 P0-P3 优化点，实施 P0+P1+部分 P2 改动 + 图标重设计。
+
+**主题层优化（app.dart）**：
+- 补 6 个 M3 Expressive 组件主题：progressIndicatorTheme（onSurfaceVariant 加载色 + surfaceContainerHighest 轨道色）/ floatingActionButtonTheme（16dp 圆角 + elevation 3）/ segmentedButtonTheme（selected 用 primaryContainer）/ dropdownMenuTheme（expandedInsets: zero，7 处 DropdownMenu 删除局部声明）/ listTileTheme / dividerTheme
+- cardTheme 圆角 12 → 16dp（M3 Expressive 普通卡片推荐）+ surfaceTintColor 显式声明（M3 tonal elevation）
+- appBarTheme 补 scrolledUnderElevation: 3 + surfaceTintColor: transparent + systemOverlayStyle（跟随主题亮度控制状态栏图标颜色）
+- navigationBarTheme 补 backgroundColor（surfaceContainer）+ surfaceTintColor + height: 80
+- 启用 edge-to-edge（SystemUiMode.edgeToEdge，Android 15+ 强制）via MaterialApp.builder
+
+**公共组件扩展（m3_widgets.dart）+6 组件**：
+- ErrorState：error 色 Icon + 标题 + 重试按钮（与 EmptyState 同构，dashboard/me_page 替换手写实现）
+- LoadingState：CircularProgressIndicator + onSurfaceVariant 加载色（替代默认 primary）
+- HeroCard：28dp 大圆角 + primaryContainer 焦点卡片（M3 Expressive hero card 规范）
+- MacroBar：宏量营养素进度条（标签+进度条+数值，统一 dashboard 三宏布局）
+- LegendDot：图例圆点（统一 weight_page 图表图例）
+- SectionTitle 加 padding 可选参数（SliverAppBar.large 下方第一个 SectionTitle 传 fromLTRB(16, 0, 16, 8) 减小顶部间距）
+
+**各页面优化**：
+- dashboard_page：错误态/加载态用 ErrorState/LoadingState，状态卡用 HeroCard（28dp 圆角）
+- me_page：错误态/加载态用 ErrorState/LoadingState，用户卡片用 HeroCard
+- food_library_page：空态用 EmptyState（restaurant_menu icon），加载态用 LoadingState
+- weight_page：6 处简单 SnackBar 改 showAppToast
+- recognize_page：3 处简单成功 SnackBar 改 showAppToast（带 SnackBarAction 重试的保留内联，HANDOFF 陷阱 49）
+- insight_page：IconButton 加 tooltip '编辑汇总'，删除 SizedBox(height: 0) 死代码
+- profile_page：活动量提示 padding 对齐 Card（4→16）+ labelSmall 替代硬编码 fontSize
+- settings_page：_colorDot 用 Material+InkWell 加 ripple（GestureDetector 无 state layer 违反 M3 规范）
+- main_shell：FAB 删除局部 elevation/shape（走 floatingActionButtonTheme 统一）
+
+**图标重设计（更谷歌 Material 风格）**：
+- background：青绿渐变（3 色对角线）→ 纯色 #5B8C7B（睡莲青绿，Google Workspace 多用纯色背景）
+- foreground：奶白"碗+蒸汽"（复杂曲线）→ 纯白"餐叉+刀"几何图形（Material Symbols filled 风格）
+  - 餐叉：3 齿（圆角矩形 r=1）+ 连接条 + 柄（圆角矩形 r=2）
+  - 餐刀：梯形刀身（上宽 18 收尖到 6）+ 柄
+  - 全部 fill（非 stroke）+ 圆角，缩放 48dp 仍清晰
+- 不改 mipmap PNG（位图兜底，Android 8.0+ 用 adaptive vector）
+
+**版本号 bump**：0.14.0+15 → 0.15.0+16（pubspec.yaml + me_page + settings_page 关于对话框）
+
+**验证（2026-07-04 沙箱实测）**：
+- ✅ `flutter analyze` → No issues found
+- ✅ `flutter test` → 610 passed / 3 skipped / 1 failed（T48 pre-existing 日期漂移，与本次改动无关）
+
+**Phase 2.9 文件清单（11 lib + 1 yaml + 2 xml）**：
+- 主题层：`lib/app.dart`（+6 组件主题 + edge-to-edge）/ `lib/main_shell.dart`（FAB 删局部样式）
+- 公共组件：`lib/core/widgets/m3_widgets.dart`（+6 组件 + SectionTitle padding 参数）
+- 各页面：`lib/features/dashboard/dashboard_page.dart` / `lib/features/me/me_page.dart` / `lib/features/food_library/food_library_page.dart` / `lib/features/weight/weight_page.dart` / `lib/features/recognize/recognize_page.dart` / `lib/features/insight/insight_page.dart` / `lib/features/profile/profile_page.dart` / `lib/features/settings/settings_page.dart`
+- 图标：`android/app/src/main/res/drawable/ic_launcher_background.xml` / `android/app/src/main/res/drawable/ic_launcher_foreground.xml`
+- 版本号：`pubspec.yaml`
+
 **Phase 3 调研结论（2026-07-04，决策：不推荐实施）**：
 
 经沙箱严谨调研，Phase 3 thinking 模式存在 5 重障碍，ROI 不足以支撑实施成本：
@@ -303,7 +354,8 @@
 - `image_cleanup_startup_test.dart T48` 日期敏感测试：测试硬编码日期但代码用 `DateTime.now()`，每过一段时间会失败。建议后续改成相对日期（`DateTime.now().subtract(Duration(days: 8))` 动态生成测试日期）
 
 **最近 commit**：
-- `(待 commit)` fix: v1.10 深度审查 BUG-2/BUG-5 High 级修复 + 124 个新测试覆盖（didFill 守卫跳过 cal 自洽修正 + _aiFallbackNutrition packageMacrosAllZero 守卫 + prompts schema 一致性 + OCR "糖"负向回视 + food_density 新品类）
+- `(待 commit)` release: v0.15.0 UI 优化 + 图标重设计（M3 Expressive 主题层 +6 组件主题 + 公共组件 +6 + 各页面优化 + 图标 Material 风格重设计）
+- `7b649f2` fix: v1.10 深度审查 BUG-2/BUG-5 High 级修复 + 124 个新测试覆盖（didFill 守卫跳过 cal 自洽修正 + _aiFallbackNutrition packageMacrosAllZero 守卫 + prompts schema 一致性 + OCR "糖"负向回视 + food_density 新品类）
 - `8058012` feat: multi_dish_page 复合菜路径 packageMacrosAllZero 守卫 + OCR "糖"模式负向回视防误匹配
 - `e9dacaf` docs: HANDOFF 补 v1.10 三层防御架构详情 + 修复 validator warning
 - `3e2c8f8` feat: v1.10 含糖饮料碳水缺失修复——三层防御架构（OCR 正则兜底 + 三层优先级换算 + 自洽反推 + 三路径宏量兜底）+ 174 测试

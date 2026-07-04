@@ -212,13 +212,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               ),
             ),
             // 活动量说明（避免用户高估，参考 CalEye：多数办公族+健身习惯是"轻度"而非"中度"）
+            // padding 16 对齐 Card 边缘；labelSmall 替代硬编码 fontSize: 11，跟随系统字号缩放
             Padding(
-              padding: const EdgeInsets.fromLTRB(4, 4, 4, 0),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: Text(
                 '提示：多数有健身习惯的办公族属"轻度"而非"中度"，高估会多算 200-400 kcal/天',
-                style: TextStyle(
-                    fontSize: 11,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant),
+                style: Theme.of(context)
+                    .textTheme
+                    .labelSmall
+                    ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
             SectionTitle('目标'),

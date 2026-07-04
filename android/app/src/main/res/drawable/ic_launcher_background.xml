@@ -1,12 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 自适应图标背景：莫奈《睡莲》青绿渐变，与 App 主题一致。
-     对角线渐变（左上亮 → 右下暗）增加立体感，告别平面单调。 -->
+<!-- 自适应图标背景：纯色睡莲青绿（莫奈《睡莲》主题色 #5B8C7B）。
+     纯色比渐变更「谷歌」—— Google Workspace 图标（Gmail/Maps/Calendar）多用纯色背景，
+     极简 2 色渐变都少见。保留品牌色，与 App 默认主题种子色一致。 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <gradient
-        android:type="linear"
-        android:angle="135"
-        android:startColor="#6BA08C"
-        android:centerColor="#5B8C7B"
-        android:endColor="#4D7A6C" />
+    <solid android:color="#5B8C7B" />
 </shape>

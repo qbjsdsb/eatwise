@@ -56,31 +56,12 @@ class _MePageState extends ConsumerState<MePage> {
               future: _future,
               builder: (context, snap) {
                 if (snap.hasError) {
-                  return Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.error_outline,
-                              size: 48,
-                              color: Theme.of(context).colorScheme.error),
-                          const SizedBox(height: 16),
-                          const Text('数据加载失败'),
-                          const SizedBox(height: 8),
-                          FilledButton(
-                            onPressed: _refresh,
-                            child: const Text('重试'),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
+                  return ErrorState(onRetry: _refresh);
                 }
                 if (!snap.hasData) {
                   return const Padding(
                     padding: EdgeInsets.all(32),
-                    child: Center(child: CircularProgressIndicator()),
+                    child: LoadingState(),
                   );
                 }
                 final p = snap.data!;
@@ -88,56 +69,50 @@ class _MePageState extends ConsumerState<MePage> {
                 return Padding(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 8),
-                  child: Card(
-                    color: cs.primaryContainer,
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () => _pushAndRefresh(const ProfilePage()),
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 56,
-                              height: 56,
-                              decoration: BoxDecoration(
-                                color: cs.onPrimaryContainer.withValues(alpha: 0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(Icons.person_rounded,
-                                  color: cs.onPrimaryContainer),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    '${p.heightCm.toStringAsFixed(0)}cm · ${p.weightKg.toStringAsFixed(1)}kg · ${p.age}岁',
-                                    style: textTheme.titleMedium?.copyWith(
-                                      color: cs.onPrimaryContainer,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${_genderLabel(p.gender)} · ${_goalLabel(p.goal)} · ${_activityLabel(p.activityLevel)}',
-                                    style: textTheme.bodySmall
-                                        ?.copyWith(color: cs.onPrimaryContainer),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '每日目标 ${p.dailyCalorieTarget} kcal',
-                                    style: textTheme.bodySmall
-                                        ?.copyWith(color: cs.onPrimaryContainer),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Icon(Icons.chevron_right, color: cs.onPrimaryContainer),
-                          ],
+                  child: HeroCard(
+                    onTap: () => _pushAndRefresh(const ProfilePage()),
+                    padding: const EdgeInsets.all(20),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 56,
+                          height: 56,
+                          decoration: BoxDecoration(
+                            color: cs.onPrimaryContainer.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(Icons.person_rounded,
+                              color: cs.onPrimaryContainer),
                         ),
-                      ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '${p.heightCm.toStringAsFixed(0)}cm · ${p.weightKg.toStringAsFixed(1)}kg · ${p.age}岁',
+                                style: textTheme.titleMedium?.copyWith(
+                                  color: cs.onPrimaryContainer,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${_genderLabel(p.gender)} · ${_goalLabel(p.goal)} · ${_activityLabel(p.activityLevel)}',
+                                style: textTheme.bodySmall
+                                    ?.copyWith(color: cs.onPrimaryContainer),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '每日目标 ${p.dailyCalorieTarget} kcal',
+                                style: textTheme.bodySmall
+                                    ?.copyWith(color: cs.onPrimaryContainer),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, color: cs.onPrimaryContainer),
+                      ],
                     ),
                   ),
                 );
@@ -213,7 +188,7 @@ class _MePageState extends ConsumerState<MePage> {
     showAboutDialog(
       context: context,
       applicationName: '慢慢吃',
-      applicationVersion: '0.14.0',
+      applicationVersion: '0.15.0',
       applicationLegalese: '拍照识别食物热量 + 营养记录 + AI 汇总建议',
     );
   }

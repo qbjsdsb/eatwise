@@ -256,7 +256,10 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         title: Text('$_periodStart ~ $_periodEnd'),
         actions: [
           if (_summary != null)
-            IconButton(icon: const Icon(Icons.edit), onPressed: _edit),
+            IconButton(
+                icon: const Icon(Icons.edit),
+                tooltip: '编辑汇总',
+                onPressed: _edit),
         ],
         // 周/月切换器 pin 在 AppBar.bottom（不随 ListView 滚动消失，与 records_tab 统一）
         bottom: PreferredSize(
@@ -286,7 +289,6 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const SizedBox(height: 0),
           // 热量折线图（含目标/均值参考线，至少 2 天数据才渲染）
           if (_dailyCal.length >= 2) ...[
             SizedBox(height: 200, child: _buildCaloriesChart()),

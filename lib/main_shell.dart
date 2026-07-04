@@ -24,10 +24,7 @@ class _MainShellState extends State<MainShell> {
       body: navigationShell,
       floatingActionButton: FloatingActionButton(
         onPressed: () => _onFabTap(context),
-        elevation: 3,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        // 圆角与 elevation 走 app.dart floatingActionButtonTheme（统一 16dp + elevation 3）
         child: const Icon(Icons.camera_alt_rounded),
       ),
       floatingActionButtonLocation:

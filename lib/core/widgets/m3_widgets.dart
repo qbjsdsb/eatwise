@@ -40,18 +40,22 @@ class LeadingIconContainer extends StatelessWidget {
 /// 曾用 labelLarge（14）但语义偏"标签"，titleSmall 更贴合"标题"语义。
 /// 支持 [trailing]：可选尾部 widget（如显示分组小计热量），让需要 trailing 的页面
 /// 复用同一组件而非另起炉灶（today_meals 餐次分组标题曾手写"色块+标题+sum"破坏统一）。
+/// 支持 [padding]：可选自定义 padding（默认 fromLTRB(16, 20, 16, 8)）。
+/// SliverAppBar.large 下方第一个 SectionTitle 传 `EdgeInsets.fromLTRB(16, 0, 16, 8)`
+/// 避免与 expanded appbar 下沿 16dp 间距叠加过大。
 class SectionTitle extends StatelessWidget {
-  const SectionTitle(this.text, {super.key, this.trailing});
+  const SectionTitle(this.text, {super.key, this.trailing, this.padding});
 
   final String text;
   final Widget? trailing;
+  final EdgeInsetsGeometry? padding;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       // 左右对称 16：与下方 Card 的 EdgeInsets.all(16)/symmetric(horizontal:16) 左缘对齐，
       // 避免"标题相对卡片右移 8px"造成界面整体偏右的观感（6 页面 14 处复用）
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+      padding: padding ?? const EdgeInsets.fromLTRB(16, 20, 16, 8),
       child: Row(
         children: [
           Text(
@@ -378,6 +382,211 @@ class WarningBanner extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 错误态占位组件：error 色 Icon + 标题 + 重试按钮。
+///
+/// 与 [EmptyState] 同构但配色用 cs.error + error_outline 图标，
+/// 用于 FutureBuilder / StreamBuilder 错误态。dashboard / me_page 原各自手写实现，
+/// 现统一抽象，间距规范同 EmptyState（图标→标题 16，标题→按钮 16）。
+class ErrorState extends StatelessWidget {
+  const ErrorState({
+    super.key,
+    this.message = '数据加载失败',
+    this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.error_outline, size: 48, color: cs.error),
+            const SizedBox(height: 16),
+            Text(message, style: tt.titleMedium?.copyWith(color: cs.onSurface)),
+            if (onRetry != null) ...[
+              const SizedBox(height: 16),
+              FilledButton(
+                onPressed: onRetry,
+                child: const Text('重试'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 加载态占位组件：CircularProgressIndicator + 可选文案。
+///
+/// 统一 dashboard / me_page / food_library / weight 多处
+/// `Center(child: CircularProgressIndicator())` 的颜色与尺寸。
+/// 颜色用 cs.onSurfaceVariant（M3 Expressive 推荐的柔和加载色，而非默认 primary）。
+class LoadingState extends StatelessWidget {
+  const LoadingState({super.key, this.label});
+
+  /// 可选加载文案，null 时只显示进度环
+  final String? label;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(color: cs.onSurfaceVariant),
+          if (label != null) ...[
+            const SizedBox(height: 16),
+            Text(label!,
+                style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Hero 卡片：M3 Expressive 大圆角（28dp）+ primaryContainer 配色的焦点卡片。
+///
+/// 与普通 [GroupCard]（12dp 列表卡片）区分——HeroCard 用于页面最大视觉焦点
+/// （dashboard 状态卡 / me_page 用户卡片），M3 Expressive 推荐 hero card 用 28dp 圆角
+/// 强调层次感。配合 [onTap] 自动加 InkWell ripple 反馈。
+class HeroCard extends StatelessWidget {
+  const HeroCard({
+    super.key,
+    required this.child,
+    this.onTap,
+    this.color,
+    this.padding = const EdgeInsets.all(24),
+  });
+
+  final Widget child;
+  final VoidCallback? onTap;
+  final Color? color;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      color: color ?? cs.primaryContainer,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: onTap == null
+          ? Padding(padding: padding, child: child)
+          : InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(28),
+              child: Padding(padding: padding, child: child),
+            ),
+    );
+  }
+}
+
+/// 宏量营养素进度条：标签 + 进度条 + 数值，统一 dashboard 三宏布局。
+///
+/// 抽象 dashboard._miniMacro 的"标签 + LinearProgressIndicator + 数值"三段式，
+/// 避免硬编码高度 6 / 宽度 40+80。颜色用 [MacroColors] 跨页统一语义色。
+class MacroBar extends StatelessWidget {
+  const MacroBar({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.goal,
+    required this.color,
+    this.height = 6,
+  });
+
+  final String label;
+  final double value;
+  final double goal;
+  final Color color;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final pct = goal > 0 ? (value / goal).clamp(0.0, 1.0) : 0.0;
+    return Row(
+      children: [
+        SizedBox(
+          width: 40,
+          child: Text(label,
+              style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(height / 2),
+            child: LinearProgressIndicator(
+              value: pct,
+              minHeight: height,
+              backgroundColor: cs.surfaceContainerHighest,
+              valueColor: AlwaysStoppedAnimation(color),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 80,
+          child: Text(
+            '${value.toStringAsFixed(0)}/${goal.toStringAsFixed(0)}g',
+            style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+            textAlign: TextAlign.end,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 图例圆点：12x12 圆角方块 + 文案，用于 weight_page 趋势图图例。
+///
+/// 抽象 weight_page._legendDot 的硬编码 12x12 + borderRadius 4，
+/// 统一图表图例视觉规范。
+class LegendDot extends StatelessWidget {
+  const LegendDot({
+    super.key,
+    required this.color,
+    required this.label,
+  });
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(4),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(label, style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
+      ],
     );
   }
 }

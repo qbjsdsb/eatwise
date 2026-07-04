@@ -330,7 +330,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('慢慢吃 v0.14.0'),
+            const Text('慢慢吃 v0.15.0'),
             const SizedBox(height: 8),
             const Text('拍照识别食物热量 + 营养记录 + AI 汇总建议'),
             const SizedBox(height: 8),
@@ -372,29 +372,36 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   Widget _colorDot(
       Color color, String name, bool selected, VoidCallback onTap) {
+    final cs = Theme.of(context).colorScheme;
+    // M3：用 Material + InkWell 提供 ripple 反馈（GestureDetector 无 state layer，
+    // 违反 M3"可点击元素必须有 ripple"规范）
     return Tooltip(
       message: name,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-            border: selected
-                ? Border.all(
-                    color: Theme.of(context).colorScheme.onSurface, width: 3)
+      child: Material(
+        color: color,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          customBorder: const CircleBorder(),
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: selected
+                  ? Border.all(color: cs.onSurface, width: 3)
+                  : null,
+            ),
+            child: selected
+                ? Icon(Icons.check,
+                    // 浅色种子时白色 check 对比度不足，按色块亮度动态选黑/白（WCAG AA）
+                    color: color.computeLuminance() > 0.5
+                        ? Colors.black
+                        : Colors.white,
+                    size: 20)
                 : null,
           ),
-          child: selected
-              ? Icon(Icons.check,
-                  // 浅色种子时白色 check 对比度不足，按色块亮度动态选黑/白（WCAG AA）
-                  color: color.computeLuminance() > 0.5
-                      ? Colors.black
-                      : Colors.white,
-                  size: 20)
-              : null,
         ),
       ),
     );

@@ -121,22 +121,17 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
           ),
           if (!_searching && _frequent.isNotEmpty) SectionTitle('常吃'),
           if (!_searching && _frequent.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Center(
-                  // 首屏加载中显示转圈，避免数据未到时误显"暂无常用食物"
-                  child: _initialLoading
-                      ? const SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text('暂无常用食物，去拍照识别或手动录入后会出现在这里',
-                          style: TextStyle(color: cs.onSurfaceVariant))),
-            ),
+            // 首屏加载中显示转圈，避免数据未到时误显"暂无常用食物"
+            _initialLoading
+                ? const LoadingState()
+                : const EmptyState(
+                    icon: Icons.restaurant_menu,
+                    title: '暂无常用食物',
+                    subtitle: '去拍照识别或手动录入后会出现在这里',
+                  ),
           Expanded(
             child: _searching && _searchLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const LoadingState()
                 : _searching && _searchResults.isEmpty
                     ? _emptySearchHint(cs)
                     : ListView.builder(

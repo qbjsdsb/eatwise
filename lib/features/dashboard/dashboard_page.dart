@@ -141,28 +141,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
         future: _future,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.error_outline, size: 48,
-                        color: Theme.of(context).colorScheme.error),
-                    const SizedBox(height: 16),
-                    const Text('数据加载失败'),
-                    const SizedBox(height: 16),
-                    FilledButton(
-                      onPressed: _refresh,
-                      child: const Text('重试'),
-                    ),
-                  ],
-                ),
-              ),
-            );
+            return ErrorState(onRetry: _refresh);
           }
           if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
+            return const LoadingState();
           }
           final d = snapshot.data!;
           return CustomScrollView(
@@ -186,57 +168,53 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     final pct = d.target > 0 ? (d.cal / d.target).clamp(0.0, 1.0) : 0.0;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Card(
-        color: cs.primaryContainer,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.local_fire_department_rounded,
-                      color: cs.onPrimaryContainer, size: 20),
-                  const SizedBox(width: 8),
-                  Text('今日还可摄入',
-                      style: textTheme.labelLarge?.copyWith(
-                          color: cs.onPrimaryContainer)),
-                ],
+      child: HeroCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.local_fire_department_rounded,
+                    color: cs.onPrimaryContainer, size: 20),
+                const SizedBox(width: 8),
+                Text('今日还可摄入',
+                    style: textTheme.labelLarge?.copyWith(
+                        color: cs.onPrimaryContainer)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              overflow ? (-remain).toStringAsFixed(0) : remain.toStringAsFixed(0),
+              style: textTheme.displaySmall?.copyWith(
+                color: overflow ? cs.error : cs.onPrimaryContainer,
+                fontWeight: FontWeight.w400,
+                height: 1.1,
               ),
-              const SizedBox(height: 4),
-              Text(
-                overflow ? (-remain).toStringAsFixed(0) : remain.toStringAsFixed(0),
-                style: textTheme.displaySmall?.copyWith(
-                  color: overflow ? cs.error : cs.onPrimaryContainer,
-                  fontWeight: FontWeight.w400,
-                  height: 1.1,
-                ),
+            ),
+            Text('kcal · 已摄入 ${d.cal.toStringAsFixed(0)} / ${d.target}',
+                style: textTheme.bodySmall
+                    ?.copyWith(color: cs.onPrimaryContainer.withValues(alpha: 0.8))),
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: pct,
+                backgroundColor: cs.onPrimaryContainer.withValues(alpha: 0.12),
+                color: overflow ? cs.error : cs.onPrimaryContainer,
+                minHeight: 8,
               ),
-              Text('kcal · 已摄入 ${d.cal.toStringAsFixed(0)} / ${d.target}',
-                  style: textTheme.bodySmall
-                      ?.copyWith(color: cs.onPrimaryContainer.withValues(alpha: 0.8))),
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: pct,
-                  backgroundColor: cs.onPrimaryContainer.withValues(alpha: 0.12),
-                  color: overflow ? cs.error : cs.onPrimaryContainer,
-                  minHeight: 8,
-                ),
-              ),
-              const SizedBox(height: 16),
-              // 三宏用 MD3 三角色（tertiary/secondary/primary），跟随 seed 变化且色弱友好。
-              // primaryContainer 深底上用 onTertiaryContainer/onSecondaryContainer/onPrimaryContainer
-              // 保证对比度（容器色配对色），与 today_meals 跨页统一。
-              _miniMacro('蛋白', d.protein, d.proteinGoal,
-                  MacroColors.protein(cs), cs.onTertiaryContainer),
-              _miniMacro('脂肪', d.fat, d.fatGoal,
-                  MacroColors.fat(cs), cs.onSecondaryContainer),
-              _miniMacro('碳水', d.carbs, d.carbGoal,
-                  MacroColors.carb(cs), cs.onPrimaryContainer),
-            ],
-          ),
+            ),
+            const SizedBox(height: 16),
+            // 三宏用 MD3 三角色（tertiary/secondary/primary），跟随 seed 变化且色弱友好。
+            // primaryContainer 深底上用 onTertiaryContainer/onSecondaryContainer/onPrimaryContainer
+            // 保证对比度（容器色配对色），与 today_meals 跨页统一。
+            _miniMacro('蛋白', d.protein, d.proteinGoal,
+                MacroColors.protein(cs), cs.onTertiaryContainer),
+            _miniMacro('脂肪', d.fat, d.fatGoal,
+                MacroColors.fat(cs), cs.onSecondaryContainer),
+            _miniMacro('碳水', d.carbs, d.carbGoal,
+                MacroColors.carb(cs), cs.onPrimaryContainer),
+          ],
         ),
       ),
     );

@@ -409,13 +409,11 @@ class WeightPageState extends ConsumerState<WeightPage> {
       // 修复：原代码只刷新本页（_load），主页宏量目标/目标热量不更新
       RefreshBus.instance.notify();
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已记录体重')));
+        showAppToast(context, '已记录体重');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('记录失败：$e')));
+        showAppToast(context, '记录失败：$e');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -547,13 +545,11 @@ class WeightPageState extends ConsumerState<WeightPage> {
         await _load();
         RefreshBus.instance.notify();
         if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('已更新体重记录')));
+          showAppToast(context, '已更新体重记录');
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(SnackBar(content: Text('保存失败：$e')));
+          showAppToast(context, '保存失败：$e');
         }
       } finally {
         if (mounted) setState(() => _busy = false);
@@ -576,13 +572,11 @@ class WeightPageState extends ConsumerState<WeightPage> {
       await _load();
       RefreshBus.instance.notify();
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已删除体重记录')));
+        showAppToast(context, '已删除体重记录');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('删除失败：$e')));
+        showAppToast(context, '删除失败：$e');
         await _load(); // 失败回滚 UI
       }
     }

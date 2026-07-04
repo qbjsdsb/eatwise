@@ -1,16 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  自适应图标前景：奶白「碗 + 升起蒸汽」，精致化版本。
-  语义：碗 = 食物，蒸汽 = 袅袅升起的温热感 = 「慢慢吃」。
-  画布 108x108dp，图形集中在 66x66 安全区内（中心 54,54，半径 33）。
-  Material 图标规范：几何简洁、单色、圆角线帽。
+  自适应图标前景：白色「餐叉 + 餐刀」几何图形（Material Symbols restaurant 风格）。
+  语义：刀叉 = 用餐 = 「慢慢吃」。
+  画布 108x108dp，图形集中在 66x66 安全区内（中心 54,54，半径 33），OEM 蒙版不裁切。
 
-  精致化（v0.12.0）：
-  - 前景色纯白 #FFFFFF → 奶白 #FDFBF7（温暖，与 splash #FCF9F9 协调）
-  - 碗口单椭圆 → 环形双线（外椭圆 evenOdd 挖内椭圆，厚度感）
-  - 碗底加小椭圆底座（稳重感）
-  - 蒸汽 stroke 3 → 2.8，曲线更柔和，错落（中间高两侧低）
-  - 全部图形严格在 66dp 安全区 (21,21)-(87,87) 内，OEM 蒙版不裁切
+  设计要点（Google Material 风格）：
+  - 前景纯白 #FFFFFF，与青绿背景高对比度
+  - 纯几何形状（圆角矩形 + 梯形），无复杂曲线、无阴影、无多层渐变
+  - fill 而非 stroke（Material Symbols filled 风格，缩放到 48dp 仍醒目）
+  - 全部圆角（Material Symbols 特征：rounded corners）
+  - 整体垂直居中于 y=54，范围 y=28-80（高 52dp，占安全区 79%）
+
+  几何构成（安全区 21,21 - 87,87）：
+  - 餐叉（左侧，x=31-44）：
+      · 3 齿：圆角矩形宽 3 高 18，y=28-46，齿间间隙 2
+      · 连接条：圆角矩形宽 13 高 8，y=46-54（合并 3 齿）
+      · 柄：圆角矩形宽 6 高 26，y=54-80（居中 x=37.5）
+  - 餐刀（右侧，x=60-78）：
+      · 刀身：梯形，上宽 18（x=60-78）收尖到 6（x=66-72），y=28-54
+      · 柄：圆角矩形宽 6 高 26，y=54-80（居中 x=69）
+  - 刀叉整体水平居中于 x≈54.5（画布中心 54，偏差 0.5dp 不可察觉）
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -18,39 +27,20 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 蒸汽：3 条 S 形曲线，错落有致（中间高、两侧低），体现「袅袅升起 = 慢」 -->
+    <!-- 餐叉：3 齿 + 连接条 + 柄（5 个子路径合并为单 path，全部白色 fill） -->
     <path
-        android:strokeColor="#FDFBF7"
-        android:strokeWidth="2.8"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M42,50 Q38,44 42,38 Q46,32 42,27" />
-    <path
-        android:strokeColor="#FDFBF7"
-        android:strokeWidth="2.8"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M54,48 Q50,42 54,36 Q58,30 54,25" />
-    <path
-        android:strokeColor="#FDFBF7"
-        android:strokeWidth="2.8"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:pathData="M66,50 Q62,44 66,38 Q70,32 66,27" />
+        android:fillColor="#FFFFFF"
+        android:pathData="
+            M 32,28 H 33 A 1,1 0 0,1 34,29 V 45 A 1,1 0 0,1 33,46 H 32 A 1,1 0 0,1 31,45 V 29 A 1,1 0 0,1 32,28 Z
+            M 37,28 H 38 A 1,1 0 0,1 39,29 V 45 A 1,1 0 0,1 38,46 H 37 A 1,1 0 0,1 36,45 V 29 A 1,1 0 0,1 37,28 Z
+            M 42,28 H 43 A 1,1 0 0,1 44,29 V 45 A 1,1 0 0,1 43,46 H 42 A 1,1 0 0,1 41,45 V 29 A 1,1 0 0,1 42,28 Z
+            M 32.5,46 H 42.5 A 1.5,1.5 0 0,1 44,47.5 V 52.5 A 1.5,1.5 0 0,1 42.5,54 H 32.5 A 1.5,1.5 0 0,1 31,52.5 V 47.5 A 1.5,1.5 0 0,1 32.5,46 Z
+            M 36.5,54 H 38.5 A 2,2 0 0,1 40.5,56 V 78 A 2,2 0 0,1 38.5,80 H 36.5 A 2,2 0 0,1 34.5,78 V 56 A 2,2 0 0,1 36.5,54 Z" />
 
-    <!-- 碗身：U 形填充，下腹略弧 -->
+    <!-- 餐刀：刀身（梯形）+ 柄（2 个子路径，全部白色 fill） -->
     <path
-        android:fillColor="#FDFBF7"
-        android:pathData="M31,60 Q31,83 54,83 Q77,83 77,60 Z" />
-
-    <!-- 碗口：环形（外椭圆 evenOdd 挖内椭圆），形成厚度感（精致关键） -->
-    <path
-        android:fillColor="#FDFBF7"
-        android:fillType="evenOdd"
-        android:pathData="M30,60 a24,4.5 0 1,0 48,0 a24,4.5 0 1,0 -48,0 Z M33,60 a21,3 0 1,0 42,0 a21,3 0 1,0 -42,0 Z" />
-
-    <!-- 碗底座：小椭圆，增加稳重感 -->
-    <path
-        android:fillColor="#FDFBF7"
-        android:pathData="M47,85 a7,1.8 0 1,0 14,0 a7,1.8 0 1,0 -14,0 Z" />
+        android:fillColor="#FFFFFF"
+        android:pathData="
+            M 61.5,28 H 76.5 A 1.5,1.5 0 0,1 78,29.5 L 72,54 L 66,54 L 60,29.5 A 1.5,1.5 0 0,1 61.5,28 Z
+            M 68,54 H 70 A 2,2 0 0,1 72,56 V 78 A 2,2 0 0,1 70,80 H 68 A 2,2 0 0,1 66,78 V 56 A 2,2 0 0,1 68,54 Z" />
 </vector>

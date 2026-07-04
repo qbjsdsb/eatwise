@@ -361,12 +361,9 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
                       componentsSnapshotJson: componentsSnapshot,
                     );
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            '已记录：${calories.toStringAsFixed(0)} kcal',
-                          ),
-                        ),
+                      showAppToast(
+                        context,
+                        '已记录：${calories.toStringAsFixed(0)} kcal',
                       );
                     }
                   },
@@ -404,9 +401,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
       } else if (state.state == RecognizeState.queued) {
         // Sprint 2 T14：离线已入队提示
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(state.errorMessage ?? '已加入离线队列')),
-        );
+        showAppToast(context, state.errorMessage ?? '已加入离线队列');
       }
     } finally {
       if (mounted) setState(() => _isRecognizing = false);
@@ -547,10 +542,9 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
                   originalImagePath: imagePath,
                 );
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('已记录：${calories.toStringAsFixed(0)} kcal'),
-                    ),
+                  showAppToast(
+                    context,
+                    '已记录：${calories.toStringAsFixed(0)} kcal',
                   );
                 }
               },
