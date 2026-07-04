@@ -4,6 +4,7 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
+import '../../core/config/app_version_provider.dart';
 import '../../core/theme/theme_controller.dart';
 import '../../core/util/date_format.dart';
 import '../../core/widgets/m3_widgets.dart';
@@ -322,6 +323,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _showAbout() async {
     if (!mounted) return;
     final colorScheme = Theme.of(context).colorScheme;
+    // M13：版本号从 appVersionProvider 动态读取（替代硬编码 '0.16.0'）
+    final version = ref.read(appVersionProvider).maybeWhen(
+          data: (v) => v,
+          orElse: () => '...',
+        );
     await showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -330,7 +336,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('慢慢吃 v0.16.0'),
+            Text('慢慢吃 v$version'),
             const SizedBox(height: 8),
             const Text('拍照识别食物热量 + 营养记录 + AI 汇总建议'),
             const SizedBox(height: 8),

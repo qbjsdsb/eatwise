@@ -49,6 +49,9 @@ dependencies:
   # 后台兜底（Sprint 3 T19）
   workmanager: ^0.9.0
 
+  # 应用版本号动态读取（M13：替代三处硬编码）
+  package_info_plus: ^8.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

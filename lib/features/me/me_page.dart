@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/config/app_version_provider.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/profile_repository.dart';
@@ -184,10 +185,15 @@ class _MePageState extends ConsumerState<MePage> {
       '轻度活动';
 
   void _showAbout(BuildContext context) {
+    // M13：版本号从 appVersionProvider 动态读取（替代硬编码 '0.16.0'）
+    final version = ref.read(appVersionProvider).maybeWhen(
+          data: (v) => v,
+          orElse: () => '...',
+        );
     showAboutDialog(
       context: context,
       applicationName: '慢慢吃',
-      applicationVersion: '0.16.0',
+      applicationVersion: version,
       applicationLegalese: '拍照识别食物热量 + 营养记录 + AI 汇总建议',
     );
   }

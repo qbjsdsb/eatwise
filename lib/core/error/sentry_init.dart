@@ -1,6 +1,7 @@
 // lib/core/error/sentry_init.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../config/app_config.dart';
@@ -33,6 +34,10 @@ Future<Widget> initSentryAndRunApp({
   // 版本不兼容），降级返回原 app 不阻塞 runApp，避免永久黑屏（zone guard 只记
   // 日志不会 runApp，用户将看到黑屏）
   try {
+    // M13：从 PackageInfo 动态读取版本号（替代硬编码 'eatwise@0.16.0'）
+    // pubspec.yaml bump 后 Sentry release 标签自动同步
+    final info = await PackageInfo.fromPlatform();
+    final releaseTag = 'eatwise@${info.version}';
     await SentryFlutter.init(
       (options) {
         options.dsn = dsn;
@@ -40,9 +45,7 @@ Future<Widget> initSentryAndRunApp({
         // 采样率：个人自用全采（1.0），无需抽样
         options.tracesSampleRate = 1.0;
         // Release 版本配合 --split-debug-info 解符号
-        // TODO: 后续从 PackageInfo 读取版本号替代硬编码（HANDOFF 待办）
-        options.release = const String.fromEnvironment('SENTRY_RELEASE',
-            defaultValue: 'eatwise@0.16.0');
+        options.release = releaseTag;
       },
       appRunner: () {},
     );
