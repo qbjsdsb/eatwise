@@ -24,7 +24,7 @@
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
 - **当前版本**：0.16.0+17（pubspec.yaml）
-- **当前分支**：trae/agent-wX1X6Q（HEAD = v0.16.0 release；v0.16.0 tag 待打）
+- **当前分支**：trae/agent-wX1X6Q（HEAD = e6ae182 v0.16.0 release；v0.16.0 tag 指向 e6ae182）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
   - `android/app/build.gradle.kts` 必须保持 `isMinifyEnabled=false` + `isShrinkResources=false`（否则 R8 剥掉 sentry/workmanager 反射类致启动崩溃）
@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-04
 
-**工作区状态**：v0.16.0 release 已 push 远程（含 v5 AI 推荐审计修复 + 满意度反馈按钮改为点开才显示 + 测试 mock 修复 + 版本号 bump）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）
-**当前分支**：trae/agent-wX1X6Q（HEAD = v0.16.0 release；v0.15.0 tag 指向 4b35dcb；v0.14.0 tag 指向 8bccee4）
+**工作区状态**：v0.16.0 release 已 push 远程（commit e6ae182 + tag v0.16.0，含 v5 AI 推荐审计修复 + 满意度反馈按钮改为点开才显示 + 测试 mock 修复 + 版本号 bump）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）
+**当前分支**：trae/agent-wX1X6Q（HEAD = e6ae182；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
@@ -522,7 +522,7 @@
 - `image_cleanup_startup_test.dart T48` 日期敏感测试：测试硬编码日期但代码用 `DateTime.now()`，每过一段时间会失败。建议后续改成相对日期（`DateTime.now().subtract(Duration(days: 8))` 动态生成测试日期）
 
 **最近 commit**：
-- `（待填）` release: v0.16.0 v5 AI 推荐审计修复（5 high + 5 medium）+ 满意度反馈按钮改 PopupMenuButton + 测试 mock 修复 + 版本号 bump
+- `e6ae182` release: v0.16.0 v5 AI 推荐审计修复（5 high + 5 medium）+ 满意度反馈按钮改 PopupMenuButton + 测试 mock 修复 + 版本号 bump
 - `e09b233` docs: HANDOFF 回填 Phase 2.12 commit hash 27b6a85
 - `27b6a85` feat: AI 个性化推荐 v5（渐进增强 + 满意度反馈学习）
 - `c13143b` fix: v0.15.0 release 后大规模审计修复 24 个问题（UI 审计 8 个 + sentry_init 版本号同步 + HANDOFF 9 个文档问题 + 测试缺口评估降级）
