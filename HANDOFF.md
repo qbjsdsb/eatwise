@@ -36,30 +36,49 @@
 
 **最后更新**：2026-07-04
 
-**工作区状态**：有未提交改动（AI 识别准确度重构 Phase 1 进行中，未跑测试）
+**工作区状态**：有未提交改动（AI 识别准确度重构 Phase 1+2 完成，待 commit）
 **当前分支**：v0.10.0-m3-merge
 
-**AI 识别准确度重构 Phase 1（进行中，2026-07-04）**：
+**AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
 - 根因诊断：4 个范式级缺陷
   1. 规则 8 禁止解释文字 → 关掉模型推理能力（shortcut learning 致雪花→雪碧）
   2. 用 qwen3-vl-flash 轻量模型做硬视觉判别
   3. one-shot 架构没法自我纠正
   4. database-first 反噬 LLM 知识（用弱库覆盖强 LLM）
-- Phase 1 改动（已完成代码，未跑测试）：
+- Phase 1 改动（已 commit c427316）：
   - prompts.dart v1.8 → v1.9：营养师人设 + reasoning 字段(CoT) + 包装营养表 OCR 路径(6 字段) + 隐藏热量显式估算 + 盘子尺度参照 + 规则 8 修改 + 示例 7(珍宝珠酸条)+示例 8(麻婆豆腐)
   - vision_provider.dart：VisionRecognitionResult 加 7 个字段(reasoning + packageNutritionTableOcr + packageServingG/Kj/Kcal/TotalG/ServingsPerPack) + hasPackageNutrition getter + copyWith 加 reasoning
   - recognition_post_processor.dart：两处手动重建透传新字段
-  - 测试：vision_response_parser_test + recognition_post_processor_test 加 v1.9 group
-- Phase 1 静态自检：✅ 5 处 lib 构造全部覆盖，30 处 test 构造向后兼容，qwen/glm provider 自动跟随 Prompts.version
-- Phase 1 动态验证（2026-07-04 沙箱实测）：
-  - ✅ `flutter analyze --no-fatal-infos` → No issues found
-  - ✅ `flutter test --exclude-tags smoke` → 402 passed / 1 failed / 0 skipped
-  - 新增 11 个测试全过（vision_response_parser 8 + recognition_post_processor 3）
-  - 唯一失败：`image_cleanup_startup_test.dart T48` 是**项目原有日期敏感 bug**（测试硬编码 2026-06-24/06-26，假设今天 2026-07-02，但实际 2026-07-04，cutoff 偏移 2 天）—— stash 掉 Phase 1 改动后同样失败，与本次重构无关
+  - 测试：vision_response_parser_test + recognition_post_processor_test 加 v1.9 group（11 个测试）
 - Phase 1 顺手修复：lib/data/repositories/food_item_repository.dart L292-293 跨事务闭包 null safety 编译错误（Dart 3.10+ 更严格检查：闭包内 `if (x != null)` 不能提升外部 `String?`）→ 用 `final brandAliasNonNull = brandAlias` 局部变量提升
-- Phase 1 已 commit：c427316（prompts/vision_provider/post_processor/2 测试）+ 工作区未提交（food_item_repository null safety 修复）
-- 后续 Phase 2（LLM-first 反转方案 B）+ Phase 3（thinking 模式沙箱验证）待 Phase 1 验证通过后推进
+- Phase 1 验证：✅ flutter analyze No issues + flutter test 402 passed / 1 failed (T48 原有日期 bug) / 0 skipped
+
+**Phase 2 改动（已完成代码，未 commit）—— v1.9 包装 OCR 优先路径三路径全覆盖**：
+- 核心策略：保持哨兵分支结构不变，在哨兵分支内优先检查 `result.hasPackageNutrition`
+  - 有包装数据 → `computePackageNutritionPer100g()` 换算（精确值，跳过品类校准）
+  - 无包装数据 → 走原 AI 估算 + FoodCategoryDefaults.calibrate 路径（保留原有行为）
+- vision_provider.dart：新增 `computePackageNutritionPer100g()` 方法
+  - 换算规则：单份 kcal 优先 packageServingKcal；为 0/null 时用 packageServingKj ÷ 4.184
+  - per100g kcal = 单份 kcal × 100 ÷ packageServingG
+  - 蛋白/脂肪/碳水：包装通常不标，用 AI 估算按 per100 反算（mid=0 时 per100Ratio=0 防除零）
+  - 无法换算（servingG=0 或所有 serving_*=0）返回 null，调用方走 AI 估算路径
+- recognize_page.dart：哨兵分支 `if (n.foodItemId == 0)` 内加 v1.9 包装 OCR 优先路径
+- multi_dish_page.dart：提取 `resolveSingleFoodItemId` 本地函数，主菜(i==0)和附加菜(i>0)哨兵分支共用，逻辑与 recognize_page 一致；补 food_item_repository import
+- offline_queue_controller.dart：两处 LLM 兜底分支同步加包装 OCR 优先路径
+  - L142-196 单品库未命中 LLM 兜底：包装 OCR 优先 + 品类校准兜底（与 recognize_page 一致）
+  - L210-250 复合菜组分全 miss LLM 兜底：包装 OCR 优先 + AI 估算兜底（复合菜不做品类校准）
+- Phase 2 测试：vision_response_parser_test 加 `v1.9 computePackageNutritionPer100g 包装换算` group（14 个测试）
+  - kcal 优先 / kJ 兜底换算 / null 分支 / 蛋白脂肪碳水 per100 反算 / 除零防护 / hasPackageNutrition getter 各分支
+- Phase 2 验证（2026-07-04 沙箱实测）：
+  - ✅ `flutter analyze` → No issues found
+  - ✅ `flutter test` → 417 passed / 3 skipped / 1 failed（T48 原有日期 bug，与 Phase 2 无关）
+  - 14 个新测试全过；offline_queue_test + recognition_post_processor_test 全过
+- Phase 2 设计纠偏：原计划"删哨兵分支 + calibrate 前移到 PostProcessor"，读代码后发现 calibrate 需要 `n.calories`（NutritionResult）而非 `result.estimatedCalories`，且库命中路径不应触发 calibrate → 改为"哨兵内加包装 OCR 优先路径"
+
+**后续阶段**：
+- Phase 3: thinking 模式沙箱验证（需 WebSearch 实测 qwen3-vl thinking 支持 + json_object 兼容性 + 成本评估）
+- Phase 4: 两阶段识别 / 追问机制（按需，观察 Phase 1-3 效果后决定）
 
 **已知非阻塞问题**：
 - `image_cleanup_startup_test.dart T48` 日期敏感测试：测试硬编码日期但代码用 `DateTime.now()`，每过一段时间会失败。建议后续改成相对日期（`DateTime.now().subtract(Duration(days: 8))` 动态生成测试日期）
@@ -274,11 +293,13 @@
 - nutrition_lookup.lookupSingleItem 过滤 componentsJson!=null 的记录（防 0 卡污染）
 - listAllForRecommendation 排除 source='ai_recognized'
 
-### 3.4 prompt 版本 v1.7
+### 3.4 prompt 版本 v1.9
 - v1.4：合并 v1.3（多菜多份 quantity/unit/perUnitG）+ v1.1（营养字段 estimated_calories 等）
 - v1.6：包装容量优先（weight_source=package_label）+ 营养素自洽约束（4p+9f+4c≈cal，±5%）
 - v1.7：新增 food_category 字段（water/carbonated/juice/milk/cream/oil/honey/sauce/alcohol/beer/wine/yogurt/soup/solid），用于包装液体 ml→g 密度换算
-- 旧 prompt 响应无 food_category/weight_source 时默认 solid/ai_estimate（不换算、走视觉估算），向后兼容
+- v1.8：啤酒/茶饮剥离示例（雪花啤酒→dish_name=啤酒/brand=雪花）+ 连锁品牌 brand 必填
+- v1.9：营养师人设 + reasoning 字段(CoT 推理) + 包装营养表 OCR 路径(6 字段) + 隐藏热量显式估算 + 盘子尺度参照 + 规则 8 修改(允许 reasoning 在 JSON 内) + 示例 7(珍宝珠酸条)+示例 8(麻婆豆腐)
+- 旧 prompt 响应无 food_category/weight_source/reasoning/package_* 时默认 solid/ai_estimate/null/空（不换算、不走包装 OCR、不展示推理），向后兼容
 
 ### 3.5 per100g 反算 + 可食部分 + 密度换算三件套
 - per100g 反算公式：`caloriesPer100g * effectiveG / 100`
@@ -465,6 +486,31 @@
 - D 批第二轮（D1-D4）：flutter analyze No issues + flutter test 392 passed (3 skipped)
 - D 批第三轮（D5+D6）：flutter analyze No issues + flutter test 392 passed (3 skipped)
 
+### 3.18 v1.9 包装 OCR 优先路径（Phase 2，三路径全覆盖）
+
+解决"豆包能精确识别珍宝珠酸条 57.6g/8 条装按包装营养成分表换算 325kcal，EatWise 做了很多工作仍不准"。核心思路：包装食品有营养成分表时优先按包装数据换算 per100g，跳过品类校准（包装数据是精确值无需校准）；无包装数据走原 AI 估算 + 品类校准路径。
+
+**核心方法 `VisionRecognitionResult.computePackageNutritionPer100g()`**：
+- 换算规则（与 prompts.dart v1.9 规则 10 一致）：
+  - 单份 kcal：优先 `packageServingKcal`；为 0/null 时用 `packageServingKj ÷ 4.184`
+  - per100g kcal = 单份 kcal × 100 ÷ `packageServingG`
+  - 蛋白/脂肪/碳水：包装通常不标，用 AI 估算按 per100 反算（`estimatedXxxG × 100 ÷ estimatedWeightGMid`）
+  - mid=0 时 per100Ratio=0（防除零，蛋白/脂肪/碳水结果为 0，calories 仍按包装换算不依赖 mid）
+- 返回 `(calories, protein, fat, carbs) per100g` 或 null（`packageServingG` 为 0 或所有 `serving_*` 为 0 时）
+- `hasPackageNutrition` getter：任一 `package_serving_*` 字段非空非 0 即 true
+
+**三路径哨兵分支全覆盖**（违反硬约束 3 会导致后台回补路径热量偏差）：
+1. **recognize_page.dart**：哨兵分支 `if (n.foodItemId == 0)` 内优先检查 `result.hasPackageNutrition`，有则用 `computePackageNutritionPer100g()` 换算跳过品类校准
+2. **multi_dish_page.dart**：提取 `resolveSingleFoodItemId` 本地函数，主菜(i==0)和附加菜(i>0)哨兵分支共用，逻辑与 recognize_page 一致
+3. **offline_queue_controller.dart**：两处 LLM 兜底分支同步加包装 OCR 优先路径
+   - 单品库未命中 LLM 兜底：包装 OCR 优先 + 品类校准兜底（与 recognize_page 一致）
+   - 复合菜组分全 miss LLM 兜底：包装 OCR 优先 + AI 估算兜底（复合菜不做品类校准，无 meaningful food category）
+
+**设计决策**：
+- `actual*` 值（写入 meal_log 的本餐实际摄入量）仍用 AI 估算的整菜值，**不用包装换算值**。food_item 存 per100g 用作未来查库的"密度参考"，meal_log 存本餐实际摄入量。两者职责分离
+- 复合菜组分全 miss 路径也加包装 OCR 优先——预包装速冻食品（如速冻水饺）可能被识别为 composite 但有包装营养表
+- Phase 2 设计纠偏：原计划"删哨兵分支 + calibrate 前移到 PostProcessor"，但 calibrate 需要 `n.calories`（NutritionResult）而非 `result.estimatedCalories`，且库命中路径不应触发 calibrate → 改为"哨兵内加包装 OCR 优先路径"，保持原有结构
+
 ---
 
 ## 4. 已知陷阱（踩过的坑）
@@ -550,6 +596,8 @@
 
 50. **主题色默认值是 M3 基线紫 0xFF6750A4 不是莫奈青绿**：`ThemeNotifier.build()`（theme_controller.dart L11）和 `SecureConfigStore.getThemeSeed()` 默认值（secure_config_store.dart）都是 M3 基线紫 `0xFF6750A4`。`0xFF5B8C7B 莫奈睡莲青绿` 只是 `kThemePresets` 列表第一项（settings_page 设置页默认选中色）。新用户首次安装由 main.dart 读 storage（仍是基线紫），实际显示基线紫，需用户主动进设置页选色才变青绿。HANDOFF 第 3.6 节曾误写"默认莫奈青绿"已修正。改默认色必须同步改 ThemeNotifier.build + SecureConfigStore.getThemeSeed + kThemePresets[0] 三处，否则首帧色与设置页选中态不一致
 
+51. **v1.9 包装 OCR 优先路径：actual* 与 per100g 职责分离 + 三路径必须同步**：`computePackageNutritionPer100g()` 返回的 per100g 值只用于 `upsertAiRecognized` 写入 food_item（作未来查库密度参考），**不能覆盖 meal_log 的 actual* 值**。actual* 仍用 AI 估算的整菜值（`result.estimatedCalories` 等），因为 meal_log 记录的是本餐实际摄入量，per100g 是食物的密度属性，两者职责不同。三路径（recognize_page / multi_dish_page / offline_queue_controller）哨兵分支必须同步加 `hasPackageNutrition` 优先检查，否则后台回补路径会用品类校准覆盖包装精确值致热量偏差。复合菜组分全 miss 路径也加包装 OCR 优先——预包装速冻食品可能被识别为 composite 但有包装营养表。`computePackageNutritionPer100g` 返回 null 时（servingG=0 或所有 serving_*=0）调用方必须走 AI 估算兜底，不能直接用 null 致空指针
+
 ---
 
 ## 5. 常用命令
@@ -582,8 +630,8 @@ lib/
 ├── app.dart                           # M3 主题 + 4-tab StatefulShellRoute 路由
 ├── main_shell.dart                    # 底部导航壳 + FAB
 ├── ai/
-│   ├── prompts.dart                   # v1.4 prompt
-│   ├── vision_provider.dart           # VisionRecognitionResult（含 copyWith）
+│   ├── prompts.dart                   # v1.9 prompt（营养师人设+reasoning+包装OCR+隐藏热量）
+│   ├── vision_provider.dart           # VisionRecognitionResult（含 copyWith + computePackageNutritionPer100g）
 │   ├── vision_service.dart            # 视觉服务
 │   ├── nutrition_lookup.dart          # NutritionLookup + NutritionSource 枚举
 │   └── off_provider.dart              # Open Food Facts 云查

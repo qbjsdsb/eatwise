@@ -633,4 +633,197 @@ void main() {
       expect(modified.reasoning, '新推理');
     });
   });
+
+  group('v1.9 computePackageNutritionPer100g 包装换算', () {
+    /// 构造带包装字段的 VisionRecognitionResult 辅助函数
+    VisionRecognitionResult buildResult({
+      double mid = 100,
+      double? servingG,
+      double? servingKj,
+      double? servingKcal,
+      double? estimatedProteinG,
+      double? estimatedFatG,
+      double? estimatedCarbsG,
+    }) {
+      return VisionRecognitionResult(
+        dishName: 'test',
+        brand: '',
+        estimatedWeightGLow: mid,
+        estimatedWeightGMid: mid,
+        estimatedWeightGHigh: mid,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.9',
+        packageServingG: servingG,
+        packageServingKj: servingKj,
+        packageServingKcal: servingKcal,
+        estimatedProteinG: estimatedProteinG,
+        estimatedFatG: estimatedFatG,
+        estimatedCarbsG: estimatedCarbsG,
+      );
+    }
+
+    test('kcal 字段优先：serving_g=100 serving_kcal=50 → per100g=50', () {
+      final result = buildResult(
+        servingG: 100,
+        servingKcal: 50,
+        servingKj: 999, // 应被忽略，优先用 kcal
+      );
+      final per100 = result.computePackageNutritionPer100g();
+      expect(per100, isNotNull);
+      expect(per100!.$1, closeTo(50, 0.001)); // 50 * 100 / 100 = 50
+    });
+
+    test('kJ 兜底换算：serving_g=10.5 serving_kj=170 → per100g≈386.95', () {
+      // 珍宝珠酸条案例：每份10.5g, 170kJ
+      // servingKcal = 170 / 4.184 ≈ 40.631
+      // per100Calories = 40.631 * 100 / 10.5 ≈ 386.96
+      final result = buildResult(
+        mid: 57.6,
+        servingG: 10.5,
+        servingKj: 170,
+        servingKcal: 0, // 0 视为无值，走 kJ 路径
+      );
+      expect(result.hasPackageNutrition, isTrue);
+      final per100 = result.computePackageNutritionPer100g();
+      expect(per100, isNotNull);
+      expect(per100!.$1, closeTo(386.96, 0.01));
+    });
+
+    test('kJ 兜底换算（kcal=null）：serving_kj>0 → 正确换算', () {
+      final result = buildResult(
+        servingG: 100,
+        servingKj: 418.4, // 418.4 / 4.184 = 100 kcal
+        servingKcal: null,
+      );
+      final per100 = result.computePackageNutritionPer100g();
+      expect(per100, isNotNull);
+      expect(per100!.$1, closeTo(100, 0.001));
+    });
+
+    test('serving_g=0 → 返回 null（无法换算）', () {
+      final result = buildResult(
+        servingG: 0,
+        servingKcal: 50,
+      );
+      // serving_g=0 时 hasPackageNutrition 取决于其他字段
+      // 但 computePackageNutritionPer100g 应返回 null
+      final per100 = result.computePackageNutritionPer100g();
+      expect(per100, isNull);
+    });
+
+    test('serving_g=null → 返回 null', () {
+      final result = buildResult(
+        servingG: null,
+        servingKcal: 50,
+      );
+      final per100 = result.computePackageNutritionPer100g();
+      expect(per100, isNull);
+    });
+
+    test('kcal 和 kj 都为 0/null → 返回 null', () {
+      final result = buildResult(
+        servingG: 100,
+        servingKcal: 0,
+        servingKj: 0,
+      );
+      final per100 = result.computePackageNutritionPer100g();
+      expect(per100, isNull);
+    });
+
+    test('蛋白/脂肪/碳水按 AI 估算 per100 反算（mid=200 估算 10g → per100=5）', () {
+      // mid=200g 的整菜，AI 估算含蛋白质 10g
+      // per100Protein = 10 * 100 / 200 = 5 g/100g
+      final result = buildResult(
+        mid: 200,
+        servingG: 100,
+        servingKcal: 250,
+        estimatedProteinG: 10,
+        estimatedFatG: 5,
+        estimatedCarbsG: 30,
+      );
+      final per100 = result.computePackageNutritionPer100g(
+        estimatedProteinG: result.estimatedProteinG,
+        estimatedFatG: result.estimatedFatG,
+        estimatedCarbsG: result.estimatedCarbsG,
+      );
+      expect(per100, isNotNull);
+      expect(per100!.$1, closeTo(250, 0.001)); // 250 * 100 / 100
+      expect(per100.$2, closeTo(5, 0.001)); // 10 * 100 / 200
+      expect(per100.$3, closeTo(2.5, 0.001)); // 5 * 100 / 200
+      expect(per100.$4, closeTo(15, 0.001)); // 30 * 100 / 200
+    });
+
+    test('AI 估算为 null 时蛋白/脂肪/碳水 per100=0（不崩）', () {
+      final result = buildResult(
+        mid: 200,
+        servingG: 100,
+        servingKcal: 250,
+        // estimatedProteinG/FatG/CarbsG 全部 null
+      );
+      final per100 = result.computePackageNutritionPer100g();
+      expect(per100, isNotNull);
+      expect(per100!.$1, closeTo(250, 0.001));
+      expect(per100.$2, 0);
+      expect(per100.$3, 0);
+      expect(per100.$4, 0);
+    });
+
+    test('mid=0 时蛋白/脂肪/碳水 per100=0（防除零）', () {
+      // mid=0 时 per100Ratio=0，蛋白/脂肪/碳水结果为 0
+      // 但 calories 仍按包装换算（不依赖 mid）
+      final result = buildResult(
+        mid: 0,
+        servingG: 100,
+        servingKcal: 250,
+        estimatedProteinG: 10,
+      );
+      final per100 = result.computePackageNutritionPer100g(
+        estimatedProteinG: 10,
+      );
+      expect(per100, isNotNull);
+      expect(per100!.$1, closeTo(250, 0.001)); // 250 * 100 / 100
+      expect(per100.$2, 0); // 10 * 0 = 0（mid=0 → per100Ratio=0）
+    });
+
+    test('hasPackageNutrition：仅 serving_kj>0 → true', () {
+      final result = buildResult(
+        servingG: 0,
+        servingKj: 170,
+        servingKcal: 0,
+      );
+      expect(result.hasPackageNutrition, isTrue);
+    });
+
+    test('hasPackageNutrition：仅 serving_kcal>0 → true', () {
+      final result = buildResult(
+        servingG: 0,
+        servingKcal: 50,
+      );
+      expect(result.hasPackageNutrition, isTrue);
+    });
+
+    test('hasPackageNutrition：仅 serving_g>0 → true', () {
+      final result = buildResult(
+        servingG: 10.5,
+      );
+      expect(result.hasPackageNutrition, isTrue);
+    });
+
+    test('hasPackageNutrition：所有 serving_* 为 0/null → false', () {
+      final result = buildResult(
+        servingG: 0,
+        servingKj: 0,
+        servingKcal: 0,
+      );
+      expect(result.hasPackageNutrition, isFalse);
+    });
+
+    test('hasPackageNutrition：所有 package_* 缺失 → false', () {
+      final result = buildResult(); // 全部 package_* 为 null
+      expect(result.hasPackageNutrition, isFalse);
+    });
+  });
 }

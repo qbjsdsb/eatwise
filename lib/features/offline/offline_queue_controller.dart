@@ -149,27 +149,47 @@ class OfflineQueueController {
                     p.id, 'AI 无估算且库未命中，需手动录入', permanent: true);
                 continue;
               }
-              // AI 兜底：per100g 基于 mid 份量反算（与 recognize_page 哨兵处理一致）
-              // P0：品类默认值校准（防 AI 离谱估算）+ brand 持久化
+              // v1.9：包装食品 OCR 优先路径——有包装营养表数据时按包装换算，
+              // 跳过品类校准（包装数据是精确值，不需要校准）
+              // 与 recognize_page 哨兵分支 / multi_dish_page resolveSingleFoodItemId 一致
+              // 参考 prompts.dart v1.9 规则 10 + 示例 7（珍宝珠酸条）
               final mid = result.estimatedWeightGMid;
               final per100 = mid > 0 ? 100.0 / mid : 0.0;
-              final calibratedSingle = FoodCategoryDefaults.calibrate(
-                aiCaloriesPer100g: cal * per100,
-                aiProteinPer100g: (result.estimatedProteinG ?? 0) * per100,
-                aiFatPer100g: (result.estimatedFatG ?? 0) * per100,
-                aiCarbsPer100g: (result.estimatedCarbsG ?? 0) * per100,
-                category: result.foodCategory,
-              );
+              final packagePer100 = result.hasPackageNutrition
+                  ? result.computePackageNutritionPer100g(
+                      estimatedProteinG: result.estimatedProteinG,
+                      estimatedFatG: result.estimatedFatG,
+                      estimatedCarbsG: result.estimatedCarbsG,
+                    )
+                  : null;
+              final (caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g) =
+                  packagePer100 ??
+                      (() {
+                        // 无包装数据 → 走原 AI 估算 + 品类校准路径
+                        // P0：品类默认值校准——AI 估算的 per100g 偏离品类默认值 2 倍以上
+                        // 用默认值替代（防 AI 离谱估算，如啤酒估成 200 kcal/100g 实际 43）
+                        return FoodCategoryDefaults.calibrate(
+                          aiCaloriesPer100g: cal * per100,
+                          aiProteinPer100g:
+                              (result.estimatedProteinG ?? 0) * per100,
+                          aiFatPer100g: (result.estimatedFatG ?? 0) * per100,
+                          aiCarbsPer100g:
+                              (result.estimatedCarbsG ?? 0) * per100,
+                          category: result.foodCategory,
+                        );
+                      })();
               final foodItemRepo = FoodItemRepository(_db);
               foodItemId = await foodItemRepo.upsertAiRecognized(
                 name: result.dishName,
                 brand: result.brand,
-                caloriesPer100g: calibratedSingle.$1,
-                proteinPer100g: calibratedSingle.$2,
-                fatPer100g: calibratedSingle.$3,
-                carbsPer100g: calibratedSingle.$4,
+                caloriesPer100g: caloriesPer100g,
+                proteinPer100g: proteinPer100g,
+                fatPer100g: fatPer100g,
+                carbsPer100g: carbsPer100g,
                 confidence: result.confidence,
               );
+              // actual* 仍用 AI 估算的整菜值（与 recognize_page 一致：
+              // food_item 存 per100g 用作未来查库的"密度参考"，meal_log 存本餐实际摄入量）
               actualCalories = cal;
               actualProteinG = result.estimatedProteinG ?? 0;
               actualFatG = result.estimatedFatG ?? 0;
@@ -190,19 +210,40 @@ class OfflineQueueController {
             if (composite.componentHits.isEmpty &&
                 result.estimatedCalories != null) {
               // v1.4：复合菜组分全 miss 时用 AI 整菜估算兜底（与前台对齐）
-              // P0：brand 持久化（复合菜不做品类校准，per100g=0 占位）
+              // v1.9：包装食品 OCR 优先路径——若复合菜恰好是预包装速冻食品等
+              // （如速冻水饺被识别为 composite 但有包装营养表），优先用包装数据换算
+              // 复合菜不做品类校准（无 meaningful food category），AI 估算路径直接用原值
               final mid = result.estimatedWeightGMid;
               final per100 = mid > 0 ? 100.0 / mid : 0.0;
+              final packagePer100 = result.hasPackageNutrition
+                  ? result.computePackageNutritionPer100g(
+                      estimatedProteinG: result.estimatedProteinG,
+                      estimatedFatG: result.estimatedFatG,
+                      estimatedCarbsG: result.estimatedCarbsG,
+                    )
+                  : null;
+              final (caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g) =
+                  packagePer100 ??
+                      (() {
+                        // 无包装数据 → 走原 AI 估算路径（复合菜不做品类校准）
+                        return (
+                          result.estimatedCalories! * per100,
+                          (result.estimatedProteinG ?? 0) * per100,
+                          (result.estimatedFatG ?? 0) * per100,
+                          (result.estimatedCarbsG ?? 0) * per100,
+                        );
+                      })();
               final foodItemRepo = FoodItemRepository(_db);
               foodItemId = await foodItemRepo.upsertAiRecognized(
                 name: result.dishName,
                 brand: result.brand,
-                caloriesPer100g: result.estimatedCalories! * per100,
-                proteinPer100g: (result.estimatedProteinG ?? 0) * per100,
-                fatPer100g: (result.estimatedFatG ?? 0) * per100,
-                carbsPer100g: (result.estimatedCarbsG ?? 0) * per100,
+                caloriesPer100g: caloriesPer100g,
+                proteinPer100g: proteinPer100g,
+                fatPer100g: fatPer100g,
+                carbsPer100g: carbsPer100g,
                 confidence: result.confidence,
               );
+              // actual* 仍用 AI 估算的整菜值（food_item 存 per100g 用作未来查库密度参考）
               actualCalories = result.estimatedCalories!;
               actualProteinG = result.estimatedProteinG ?? 0;
               actualFatG = result.estimatedFatG ?? 0;

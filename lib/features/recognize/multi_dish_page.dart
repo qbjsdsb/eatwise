@@ -7,6 +7,7 @@ import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
 import '../../core/util/date_format.dart';
 import '../../core/widgets/m3_widgets.dart';
+import '../../data/repositories/food_item_repository.dart';
 import '../../data/seed/food_category_defaults.dart';
 import '../manual_entry/manual_entry_page.dart';
 import 'providers.dart';
@@ -389,6 +390,66 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
       double totalCal = 0;
       // 事务包裹：所有菜品 upsert + insertMealLog 原子化，任一失败整体回滚不产生部分记录
       await db.transaction(() async {
+        // v1.9：单品哨兵分支的 foodItemId 解析（包装 OCR 优先 + 品类校准兜底）
+        // i==0 主菜和 i>0 附加菜共用同一逻辑，避免代码重复
+        Future<int> resolveSingleFoodItemId(
+          VisionRecognitionResult dish,
+          NutritionResult n,
+          FoodItemRepository foodRepo,
+        ) async {
+          final mid = dish.estimatedWeightGMid;
+          final per100 = mid > 0 ? 100.0 / mid : 0.0;
+          // v1.9：包装食品 OCR 优先路径——有包装营养表数据时按包装换算，
+          // 跳过品类校准（包装数据是精确值，不需要校准）
+          // 参考 prompts.dart v1.9 规则 10 + 示例 7（珍宝珠酸条）
+          final packagePer100 = dish.hasPackageNutrition
+              ? dish.computePackageNutritionPer100g(
+                  estimatedProteinG:
+                      n.proteinG == 0 ? dish.estimatedProteinG : n.proteinG,
+                  estimatedFatG:
+                      n.fatG == 0 ? dish.estimatedFatG : n.fatG,
+                  estimatedCarbsG:
+                      n.carbsG == 0 ? dish.estimatedCarbsG : n.carbsG,
+                )
+              : null;
+          final (caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g) =
+              packagePer100 ??
+                  (() {
+                    // 无包装数据 → 走原 AI 估算 + 品类校准路径
+                    // P0：品类默认值校准——AI 估算的 per100g 偏离品类默认值 2 倍以上
+                    // 用默认值替代（防 AI 离谱估算，如啤酒估成 200 kcal/100g 实际 43）
+                    final rawCalPer100 = n.calories * per100;
+                    return FoodCategoryDefaults.calibrate(
+                      aiCaloriesPer100g: rawCalPer100,
+                      aiProteinPer100g: n.proteinG * per100,
+                      aiFatPer100g: n.fatG * per100,
+                      aiCarbsPer100g: n.carbsG * per100,
+                      category: dish.foodCategory,
+                    );
+                  })();
+          if (!dish.hasPackageNutrition) {
+            final rawCalPer100 = n.calories * per100;
+            if (caloriesPer100g != rawCalPer100) {
+              debugPrint(
+                  '[FoodCategoryDefaults] ${dish.dishName}(${dish.foodCategory}) '
+                  'AI per100g=$rawCalPer100 偏离品类默认值，校准为 $caloriesPer100g');
+            }
+          } else {
+            debugPrint(
+                '[PackageOCR] ${dish.dishName} 使用包装营养表换算 per100g=$caloriesPer100g '
+                '(serving=${dish.packageServingG}g/${dish.packageServingKj}kJ/${dish.packageServingKcal}kcal)');
+          }
+          return foodRepo.upsertAiRecognized(
+            name: dish.dishName,
+            brand: dish.brand,
+            caloriesPer100g: caloriesPer100g,
+            proteinPer100g: proteinPer100g,
+            fatPer100g: fatPer100g,
+            carbsPer100g: carbsPer100g,
+            confidence: dish.confidence,
+          );
+        }
+
         for (var i = 0; i < allDishes.length; i++) {
           if (!_hitFlags[i]) continue; // 未命中跳过
           final dish = allDishes[i];
@@ -405,26 +466,9 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
               final n = widget.mainSingle!;
               if (n.foodItemId == 0) {
                 // 哨兵：AI 兜底结果 → 创建 ai_recognized food_item
-                // per100g 基于 mid 份量反算（n.calories 对应 mid 份量，不能用 servingG）
-                // P0：品类默认值校准（防 AI 离谱估算）+ brand 持久化
-                final mid = dish.estimatedWeightGMid;
-                final per100 = mid > 0 ? 100.0 / mid : 0.0;
-                final calibrated = FoodCategoryDefaults.calibrate(
-                  aiCaloriesPer100g: n.calories * per100,
-                  aiProteinPer100g: n.proteinG * per100,
-                  aiFatPer100g: n.fatG * per100,
-                  aiCarbsPer100g: n.carbsG * per100,
-                  category: dish.foodCategory,
-                );
-                foodItemId = await foodRepo.upsertAiRecognized(
-                  name: dish.dishName,
-                  brand: dish.brand,
-                  caloriesPer100g: calibrated.$1,
-                  proteinPer100g: calibrated.$2,
-                  fatPer100g: calibrated.$3,
-                  carbsPer100g: calibrated.$4,
-                  confidence: dish.confidence,
-                );
+                // v1.9：包装 OCR 优先 + 品类校准兜底（共用 resolveSingleFoodItemId）
+                foodItemId =
+                    await resolveSingleFoodItemId(dish, n, foodRepo);
               } else {
                 foodItemId = n.foodItemId;
               }
@@ -448,25 +492,9 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
               final n = item.singleNutrition!;
               if (n.foodItemId == 0) {
                 // 哨兵：附加菜 AI 兜底 → 创建 ai_recognized food_item
-                // P0：品类校准 + brand 持久化
-                final mid = dish.estimatedWeightGMid;
-                final per100 = mid > 0 ? 100.0 / mid : 0.0;
-                final calibrated = FoodCategoryDefaults.calibrate(
-                  aiCaloriesPer100g: n.calories * per100,
-                  aiProteinPer100g: n.proteinG * per100,
-                  aiFatPer100g: n.fatG * per100,
-                  aiCarbsPer100g: n.carbsG * per100,
-                  category: dish.foodCategory,
-                );
-                foodItemId = await foodRepo.upsertAiRecognized(
-                  name: dish.dishName,
-                  brand: dish.brand,
-                  caloriesPer100g: calibrated.$1,
-                  proteinPer100g: calibrated.$2,
-                  fatPer100g: calibrated.$3,
-                  carbsPer100g: calibrated.$4,
-                  confidence: dish.confidence,
-                );
+                // v1.9：包装 OCR 优先 + 品类校准兜底（共用 resolveSingleFoodItemId）
+                foodItemId =
+                    await resolveSingleFoodItemId(dish, n, foodRepo);
               } else {
                 foodItemId = n.foodItemId;
               }

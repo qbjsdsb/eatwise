@@ -98,6 +98,47 @@ class VisionRecognitionResult {
       (packageServingKj != null && packageServingKj! > 0) ||
       (packageServingKcal != null && packageServingKcal! > 0);
 
+  /// v1.9：基于包装营养成分表换算 per100g 营养值
+  ///
+  /// 调用前必须先检查 [hasPackageNutrition] 为 true。
+  ///
+  /// 换算规则（与 prompts.dart v1.9 规则 10 一致）：
+  /// - 单份 kcal：优先 packageServingKcal；为 0/null 时用 packageServingKj ÷ 4.184
+  /// - per100g kcal = 单份 kcal × 100 ÷ packageServingG
+  /// - 蛋白质/脂肪/碳水没有独立包装字段（包装通常不标），保留 AI 估算值按 per100 反算
+  ///   （若 AI 未提供估算则 0）
+  ///
+  /// 返回 (calories, protein, fat, carbs) per100g。
+  /// 无法换算（packageServingG 为 0 或所有 serving_* 为 0）时返回 null，调用方走 AI 估算路径。
+  (double, double, double, double)? computePackageNutritionPer100g({
+    double? estimatedProteinG,
+    double? estimatedFatG,
+    double? estimatedCarbsG,
+  }) {
+    final servingG = packageServingG ?? 0;
+    if (servingG <= 0) return null;
+
+    // 单份 kcal：优先 kcal 字段，为 0 时用 kJ ÷ 4.184
+    double servingKcal = packageServingKcal ?? 0;
+    if (servingKcal <= 0) {
+      final kj = packageServingKj ?? 0;
+      if (kj <= 0) return null;
+      servingKcal = kj / 4.184;
+    }
+
+    final per100Calories = servingKcal * 100 / servingG;
+
+    // 蛋白/脂肪/碳水：包装通常不标，用 AI 估算按 per100 反算
+    // AI 估算值是整菜（mid 份量）的总量，反算 per100g = 估算值 × 100 ÷ mid
+    final mid = estimatedWeightGMid;
+    final per100Ratio = mid > 0 ? 100.0 / mid : 0.0;
+    final per100Protein = (estimatedProteinG ?? 0) * per100Ratio;
+    final per100Fat = (estimatedFatG ?? 0) * per100Ratio;
+    final per100Carbs = (estimatedCarbsG ?? 0) * per100Ratio;
+
+    return (per100Calories, per100Protein, per100Fat, per100Carbs);
+  }
+
   /// 复制并覆盖部分字段
   /// - dishName：改菜名重试后透传新菜名给校准页
   /// - estimatedCalories：营养素自洽校验失败时用修正值覆盖（批次 1）

@@ -260,28 +260,57 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
                         // 不能用 servingG（用户校准后的份量），否则密度会随用户调整反向偏差
                         final mid = result.estimatedWeightGMid;
                         final per100 = mid > 0 ? 100.0 / mid : 0.0;
-                        // P0：品类默认值校准——AI 估算的 per100g 偏离品类默认值 2 倍以上
-                        // 用默认值替代（防 AI 离谱估算，如啤酒估成 200 kcal/100g 实际 43）
-                        final rawCalPer100 = n.calories * per100;
-                        final calibrated = FoodCategoryDefaults.calibrate(
-                          aiCaloriesPer100g: rawCalPer100,
-                          aiProteinPer100g: n.proteinG * per100,
-                          aiFatPer100g: n.fatG * per100,
-                          aiCarbsPer100g: n.carbsG * per100,
-                          category: result.foodCategory,
-                        );
-                        if (calibrated.$1 != rawCalPer100) {
+                        // v1.9：包装食品 OCR 优先路径——有包装营养表数据时按包装换算，
+                        // 跳过品类校准（包装数据是精确值，不需要校准）
+                        // 参考 prompts.dart v1.9 规则 10 + 示例 7（珍宝珠酸条）
+                        final packagePer100 = result.hasPackageNutrition
+                            ? result.computePackageNutritionPer100g(
+                                estimatedProteinG: n.proteinG == 0
+                                    ? result.estimatedProteinG
+                                    : n.proteinG,
+                                estimatedFatG: n.fatG == 0
+                                    ? result.estimatedFatG
+                                    : n.fatG,
+                                estimatedCarbsG: n.carbsG == 0
+                                    ? result.estimatedCarbsG
+                                    : n.carbsG,
+                              )
+                            : null;
+                        final (caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g) =
+                            packagePer100 ??
+                                (() {
+                                  // 无包装数据 → 走原 AI 估算 + 品类校准路径
+                                  // P0：品类默认值校准——AI 估算的 per100g 偏离品类默认值 2 倍以上
+                                  // 用默认值替代（防 AI 离谱估算，如啤酒估成 200 kcal/100g 实际 43）
+                                  final rawCalPer100 = n.calories * per100;
+                                  return FoodCategoryDefaults.calibrate(
+                                    aiCaloriesPer100g: rawCalPer100,
+                                    aiProteinPer100g: n.proteinG * per100,
+                                    aiFatPer100g: n.fatG * per100,
+                                    aiCarbsPer100g: n.carbsG * per100,
+                                    category: result.foodCategory,
+                                  );
+                                })();
+                        if (!result.hasPackageNutrition) {
+                          // 仅 AI 估算路径打印校准日志（包装路径是精确值无需校准）
+                          final rawCalPer100 = n.calories * per100;
+                          if (caloriesPer100g != rawCalPer100) {
+                            debugPrint(
+                                '[FoodCategoryDefaults] ${result.dishName}(${result.foodCategory}) '
+                                'AI per100g=$rawCalPer100 偏离品类默认值，校准为 $caloriesPer100g');
+                          }
+                        } else {
                           debugPrint(
-                              '[FoodCategoryDefaults] ${result.dishName}(${result.foodCategory}) '
-                              'AI per100g=$rawCalPer100 偏离品类默认值，校准为 ${calibrated.$1}');
+                              '[PackageOCR] ${result.dishName} 使用包装营养表换算 per100g=$caloriesPer100g '
+                              '(serving=${result.packageServingG}g/${result.packageServingKj}kJ/${result.packageServingKcal}kcal)');
                         }
                         foodItemId = await foodRepo.upsertAiRecognized(
                           name: result.dishName,
                           brand: result.brand,
-                          caloriesPer100g: calibrated.$1,
-                          proteinPer100g: calibrated.$2,
-                          fatPer100g: calibrated.$3,
-                          carbsPer100g: calibrated.$4,
+                          caloriesPer100g: caloriesPer100g,
+                          proteinPer100g: proteinPer100g,
+                          fatPer100g: fatPer100g,
+                          carbsPer100g: carbsPer100g,
                           confidence: result.confidence,
                         );
                       } else {
