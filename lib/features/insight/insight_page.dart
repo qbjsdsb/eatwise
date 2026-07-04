@@ -36,6 +36,9 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   // v1.11：覆盖率（供 UI 提示数据完整度 + 生成守卫）
   int _recordedDays = 0; // 有 meal_log 记录的天数
   int _totalDays = 7; // 窗口总天数（周 7 / 月 30）
+  // M2 修复：SegmentedButton 快速切换时，旧 _loadExisting 的 setState 被版本号守卫丢弃
+  // 根因：_loadExisting 是 async，切换时旧调用未完成，完成后 setState 旧结果覆盖新状态
+  int _loadVersion = 0;
 
   @override
   void initState() {
@@ -202,12 +205,17 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   }
 
   Future<void> _loadExisting() async {
+    // M2 修复：每次调用版本号 +1，setState 前检查版本，不匹配说明用户已切换周期，丢弃这次结果
+    final myVersion = ++_loadVersion;
     // 先聚当前周期数据填充图表 state 字段
     await _aggregatePeriod();
     final db = await ref.read(recognize.databaseProvider.future);
     final repo = InsightRepository(db);
     final existing = await repo.find(_periodType, _periodStart, _periodEnd);
-    if (existing != null && mounted) {
+    if (!mounted) return;
+    // M2 修复：版本号不匹配说明用户已切换周期，丢弃这次结果避免旧数据覆盖新状态
+    if (myVersion != _loadVersion) return;
+    if (existing != null) {
       setState(() {
         _summary = existing.summaryText;
         _error = null; // 加载到已有汇总，清掉历史错误（如上次生成失败的提示）

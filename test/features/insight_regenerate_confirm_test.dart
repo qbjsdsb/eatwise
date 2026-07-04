@@ -67,4 +67,55 @@ void main() {
     expect(find.text('重新生成会覆盖当前汇总，是否继续？'), findsNothing);
     expect(find.textContaining('这是已有的汇总内容'), findsOneWidget);
   });
+
+  /// M2 修复：SegmentedButton 快速切换 weekly→monthly→weekly 时，
+  /// 旧 _loadExisting（monthly）的 setState 不应覆盖新切换后的 weekly 汇总。
+  /// 根因：_loadExisting 是 async，切换时旧调用未完成，完成后 setState 旧结果覆盖新状态。
+  /// 修复：加 _loadVersion 版本号守卫，版本不匹配时丢弃 setState。
+  testWidgets('M2: 快速切换 weekly→monthly→weekly 时不会显示错配汇总', (tester) async {
+    final db = EatWiseDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+
+    // 种子：weekly 和 monthly 都有已有汇总
+    final repo = InsightRepository(db);
+    final now = DateTime.now();
+    final weeklyStart = now.subtract(const Duration(days: 6));
+    final monthlyStart = now.subtract(const Duration(days: 29));
+    String fmt(DateTime d) =>
+        '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+    await repo.insert(
+        periodType: 'weekly',
+        periodStart: fmt(weeklyStart),
+        periodEnd: fmt(now),
+        summaryText: '这是周报内容');
+    await repo.insert(
+        periodType: 'monthly',
+        periodStart: fmt(monthlyStart),
+        periodEnd: fmt(now),
+        summaryText: '这是月报内容');
+
+    final container = ProviderContainer(overrides: [
+      recognize.databaseProvider.overrideWith((ref) async => db),
+      recognize.glmApiKeyProvider.overrideWith((ref) => 'fake-key'),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: InsightPage()),
+    ));
+    await tester.pumpAndSettle(const Duration(seconds: 2));
+
+    // 快速切换 weekly → monthly → weekly
+    await tester.tap(find.text('月'));
+    await tester.pump(const Duration(milliseconds: 100)); // 不等 settle，模拟快速切换
+    await tester.tap(find.text('周'));
+    await tester.pumpAndSettle(const Duration(seconds: 2));
+
+    // 验证最终显示 weekly 汇总（不应是 monthly 的"这是月报内容"）
+    expect(find.textContaining('这是周报内容'), findsOneWidget,
+        reason: '最终选中"周"，应显示周报内容');
+    expect(find.textContaining('这是月报内容'), findsNothing,
+        reason: '旧 monthly _loadExisting 的 setState 不应覆盖新 weekly 状态');
+  });
 }
