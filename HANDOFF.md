@@ -52,8 +52,17 @@
   - recognition_post_processor.dart：两处手动重建透传新字段
   - 测试：vision_response_parser_test + recognition_post_processor_test 加 v1.9 group
 - Phase 1 静态自检：✅ 5 处 lib 构造全部覆盖，30 处 test 构造向后兼容，qwen/glm provider 自动跟随 Prompts.version
-- Phase 1 待办：⚠️ 沙箱无 flutter，需用户本地跑 `flutter analyze` + `flutter test` 验证
+- Phase 1 动态验证（2026-07-04 沙箱实测）：
+  - ✅ `flutter analyze --no-fatal-infos` → No issues found
+  - ✅ `flutter test --exclude-tags smoke` → 402 passed / 1 failed / 0 skipped
+  - 新增 11 个测试全过（vision_response_parser 8 + recognition_post_processor 3）
+  - 唯一失败：`image_cleanup_startup_test.dart T48` 是**项目原有日期敏感 bug**（测试硬编码 2026-06-24/06-26，假设今天 2026-07-02，但实际 2026-07-04，cutoff 偏移 2 天）—— stash 掉 Phase 1 改动后同样失败，与本次重构无关
+- Phase 1 顺手修复：lib/data/repositories/food_item_repository.dart L292-293 跨事务闭包 null safety 编译错误（Dart 3.10+ 更严格检查：闭包内 `if (x != null)` 不能提升外部 `String?`）→ 用 `final brandAliasNonNull = brandAlias` 局部变量提升
+- Phase 1 已 commit：c427316（prompts/vision_provider/post_processor/2 测试）+ 工作区未提交（food_item_repository null safety 修复）
 - 后续 Phase 2（LLM-first 反转方案 B）+ Phase 3（thinking 模式沙箱验证）待 Phase 1 验证通过后推进
+
+**已知非阻塞问题**：
+- `image_cleanup_startup_test.dart T48` 日期敏感测试：测试硬编码日期但代码用 `DateTime.now()`，每过一段时间会失败。建议后续改成相对日期（`DateTime.now().subtract(Duration(days: 8))` 动态生成测试日期）
 
 **最近 commit**：
 - `1fdff0e` chore: bump 版本号到 0.13.0+14 准备发布 v0.13.0

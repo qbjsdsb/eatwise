@@ -280,7 +280,10 @@ class FoodItemRepository {
 
       // 新建记录：brand 别名先做冲突检测（防与已有食物 name/alias 冲突）
       List<String>? initAliases;
-      if (brandAlias != null) {
+      // 把 brandAlias 提升为 non-null 局部变量，避免跨事务闭包的 flow analysis 失效
+      // （Dart 3.10+ 更严格的 null safety 检查：闭包内的 if (x != null) 不能提升外部 ?）
+      final brandAliasNonNull = brandAlias;
+      if (brandAliasNonNull != null) {
         final all = await _db.foodItems.select().get();
         final occupied = <String>{};
         for (final other in all) {
@@ -289,8 +292,8 @@ class FoodItemRepository {
             occupied.add(_normalize(a));
           }
         }
-        if (!occupied.contains(_normalize(brandAlias))) {
-          initAliases = [brandAlias];
+        if (!occupied.contains(_normalize(brandAliasNonNull))) {
+          initAliases = [brandAliasNonNull];
         }
       }
 
