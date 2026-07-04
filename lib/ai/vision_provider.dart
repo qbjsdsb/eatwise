@@ -1,3 +1,5 @@
+import 'package_nutrition_ocr_parser.dart';
+
 /// 视觉大模型识别结果
 class VisionRecognitionResult {
   final String dishName;
@@ -50,6 +52,12 @@ class VisionRecognitionResult {
   final double? packageServingG;
   final double? packageServingKj;
   final double? packageServingKcal;
+  // v1.10：包装标称每份的蛋白/脂肪/碳水克数（AI 可选填，含糖饮料必标）
+  // 优先级：包装字段 > OCR 正则提取 > AI 估算反算
+  // 含糖饮料（菊花茶/冰红茶/可乐等）碳水必标，AI 漏填时后端从 OCR 原文兜底
+  final double? packageServingProteinG;
+  final double? packageServingFatG;
+  final double? packageServingCarbsG;
   // package_total_g：整包装净含量克数（如 57.6）
   // package_servings_per_pack：每包装份数（如 8）
   final double? packageTotalG;
@@ -81,6 +89,9 @@ class VisionRecognitionResult {
     this.packageServingG,
     this.packageServingKj,
     this.packageServingKcal,
+    this.packageServingProteinG,
+    this.packageServingFatG,
+    this.packageServingCarbsG,
     this.packageTotalG,
     this.packageServingsPerPack,
   });
@@ -98,15 +109,17 @@ class VisionRecognitionResult {
       (packageServingKj != null && packageServingKj! > 0) ||
       (packageServingKcal != null && packageServingKcal! > 0);
 
-  /// v1.9：基于包装营养成分表换算 per100g 营养值
+  /// v1.9/v1.10：基于包装营养成分表换算 per100g 营养值
   ///
   /// 调用前必须先检查 [hasPackageNutrition] 为 true。
   ///
-  /// 换算规则（与 prompts.dart v1.9 规则 10 一致）：
+  /// 换算规则（与 prompts.dart v1.9 规则 10 / v1.10 修正一致）：
   /// - 单份 kcal：优先 packageServingKcal；为 0/null 时用 packageServingKj ÷ 4.184
   /// - per100g kcal = 单份 kcal × 100 ÷ packageServingG
-  /// - 蛋白质/脂肪/碳水没有独立包装字段（包装通常不标），保留 AI 估算值按 per100 反算
-  ///   （若 AI 未提供估算则 0）
+  /// - 蛋白/脂肪/碳水 per100g 三层优先级（v1.10 修复碳水缺失问题）：
+  ///   1. 包装字段 packageServingProteinG/FatG/CarbsG（AI 显式填，最可靠）
+  ///   2. OCR 正则提取（AI 漏填包装字段时从 packageNutritionTableOcr 兜底）
+  ///   3. AI 估算 estimatedProteinG/FatG/CarbsG 反算（最弱，AI 可能漏填致 0）
   ///
   /// 返回 (calories, protein, fat, carbs) per100g。
   /// 无法换算（packageServingG 为 0 或所有 serving_* 为 0）时返回 null，调用方走 AI 估算路径。
@@ -128,13 +141,48 @@ class VisionRecognitionResult {
 
     final per100Calories = servingKcal * 100 / servingG;
 
-    // 蛋白/脂肪/碳水：包装通常不标，用 AI 估算按 per100 反算
-    // AI 估算值是整菜（mid 份量）的总量，反算 per100g = 估算值 × 100 ÷ mid
-    final mid = estimatedWeightGMid;
-    final per100Ratio = mid > 0 ? 100.0 / mid : 0.0;
-    final per100Protein = (estimatedProteinG ?? 0) * per100Ratio;
-    final per100Fat = (estimatedFatG ?? 0) * per100Ratio;
-    final per100Carbs = (estimatedCarbsG ?? 0) * per100Ratio;
+    // v1.10：宏量营养素 per100g 三层优先级
+    // 第 1 层：包装字段（AI 显式填 package_serving_protein_g 等，最可靠）
+    // 第 2 层：OCR 正则提取（AI 漏填包装字段时从 package_nutrition_table_ocr 兜底）
+    // 第 3 层：AI 估算反算（最弱，AI 可能漏填致 0，但比无值好）
+    // 不再用"包装通常不标碳水"的错误假设（含糖饮料碳水必标）
+    final ocrParsed = PackageNutritionOcrParser.parse(packageNutritionTableOcr);
+
+    // 蛋白质 per100g
+    final double per100Protein;
+    if (packageServingProteinG != null && packageServingProteinG! >= 0) {
+      per100Protein = packageServingProteinG! * 100 / servingG;
+    } else if (ocrParsed.proteinG != null) {
+      per100Protein = ocrParsed.proteinG! * 100 / servingG;
+    } else {
+      final mid = estimatedWeightGMid;
+      final per100Ratio = mid > 0 ? 100.0 / mid : 0.0;
+      per100Protein = (estimatedProteinG ?? 0) * per100Ratio;
+    }
+
+    // 脂肪 per100g
+    final double per100Fat;
+    if (packageServingFatG != null && packageServingFatG! >= 0) {
+      per100Fat = packageServingFatG! * 100 / servingG;
+    } else if (ocrParsed.fatG != null) {
+      per100Fat = ocrParsed.fatG! * 100 / servingG;
+    } else {
+      final mid = estimatedWeightGMid;
+      final per100Ratio = mid > 0 ? 100.0 / mid : 0.0;
+      per100Fat = (estimatedFatG ?? 0) * per100Ratio;
+    }
+
+    // 碳水 per100g（v1.10 关键修复：含糖饮料碳水必标，不再默认 0）
+    final double per100Carbs;
+    if (packageServingCarbsG != null && packageServingCarbsG! >= 0) {
+      per100Carbs = packageServingCarbsG! * 100 / servingG;
+    } else if (ocrParsed.carbsG != null) {
+      per100Carbs = ocrParsed.carbsG! * 100 / servingG;
+    } else {
+      final mid = estimatedWeightGMid;
+      final per100Ratio = mid > 0 ? 100.0 / mid : 0.0;
+      per100Carbs = (estimatedCarbsG ?? 0) * per100Ratio;
+    }
 
     return (per100Calories, per100Protein, per100Fat, per100Carbs);
   }
@@ -142,12 +190,16 @@ class VisionRecognitionResult {
   /// 复制并覆盖部分字段
   /// - dishName：改菜名重试后透传新菜名给校准页
   /// - estimatedCalories：营养素自洽校验失败时用修正值覆盖（批次 1）
+  /// - estimatedProteinG/FatG/CarbsG：v1.10 宏量反推修正覆盖
   /// - foodComponents：组分份量交叉验证失败时用缩放后组分覆盖（建议 7）
   /// - perUnitG/estimatedWeightG*/foodCategory：建议 3 密度换算后覆盖
   /// - reasoning：v1.9 CoT 推理过程透传（避免 PostProcessor 重建时丢失）
   VisionRecognitionResult copyWith({
     String? dishName,
     double? estimatedCalories,
+    double? estimatedProteinG,
+    double? estimatedFatG,
+    double? estimatedCarbsG,
     List<FoodComponent>? foodComponents,
     double? perUnitG,
     double? estimatedWeightGLow,
@@ -172,9 +224,9 @@ class VisionRecognitionResult {
       unit: unit,
       perUnitG: perUnitG ?? this.perUnitG,
       estimatedCalories: estimatedCalories ?? this.estimatedCalories,
-      estimatedProteinG: estimatedProteinG,
-      estimatedFatG: estimatedFatG,
-      estimatedCarbsG: estimatedCarbsG,
+      estimatedProteinG: estimatedProteinG ?? this.estimatedProteinG,
+      estimatedFatG: estimatedFatG ?? this.estimatedFatG,
+      estimatedCarbsG: estimatedCarbsG ?? this.estimatedCarbsG,
       weightSource: weightSource,
       foodCategory: foodCategory ?? this.foodCategory,
       reasoning: reasoning ?? this.reasoning,
@@ -182,6 +234,9 @@ class VisionRecognitionResult {
       packageServingG: packageServingG,
       packageServingKj: packageServingKj,
       packageServingKcal: packageServingKcal,
+      packageServingProteinG: packageServingProteinG,
+      packageServingFatG: packageServingFatG,
+      packageServingCarbsG: packageServingCarbsG,
       packageTotalG: packageTotalG,
       packageServingsPerPack: packageServingsPerPack,
     );
@@ -259,6 +314,13 @@ class VisionRecognitionResult {
       packageServingG: (json['package_serving_g'] as num?)?.toDouble(),
       packageServingKj: (json['package_serving_kj'] as num?)?.toDouble(),
       packageServingKcal: (json['package_serving_kcal'] as num?)?.toDouble(),
+      // v1.10：包装每份宏量营养素（AI 可选填，含糖饮料必填）
+      packageServingProteinG:
+          (json['package_serving_protein_g'] as num?)?.toDouble(),
+      packageServingFatG:
+          (json['package_serving_fat_g'] as num?)?.toDouble(),
+      packageServingCarbsG:
+          (json['package_serving_carbs_g'] as num?)?.toDouble(),
       packageTotalG: (json['package_total_g'] as num?)?.toDouble(),
       packageServingsPerPack:
           (json['package_servings_per_pack'] as num?)?.toDouble(),

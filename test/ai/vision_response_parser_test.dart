@@ -892,4 +892,313 @@ void main() {
       expect(wholeCalories, 0); // mid=0 → 整菜热量 0
     });
   });
+
+  // v1.10：包装每份宏量营养素字段解析 + 三层优先级换算
+  group('v1.10 package_serving_protein_g/fat_g/carbs_g 字段解析', () {
+    test('v1.10: 3 个新字段正常解析（菊花茶 250ml）', () {
+      final json = {
+        'dish_name': '菊花茶',
+        'estimated_weight_g_mid': 250,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'package_serving_g': 250,
+        'package_serving_kj': 272,
+        'package_serving_kcal': 0,
+        'package_serving_protein_g': 0,
+        'package_serving_fat_g': 0,
+        'package_serving_carbs_g': 16, // 关键：含糖饮料碳水必标
+        'package_total_g': 250,
+        'package_servings_per_pack': 1,
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.10');
+      expect(result.packageServingProteinG, 0);
+      expect(result.packageServingFatG, 0);
+      expect(result.packageServingCarbsG, 16);
+      expect(result.hasPackageNutrition, isTrue);
+    });
+
+    test('v1.10: 3 个新字段缺失时为 null（v1.9 旧响应兼容）', () {
+      final json = {
+        'dish_name': '可乐',
+        'estimated_weight_g_mid': 500,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'package_serving_g': 100,
+        'package_serving_kj': 180,
+        // v1.9 旧响应无 package_serving_protein_g 等 3 字段
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.9');
+      expect(result.packageServingProteinG, isNull);
+      expect(result.packageServingFatG, isNull);
+      expect(result.packageServingCarbsG, isNull);
+    });
+
+    test('v1.10: 3 个新字段为 int 时正确转 double', () {
+      final json = {
+        'dish_name': '菊花茶',
+        'estimated_weight_g_mid': 250,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'package_serving_g': 250,
+        'package_serving_kcal': 65,
+        'package_serving_protein_g': 0, // int
+        'package_serving_fat_g': 0, // int
+        'package_serving_carbs_g': 16, // int
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.10');
+      expect(result.packageServingProteinG, 0.0);
+      expect(result.packageServingFatG, 0.0);
+      expect(result.packageServingCarbsG, 16.0);
+    });
+  });
+
+  group('v1.10 computePackageNutritionPer100g 三层优先级', () {
+    VisionRecognitionResult buildV110Result({
+      required double servingG,
+      double? servingKj,
+      double? servingKcal,
+      double? servingProteinG,
+      double? servingFatG,
+      double? servingCarbsG,
+      String ocrText = '',
+      double mid = 100,
+      double? estimatedProteinG,
+      double? estimatedFatG,
+      double? estimatedCarbsG,
+    }) {
+      return VisionRecognitionResult(
+        dishName: 'test',
+        brand: '',
+        estimatedWeightGLow: mid,
+        estimatedWeightGMid: mid,
+        estimatedWeightGHigh: mid,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.10',
+        packageServingG: servingG,
+        packageServingKj: servingKj,
+        packageServingKcal: servingKcal,
+        packageServingProteinG: servingProteinG,
+        packageServingFatG: servingFatG,
+        packageServingCarbsG: servingCarbsG,
+        packageNutritionTableOcr: ocrText,
+        estimatedProteinG: estimatedProteinG,
+        estimatedFatG: estimatedFatG,
+        estimatedCarbsG: estimatedCarbsG,
+      );
+    }
+
+    test('第 1 层：包装字段优先（菊花茶 serving_carbs_g=16 → per100=6.4）', () {
+      // 菊花茶 250ml/份，package_serving_carbs_g=16
+      // per100Carbs = 16 * 100 / 250 = 6.4
+      final result = buildV110Result(
+        servingG: 250,
+        servingKj: 272,
+        servingProteinG: 0,
+        servingFatG: 0,
+        servingCarbsG: 16,
+        ocrText: '每份250ml 能量272kJ 蛋白质0g 脂肪0g 碳水16g',
+        // 即使 estimatedCarbsG 是错的，第 1 层优先用包装字段
+        estimatedProteinG: 99,
+        estimatedFatG: 99,
+        estimatedCarbsG: 99,
+      );
+      final per100 = result.computePackageNutritionPer100g(
+        estimatedProteinG: result.estimatedProteinG,
+        estimatedFatG: result.estimatedFatG,
+        estimatedCarbsG: result.estimatedCarbsG,
+      );
+      expect(per100, isNotNull);
+      // servingKcal = 272/4.184 ≈ 65.009
+      // per100Calories = 65.009 * 100 / 250 = 26.004
+      expect(per100!.$1, closeTo(26, 0.1));
+      expect(per100.$2, 0); // 蛋白 per100 = 0*100/250 = 0
+      expect(per100.$3, 0); // 脂肪 per100 = 0*100/250 = 0
+      expect(per100.$4, closeTo(6.4, 0.001)); // 碳水 per100 = 16*100/250 = 6.4
+    });
+
+    test('第 2 层：包装字段缺失时 OCR 正则提取兜底', () {
+      // AI 漏填 package_serving_carbs_g（null），但 OCR 原文包含"碳水16g"
+      final result = buildV110Result(
+        servingG: 250,
+        servingKj: 272,
+        servingProteinG: null, // 漏填
+        servingFatG: null, // 漏填
+        servingCarbsG: null, // 漏填
+        ocrText: '每份250ml 能量272kJ 蛋白质0g 脂肪0g 碳水16g',
+        estimatedProteinG: 99, // 即使有 AI 估算，OCR 应优先
+        estimatedFatG: 99,
+        estimatedCarbsG: 99,
+      );
+      final per100 = result.computePackageNutritionPer100g(
+        estimatedProteinG: result.estimatedProteinG,
+        estimatedFatG: result.estimatedFatG,
+        estimatedCarbsG: result.estimatedCarbsG,
+      );
+      expect(per100, isNotNull);
+      expect(per100!.$2, 0); // OCR 提取 proteinG=0 → 0*100/250=0
+      expect(per100.$3, 0); // OCR 提取 fatG=0 → 0*100/250=0
+      expect(per100.$4, closeTo(6.4, 0.001)); // OCR 提取 carbsG=16 → 16*100/250=6.4
+    });
+
+    test('第 3 层：包装字段 + OCR 都缺失时 AI 估算反算', () {
+      // AI 漏填 package_serving_* + OCR 原文为空 → 用 estimatedXxxG 反算
+      final result = buildV110Result(
+        servingG: 100,
+        servingKcal: 50,
+        servingProteinG: null,
+        servingFatG: null,
+        servingCarbsG: null,
+        ocrText: '', // 无 OCR 数据
+        mid: 200,
+        estimatedProteinG: 10,
+        estimatedFatG: 5,
+        estimatedCarbsG: 30,
+      );
+      final per100 = result.computePackageNutritionPer100g(
+        estimatedProteinG: 10,
+        estimatedFatG: 5,
+        estimatedCarbsG: 30,
+      );
+      expect(per100, isNotNull);
+      expect(per100!.$1, closeTo(50, 0.001)); // 50 * 100 / 100
+      expect(per100.$2, closeTo(5, 0.001)); // 10 * 100 / 200
+      expect(per100.$3, closeTo(2.5, 0.001)); // 5 * 100 / 200
+      expect(per100.$4, closeTo(15, 0.001)); // 30 * 100 / 200
+    });
+
+    test('第 1 层优先级覆盖第 2 层（包装字段 vs OCR 数据冲突）', () {
+      // 包装字段 package_serving_carbs_g=20，OCR 提取 carbsG=16 → 用包装字段 20
+      final result = buildV110Result(
+        servingG: 100,
+        servingKcal: 50,
+        servingProteinG: 0,
+        servingFatG: 0,
+        servingCarbsG: 20, // 第 1 层
+        ocrText: '碳水16g', // 第 2 层（应被忽略）
+      );
+      final per100 = result.computePackageNutritionPer100g();
+      expect(per100, isNotNull);
+      expect(per100!.$4, 20); // 20 * 100 / 100 = 20，不是 16
+    });
+
+    test('v1.10 关键场景：菊花茶（包装字段路径）碳水非 0', () {
+      // 用户反馈"菊花茶碳水缺失"的根因修复验证
+      final result = buildV110Result(
+        servingG: 250,
+        servingKj: 272,
+        servingProteinG: 0,
+        servingFatG: 0,
+        servingCarbsG: 16,
+        ocrText: '每份250ml 能量272kJ 蛋白质0g 脂肪0g 碳水16g',
+        mid: 250,
+      );
+      expect(result.hasPackageNutrition, isTrue);
+      final per100 = result.computePackageNutritionPer100g();
+      expect(per100, isNotNull);
+      // 关键断言：碳水 per100g 不为 0（v1.9 bug 是这里返回 0）
+      expect(per100!.$4, closeTo(6.4, 0.001));
+      expect(per100.$4 > 0, isTrue);
+    });
+
+    test('v1.10 关键场景：AI 漏填包装字段时 OCR 兜底碳水非 0', () {
+      // AI 漏填 package_serving_carbs_g，但 OCR 包含"碳水16g"
+      // 验证 OCR 兜底路径不会让碳水变 0
+      final result = buildV110Result(
+        servingG: 250,
+        servingKj: 272,
+        servingProteinG: null,
+        servingFatG: null,
+        servingCarbsG: null, // AI 漏填
+        ocrText: '每份250ml 能量272kJ 蛋白质0g 脂肪0g 碳水16g',
+        mid: 250,
+      );
+      final per100 = result.computePackageNutritionPer100g();
+      expect(per100, isNotNull);
+      expect(per100!.$4, closeTo(6.4, 0.001));
+      expect(per100.$4 > 0, isTrue);
+    });
+
+    test('v1.10 边界：3 字段为 0 时（含糖饮料蛋白/脂肪常为 0）仍走第 1 层', () {
+      // 0 >= 0 满足条件，第 1 层命中，per100=0
+      final result = buildV110Result(
+        servingG: 250,
+        servingKcal: 65,
+        servingProteinG: 0,
+        servingFatG: 0,
+        servingCarbsG: 16,
+      );
+      final per100 = result.computePackageNutritionPer100g();
+      expect(per100, isNotNull);
+      expect(per100!.$2, 0); // 0*100/250=0（第 1 层命中，不是兜底）
+      expect(per100.$3, 0);
+      expect(per100.$4, closeTo(6.4, 0.001));
+    });
+  });
+
+  group('v1.10 示例 8b 菊花茶端到端解析', () {
+    test('从 prompts.dart 示例 8b 的 JSON 字段构造结果（关键参数齐全）', () {
+      // 模拟 AI 返回示例 8b 的 JSON
+      final json = {
+        'reasoning': '盒装菊花茶饮料',
+        'dish_name': '菊花茶',
+        'brand': '',
+        'quantity': 1,
+        'unit': '盒',
+        'per_unit_g': 250,
+        'estimated_weight_g_low': 245,
+        'estimated_weight_g_mid': 250,
+        'estimated_weight_g_high': 255,
+        'weight_source': 'package_label',
+        'food_category': 'tea',
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'estimated_calories': 65,
+        'estimated_protein_g': 0,
+        'estimated_fat_g': 0,
+        'estimated_carbs_g': 16,
+        'package_nutrition_table_ocr': '每份250ml 能量272kJ 蛋白质0g 脂肪0g 碳水16g',
+        'package_serving_g': 250,
+        'package_serving_kj': 272,
+        'package_serving_kcal': 0,
+        'package_serving_protein_g': 0,
+        'package_serving_fat_g': 0,
+        'package_serving_carbs_g': 16,
+        'package_total_g': 250,
+        'package_servings_per_pack': 1,
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.10');
+
+      // 关键字段全部解析正确
+      expect(result.dishName, '菊花茶');
+      expect(result.foodCategory, 'tea');
+      expect(result.weightSource, 'package_label');
+      expect(result.estimatedWeightGMid, 250);
+      expect(result.packageServingG, 250);
+      expect(result.packageServingKj, 272);
+      expect(result.packageServingCarbsG, 16);
+
+      // 包装换算：per100g 碳水必须非 0（修复"菊花茶碳水缺失"的关键断言）
+      expect(result.hasPackageNutrition, isTrue);
+      final per100 = result.computePackageNutritionPer100g(
+        estimatedProteinG: result.estimatedProteinG,
+        estimatedFatG: result.estimatedFatG,
+        estimatedCarbsG: result.estimatedCarbsG,
+      );
+      expect(per100, isNotNull);
+      expect(per100!.$1, closeTo(26, 0.1)); // 65*100/250=26
+      expect(per100.$4, closeTo(6.4, 0.001)); // 16*100/250=6.4
+      expect(per100.$4 > 0, isTrue); // 关键：碳水不为 0
+    });
+  });
 }

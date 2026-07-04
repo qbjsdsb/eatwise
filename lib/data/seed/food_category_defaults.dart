@@ -24,6 +24,9 @@ class FoodCategoryDefaults {
   /// - alcohol 烈酒（白酒）：298 kcal（酒精 40% × 7 = 280，+ 微量碳水）
   /// - carbonated 碳酸饮料：43 kcal（可乐 42-45 区间均值）
   /// - juice 果汁：46 kcal（橙汁 47/苹果汁 46 均值）
+  /// - tea 含糖茶饮：43 kcal（菊花茶/冰红茶/柠檬茶等加糖茶饮，糖含量约 10-11g/100ml）
+  /// - protein_drink 蛋白饮料：60 kcal（豆奶/杏仁奶/蛋白饮料均值，蛋白 3g/脂肪 1.5g/碳水 5g）
+  /// - energy_drink 功能饮料：45 kcal（红牛/魔爪等，糖含量约 11g/100ml）
   /// - milk 纯牛奶：61 kcal（全脂牛奶 GB 28050）
   /// - yogurt 酸奶：72 kcal（原味酸奶均值，加糖酸奶更高但按原味兜底）
   /// - cream 奶油：345 kcal
@@ -39,6 +42,9 @@ class FoodCategoryDefaults {
     'alcohol': (298, 0, 0, 0),
     'carbonated': (43, 0, 0, 10.6),
     'juice': (46, 0.5, 0.1, 11.2),
+    'tea': (43, 0.1, 0, 10.6), // v1.10：含糖茶饮（菊花茶/冰红茶等），近似 carbonated
+    'protein_drink': (60, 3, 1.5, 5), // v1.10：豆奶/杏仁奶/蛋白饮料
+    'energy_drink': (45, 0, 0, 11), // v1.10：红牛/魔爪等功能饮料
     'milk': (61, 3.2, 3.6, 4.8),
     'yogurt': (72, 2.5, 2.7, 9.3),
     'cream': (345, 2.2, 36, 2.9),

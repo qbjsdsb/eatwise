@@ -30,13 +30,23 @@ class RecognitionPostProcessor {
     // 1. 密度换算（建议 3）
     var result = applyDensityConversion(original);
 
-    // 2. 校验 + 修正（批次 1 + 建议 7）
+    // 2. 校验 + 修正（批次 1 + 建议 7 + v1.10 宏量反推）
     final validation = RecognitionValidator.validate(result);
     if (validation.correctedCalories != null) {
       result = result.copyWith(estimatedCalories: validation.correctedCalories);
     }
     if (validation.correctedComponents != null) {
       result = result.copyWith(foodComponents: validation.correctedComponents);
+    }
+    // v1.10：宏量反推修正（cal>0 但三宏量全 0 时按品类默认比例反推）
+    if (validation.correctedProteinG != null ||
+        validation.correctedFatG != null ||
+        validation.correctedCarbsG != null) {
+      result = result.copyWith(
+        estimatedProteinG: validation.correctedProteinG,
+        estimatedFatG: validation.correctedFatG,
+        estimatedCarbsG: validation.correctedCarbsG,
+      );
     }
 
     // 3. additionalDishes 修正（calories + components）
@@ -76,6 +86,8 @@ class RecognitionPostProcessor {
 
     // 重建带换算后的附加菜
     // v1.9：透传 reasoning + 6 个 package_* 字段（OCR 数据不参与换算，原样保留）
+    // v1.10：透传 3 个新字段 packageServingProteinG/FatG/CarbsG（含糖饮料碳水必标，
+    //   丢失会导致 computePackageNutritionPer100g 第 1 层优先级失效，回退 OCR 正则）
     return VisionRecognitionResult(
       dishName: convertedMain.dishName,
       brand: convertedMain.brand,
@@ -102,6 +114,9 @@ class RecognitionPostProcessor {
       packageServingG: convertedMain.packageServingG,
       packageServingKj: convertedMain.packageServingKj,
       packageServingKcal: convertedMain.packageServingKcal,
+      packageServingProteinG: convertedMain.packageServingProteinG,
+      packageServingFatG: convertedMain.packageServingFatG,
+      packageServingCarbsG: convertedMain.packageServingCarbsG,
       packageTotalG: convertedMain.packageTotalG,
       packageServingsPerPack: convertedMain.packageServingsPerPack,
     );
@@ -171,12 +186,24 @@ class RecognitionPostProcessor {
         modified = modified.copyWith(foodComponents: v.correctedComponents);
         dishChanged = true;
       }
+      // v1.10：宏量反推修正（cal>0 但三宏量全 0 时按品类默认比例反推）
+      if (v.correctedProteinG != null ||
+          v.correctedFatG != null ||
+          v.correctedCarbsG != null) {
+        modified = modified.copyWith(
+          estimatedProteinG: v.correctedProteinG,
+          estimatedFatG: v.correctedFatG,
+          estimatedCarbsG: v.correctedCarbsG,
+        );
+        dishChanged = true;
+      }
       if (dishChanged) changed = true;
       corrected.add(modified);
     }
     if (!changed) return result;
     // 重建 result 带修正后的 additionalDishes
     // v1.9：透传 reasoning + 6 个 package_* 字段（主菜 OCR 数据不参与附加菜修正，原样保留）
+    // v1.10：透传 3 个新字段 packageServingProteinG/FatG/CarbsG（与 applyDensityConversion 一致）
     return VisionRecognitionResult(
       dishName: result.dishName,
       brand: result.brand,
@@ -203,6 +230,9 @@ class RecognitionPostProcessor {
       packageServingG: result.packageServingG,
       packageServingKj: result.packageServingKj,
       packageServingKcal: result.packageServingKcal,
+      packageServingProteinG: result.packageServingProteinG,
+      packageServingFatG: result.packageServingFatG,
+      packageServingCarbsG: result.packageServingCarbsG,
       packageTotalG: result.packageTotalG,
       packageServingsPerPack: result.packageServingsPerPack,
     );

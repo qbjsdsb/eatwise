@@ -605,6 +605,8 @@ class _CalibrationPageState extends State<CalibrationPage> {
         final totalG = _componentServings.values.fold<double>(0, (s, g) => s + g);
         // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），按包装换算（精确值），
         // 跳过组分累加。包装 per100g × totalG / 100 = 整菜热量，与份量一致
+        // v1.10：包装换算后宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ 回退组分累加，
+        //   避免复合菜路径宏量显示 0（与 recognize_page / multi_dish_page 哨兵分支一致）
         final packagePer100 =
             widget.recognitionResult.hasPackageNutrition
                 ? widget.recognitionResult.computePackageNutritionPer100g(
@@ -614,7 +616,12 @@ class _CalibrationPageState extends State<CalibrationPage> {
                     estimatedCarbsG: widget.recognitionResult.estimatedCarbsG,
                   )
                 : null;
-        if (packagePer100 != null) {
+        // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
+        final packageMacrosAllZero = packagePer100 != null &&
+            packagePer100.$2 == 0 &&
+            packagePer100.$3 == 0 &&
+            packagePer100.$4 == 0;
+        if (packagePer100 != null && !packageMacrosAllZero) {
           await widget.onConfirm(
             totalG,
             packagePer100.$1 * totalG / 100,
@@ -624,7 +631,7 @@ class _CalibrationPageState extends State<CalibrationPage> {
             componentsSnapshot: _buildSnapshotJson(),
           );
         } else {
-          // 无包装数据 → 按调整后组分份量重算（原逻辑）
+          // 无包装数据 / 包装换算宏量全 0 → 按调整后组分份量重算（原逻辑）
           final composite = widget.compositeNutrition!;
           double cal = 0, protein = 0, fat = 0, carbs = 0;
           for (var i = 0; i < composite.componentHits.length; i++) {

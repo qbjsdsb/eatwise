@@ -6,10 +6,13 @@
 // 2. 营养素自洽性（4*protein + 9*fat + 4*carb ≈ calories，误差 ±10%）
 //    —— 不自洽返回 correctedCalories，controller 自动修正（宏量营养素相对可信，calories 易瞎算）
 //    —— 参考：Atwater 系数（蛋白质 4 kcal/g、脂肪 9 kcal/g、碳水 4 kcal/g）
+// 3. v1.10：宏量营养素反推修正（cal>0 但三宏量全 0 → 按品类默认比例反推）
+//    —— 解决"盒装菊花茶有 cal 但碳水=0"问题：含糖饮料碳水必标，AI 漏填时按品类反推
 //
 // 设计依据：营养素自洽校验是食品科学的基础约束，AI 瞎算 calories 时
 // 用宏量营养素反推比"重试赌运气"更稳定（重试可能再次瞎算）。
 import '../../ai/vision_provider.dart';
+import '../../data/seed/food_category_defaults.dart';
 
 class RecognitionValidator {
   RecognitionValidator._();
@@ -59,6 +62,11 @@ class RecognitionValidator {
     // 5. 营养素自洽性校验（仅当 AI 提供了 estimated_calories 时检查）
     //    旧 prompt（v1.0-v1.3）无此字段 → 跳过，向后兼容
     double? correctedCalories;
+    // v1.10：宏量营养素反推修正（cal>0 但三宏量全 0 → 按品类默认比例反推）
+    // 解决"盒装菊花茶有 cal 但碳水=0"问题：含糖饮料碳水必标，AI 漏填时按品类反推
+    double? correctedProteinG;
+    double? correctedFatG;
+    double? correctedCarbsG;
     final cal = result.estimatedCalories;
     if (cal != null) {
       final protein = result.estimatedProteinG ?? 0;
@@ -82,6 +90,26 @@ class RecognitionValidator {
       }
       // expected == 0 且 cal > 0：可能是酒精饮料（7 kcal/g 不在 Atwater 系数内）、
       // 糖醇、膳食纤维等，无法用宏量校验，保留 AI 的 calories 不修正
+
+      // v1.10：cal>0 但三宏量全 0 时，按品类默认比例反推宏量
+      // 典型场景：含糖饮料（菊花茶/冰红茶）AI 漏填 estimated_carbs_g
+      // 反推规则：按品类默认 (cal, p, f, c) 比例缩放到当前 cal
+      // 例：tea 默认 (43, 0.1, 0, 10.6)，AI cal=43 → p=0.1, f=0, c=10.6
+      //     juice 默认 (46, 0.5, 0.1, 11.2)，AI cal=92（2 倍） → p=1.0, f=0.2, c=22.4
+      if (cal > 0 && protein == 0 && fat == 0 && carbs == 0) {
+        final def = FoodCategoryDefaults.defaults[result.foodCategory];
+        if (def != null && def.$1 > 0) {
+          final scale = cal / def.$1;
+          correctedProteinG = def.$2 * scale;
+          correctedFatG = def.$3 * scale;
+          correctedCarbsG = def.$4 * scale;
+          reasons.add('宏量营养素全 0 但 calories=$cal，按品类 '
+              '${result.foodCategory} 默认比例反推: '
+              'p=${correctedProteinG!.toStringAsFixed(1)}, '
+              'f=${correctedFatG!.toStringAsFixed(1)}, '
+              'c=${correctedCarbsG!.toStringAsFixed(1)}');
+        }
+      }
     }
 
     // 建议 7：复合菜组分份量交叉验证
@@ -112,6 +140,9 @@ class RecognitionValidator {
       needsRetry: needsRetry,
       correctedCalories: correctedCalories,
       correctedComponents: correctedComponents,
+      correctedProteinG: correctedProteinG,
+      correctedFatG: correctedFatG,
+      correctedCarbsG: correctedCarbsG,
       reasons: reasons,
     );
   }
@@ -133,6 +164,12 @@ class RecognitionValidationResult {
   /// controller 用此值覆盖 VisionRecognitionResult.foodComponents
   final List<FoodComponent>? correctedComponents;
 
+  /// v1.10：宏量营养素反推修正（cal>0 但三宏量全 0 时按品类默认比例反推）
+  /// controller 用此值覆盖 VisionRecognitionResult.estimatedProteinG/FatG/CarbsG
+  final double? correctedProteinG;
+  final double? correctedFatG;
+  final double? correctedCarbsG;
+
   /// 校验失败原因（用于 Sentry 上报 + 调试日志）
   final List<String> reasons;
 
@@ -141,6 +178,9 @@ class RecognitionValidationResult {
     required this.needsRetry,
     required this.correctedCalories,
     required this.correctedComponents,
+    this.correctedProteinG,
+    this.correctedFatG,
+    this.correctedCarbsG,
     required this.reasons,
   });
 }

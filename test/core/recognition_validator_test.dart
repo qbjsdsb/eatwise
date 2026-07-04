@@ -307,4 +307,190 @@ void main() {
       expect(v.correctedComponents![1].name, '番茄');
     });
   });
+
+  // v1.10：宏量营养素反推修正（cal>0 但三宏量全 0 → 按品类默认比例反推）
+  // 解决"盒装菊花茶有 cal 但碳水=0"问题
+  group('v1.10 宏量反推修正（cal>0 三宏量全 0）', () {
+    VisionRecognitionResult macroAllZeroResult({
+      required String foodCategory,
+      required double cal,
+      double mid = 250,
+    }) {
+      return VisionRecognitionResult(
+        dishName: 'test',
+        brand: '',
+        estimatedWeightGLow: mid,
+        estimatedWeightGMid: mid,
+        estimatedWeightGHigh: mid,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.10',
+        foodCategory: foodCategory,
+        estimatedCalories: cal,
+        estimatedProteinG: 0,
+        estimatedFatG: 0,
+        estimatedCarbsG: 0,
+      );
+    }
+
+    test('tea 品类：cal=43 三宏量全 0 → 按比例反推', () {
+      // tea 默认 (43, 0.1, 0, 10.6)
+      // scale = 43/43 = 1
+      // 反推：p=0.1*1=0.1, f=0*1=0, c=10.6*1=10.6
+      final v = RecognitionValidator.validate(macroAllZeroResult(
+        foodCategory: 'tea',
+        cal: 43,
+      ));
+      expect(v.correctedProteinG, closeTo(0.1, 0.001));
+      expect(v.correctedFatG, 0);
+      expect(v.correctedCarbsG, closeTo(10.6, 0.001));
+      expect(v.reasons.any((r) => r.contains('按品类') && r.contains('tea')), isTrue);
+    });
+
+    test('tea 品类：cal=86（2 倍）→ 反推按 2 倍缩放', () {
+      // scale = 86/43 = 2
+      // 反推：p=0.1*2=0.2, f=0*2=0, c=10.6*2=21.2
+      final v = RecognitionValidator.validate(macroAllZeroResult(
+        foodCategory: 'tea',
+        cal: 86,
+      ));
+      expect(v.correctedProteinG, closeTo(0.2, 0.001));
+      expect(v.correctedFatG, 0);
+      expect(v.correctedCarbsG, closeTo(21.2, 0.001));
+    });
+
+    test('protein_drink 品类：cal=60 → 反推按默认比例', () {
+      // protein_drink 默认 (60, 3, 1.5, 5)
+      // scale = 60/60 = 1
+      final v = RecognitionValidator.validate(macroAllZeroResult(
+        foodCategory: 'protein_drink',
+        cal: 60,
+      ));
+      expect(v.correctedProteinG, closeTo(3, 0.001));
+      expect(v.correctedFatG, closeTo(1.5, 0.001));
+      expect(v.correctedCarbsG, closeTo(5, 0.001));
+    });
+
+    test('energy_drink 品类：cal=45 → 反推按默认比例', () {
+      // energy_drink 默认 (45, 0, 0, 11)
+      final v = RecognitionValidator.validate(macroAllZeroResult(
+        foodCategory: 'energy_drink',
+        cal: 45,
+      ));
+      expect(v.correctedProteinG, 0);
+      expect(v.correctedFatG, 0);
+      expect(v.correctedCarbsG, closeTo(11, 0.001));
+    });
+
+    test('carbonated 品类：cal=43 → 反推 carbs=10.6', () {
+      // 验证现有品类也走反推路径（v1.10 修复覆盖所有有默认值的品类）
+      final v = RecognitionValidator.validate(macroAllZeroResult(
+        foodCategory: 'carbonated',
+        cal: 43,
+      ));
+      expect(v.correctedProteinG, 0); // carbonated 默认蛋白 0
+      expect(v.correctedFatG, 0);
+      expect(v.correctedCarbsG, closeTo(10.6, 0.001));
+    });
+
+    test('solid 品类（无默认值）：不反推，correctedXxxG = null', () {
+      // solid 不在 defaults 表中，无法按品类反推
+      final v = RecognitionValidator.validate(macroAllZeroResult(
+        foodCategory: 'solid',
+        cal: 200,
+      ));
+      expect(v.correctedProteinG, isNull);
+      expect(v.correctedFatG, isNull);
+      expect(v.correctedCarbsG, isNull);
+      // 也不应该在 reasons 中提到"按品类反推"
+      expect(v.reasons.any((r) => r.contains('按品类')), isFalse);
+    });
+
+    test('water 品类（默认 cal=0）：不反推（def.\$1 > 0 条件不满足）', () {
+      // water 默认 (0, 0, 0, 0)，def.$1=0，跳过反推
+      final v = RecognitionValidator.validate(macroAllZeroResult(
+        foodCategory: 'water',
+        cal: 50, // 异常但走不到反推
+      ));
+      expect(v.correctedProteinG, isNull);
+      expect(v.correctedFatG, isNull);
+      expect(v.correctedCarbsG, isNull);
+    });
+
+    test('cal=0 三宏量全 0：不反推（cal > 0 条件不满足）', () {
+      final v = RecognitionValidator.validate(macroAllZeroResult(
+        foodCategory: 'tea',
+        cal: 0,
+      ));
+      expect(v.correctedProteinG, isNull);
+      expect(v.correctedFatG, isNull);
+      expect(v.correctedCarbsG, isNull);
+    });
+
+    test('cal>0 但有部分宏量非 0：不反推（需全部为 0）', () {
+      // 蛋白=5 但脂肪/碳水=0，不触发反推（已有部分宏量数据）
+      final result = VisionRecognitionResult(
+        dishName: 'test',
+        brand: '',
+        estimatedWeightGLow: 250,
+        estimatedWeightGMid: 250,
+        estimatedWeightGHigh: 250,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.10',
+        foodCategory: 'tea',
+        estimatedCalories: 43,
+        estimatedProteinG: 5, // 非 0
+        estimatedFatG: 0,
+        estimatedCarbsG: 0,
+      );
+      final v = RecognitionValidator.validate(result);
+      expect(v.correctedProteinG, isNull);
+      expect(v.correctedFatG, isNull);
+      expect(v.correctedCarbsG, isNull);
+    });
+
+    test('cal=null（旧 prompt 兼容）：不反推', () {
+      final result = VisionRecognitionResult(
+        dishName: 'test',
+        brand: '',
+        estimatedWeightGLow: 250,
+        estimatedWeightGMid: 250,
+        estimatedWeightGHigh: 250,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.0',
+        foodCategory: 'tea',
+        estimatedCalories: null, // 旧 prompt 无此字段
+        estimatedProteinG: 0,
+        estimatedFatG: 0,
+        estimatedCarbsG: 0,
+      );
+      final v = RecognitionValidator.validate(result);
+      expect(v.correctedProteinG, isNull);
+      expect(v.correctedFatG, isNull);
+      expect(v.correctedCarbsG, isNull);
+    });
+
+    test('菊花茶关键场景：cal=65 三宏量全 0 → 反推 carbs', () {
+      // 模拟 AI 漏填 estimated_carbs_g 的菊花茶场景
+      // tea 默认 (43, 0.1, 0, 10.6)
+      // scale = 65/43 ≈ 1.512
+      // 反推：p=0.1*1.512≈0.151, f=0, c=10.6*1.512≈16.03
+      final v = RecognitionValidator.validate(macroAllZeroResult(
+        foodCategory: 'tea',
+        cal: 65,
+      ));
+      expect(v.correctedProteinG, closeTo(0.151, 0.01));
+      expect(v.correctedFatG, 0);
+      expect(v.correctedCarbsG, closeTo(16.03, 0.05));
+      expect(v.correctedCarbsG! > 0, isTrue); // 关键：碳水不为 0
+    });
+  });
 }

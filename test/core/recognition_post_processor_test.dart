@@ -530,4 +530,191 @@ void main() {
       expect(result.hasPackageNutrition, isFalse);
     });
   });
+
+  // v1.10：3 个新字段 packageServingProteinG/FatG/CarbsG 透传完整性
+  // 修复 bug：applyDensityConversion + correctAdditionalDishes 两处重建遗漏
+  group('v1.10 package_serving_protein_g/fat_g/carbs_g 透传', () {
+    test('密度换算路径：3 个新字段在重建后保留（500ml 食用油）', () {
+      // 触发密度换算：液体 + package_label + density≠1.0（油密度 0.92）
+      final original = VisionRecognitionResult(
+        dishName: '食用油',
+        brand: '金龙鱼',
+        estimatedWeightGLow: 485,
+        estimatedWeightGMid: 500,
+        estimatedWeightGHigh: 515,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.10',
+        quantity: 1,
+        unit: '瓶',
+        perUnitG: 500,
+        weightSource: 'package_label',
+        foodCategory: 'oil',
+        estimatedCalories: 4094,
+        estimatedProteinG: 0,
+        estimatedFatG: 460,
+        estimatedCarbsG: 0,
+        reasoning: '500ml 食用油，密度 0.92 真实约 460g',
+        packageNutritionTableOcr: '每100g 889kcal 蛋白质0g 脂肪99.9g 碳水0g',
+        packageServingG: 100,
+        packageServingKj: 3720,
+        packageServingKcal: 889,
+        packageServingProteinG: 0,
+        packageServingFatG: 99.9,
+        packageServingCarbsG: 0,
+        packageTotalG: 500,
+        packageServingsPerPack: 5,
+      );
+      final result = RecognitionPostProcessor.process(original);
+      // 密度换算后 mid 变 460
+      expect(result.estimatedWeightGMid, closeTo(460, 0.1));
+      // v1.10 新增 3 字段必须保留（不能因重建丢失）
+      expect(result.packageServingProteinG, 0);
+      expect(result.packageServingFatG, 99.9);
+      expect(result.packageServingCarbsG, 0);
+      // 旧 package_* 字段也保留
+      expect(result.packageNutritionTableOcr, '每100g 889kcal 蛋白质0g 脂肪99.9g 碳水0g');
+      expect(result.packageServingG, 100);
+      expect(result.packageServingKj, 3720);
+      expect(result.packageServingKcal, 889);
+      expect(result.packageTotalG, 500);
+      expect(result.packageServingsPerPack, 5);
+    });
+
+    test('additionalDishes 修正路径：3 个新字段在重建后保留', () {
+      // 主菜 + 附加菜，附加菜 calories 不自洽触发 correctAdditionalDishes 重建
+      // 主菜带 v1.10 新字段，验证重建后保留
+      final original = VisionRecognitionResult(
+        dishName: '米饭',
+        estimatedWeightGLow: 180,
+        estimatedWeightGMid: 200,
+        estimatedWeightGHigh: 220,
+        foodComponents: const [],
+        cookingMethod: 'steam',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.10',
+        reasoning: '一碗米饭约 200g',
+        packageNutritionTableOcr: '每100g 116kcal 蛋白质2.6g 脂肪0.3g 碳水25.9g',
+        packageServingG: 100,
+        packageServingKj: 485,
+        packageServingKcal: 116,
+        packageServingProteinG: 2.6,
+        packageServingFatG: 0.3,
+        packageServingCarbsG: 25.9,
+        packageTotalG: 200,
+        packageServingsPerPack: 2,
+        additionalDishes: [
+          VisionRecognitionResult(
+            dishName: '宫保鸡丁',
+            estimatedWeightGLow: 240,
+            estimatedWeightGMid: 250,
+            estimatedWeightGHigh: 260,
+            foodComponents: const [],
+            cookingMethod: 'stir-fry',
+            isSingleItem: false,
+            confidence: 0.85,
+            promptVersion: 'v1.10',
+            estimatedCalories: 9999, // 严重不自洽触发修正
+            estimatedProteinG: 20,
+            estimatedFatG: 15,
+            estimatedCarbsG: 10,
+          ),
+        ],
+      );
+      final result = RecognitionPostProcessor.process(original);
+      // 主菜 v1.10 新字段必须保留（correctAdditionalDishes 重建主菜）
+      expect(result.dishName, '米饭');
+      expect(result.reasoning, '一碗米饭约 200g');
+      expect(result.packageServingProteinG, 2.6);
+      expect(result.packageServingFatG, 0.3);
+      expect(result.packageServingCarbsG, 25.9);
+      // 旧 package_* 字段也保留
+      expect(result.packageNutritionTableOcr, '每100g 116kcal 蛋白质2.6g 脂肪0.3g 碳水25.9g');
+      expect(result.packageServingG, 100);
+      expect(result.packageServingKj, 485);
+      expect(result.packageServingKcal, 116);
+      expect(result.packageTotalG, 200);
+      expect(result.packageServingsPerPack, 2);
+    });
+
+    test('菊花茶端到端：3 字段 + 密度换算 + additionalDishes 全保留', () {
+      // 菊花茶 + 第二杯不同饮料（附加菜），主菜触发密度换算（tea 密度=1.0 不换算）
+      // 但附加菜 calories 不自洽触发 correctAdditionalDishes 重建
+      // 验证：主菜 v1.10 新字段在两次重建链路后仍保留
+      final original = VisionRecognitionResult(
+        dishName: '菊花茶',
+        brand: '',
+        estimatedWeightGLow: 245,
+        estimatedWeightGMid: 250,
+        estimatedWeightGHigh: 255,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.10',
+        quantity: 1,
+        unit: '盒',
+        perUnitG: 250,
+        weightSource: 'package_label',
+        foodCategory: 'tea', // 密度=1.0，不换算
+        estimatedCalories: 65,
+        estimatedProteinG: 0,
+        estimatedFatG: 0,
+        estimatedCarbsG: 16,
+        reasoning: '盒装菊花茶饮料，碳水必标',
+        packageNutritionTableOcr: '每份250ml 能量272kJ 蛋白质0g 脂肪0g 碳水16g',
+        packageServingG: 250,
+        packageServingKj: 272,
+        packageServingKcal: 0,
+        packageServingProteinG: 0,
+        packageServingFatG: 0,
+        packageServingCarbsG: 16,
+        packageTotalG: 250,
+        packageServingsPerPack: 1,
+        additionalDishes: [
+          VisionRecognitionResult(
+            dishName: '可乐',
+            estimatedWeightGLow: 490,
+            estimatedWeightGMid: 500,
+            estimatedWeightGHigh: 510,
+            foodComponents: const [],
+            cookingMethod: 'raw',
+            isSingleItem: true,
+            confidence: 0.85,
+            promptVersion: 'v1.10',
+            quantity: 1,
+            unit: '瓶',
+            perUnitG: 500,
+            weightSource: 'package_label',
+            foodCategory: 'carbonated',
+            estimatedCalories: 9999, // 严重不自洽触发 correctAdditionalDishes 重建
+            estimatedProteinG: 0,
+            estimatedFatG: 0,
+            estimatedCarbsG: 105,
+          ),
+        ],
+      );
+      final result = RecognitionPostProcessor.process(original);
+      // 主菜 v1.10 新字段必须保留（correctAdditionalDishes 重建主菜）
+      expect(result.dishName, '菊花茶');
+      expect(result.packageServingProteinG, 0);
+      expect(result.packageServingFatG, 0);
+      expect(result.packageServingCarbsG, 16); // 关键：碳水字段保留
+      expect(result.packageServingG, 250);
+      expect(result.packageServingKj, 272);
+      // 关键场景：包装换算 per100g 碳水非 0（v1.10 修复目标）
+      expect(result.hasPackageNutrition, isTrue);
+      final per100 = result.computePackageNutritionPer100g(
+        estimatedProteinG: result.estimatedProteinG,
+        estimatedFatG: result.estimatedFatG,
+        estimatedCarbsG: result.estimatedCarbsG,
+      );
+      expect(per100, isNotNull);
+      expect(per100!.$4, closeTo(6.4, 0.001)); // 16*100/250=6.4
+      expect(per100.$4 > 0, isTrue); // 碳水不为 0
+    });
+  });
 }

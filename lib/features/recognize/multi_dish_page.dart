@@ -328,13 +328,15 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
     final ratio = mid > 0 ? serving / mid : 1.0;
     // v1.9：有包装营养表数据时，按包装 per100g 换算（精确值），跳过库值/AI 估算
     // 包装换算热量 = per100g × serving / 100（直接用份量，与单品 ratio 缩放结果一致）
+    // v1.10：包装换算宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ 不返回 0，继续走下游路径
     if (dish.hasPackageNutrition) {
       final per100 = dish.computePackageNutritionPer100g(
         estimatedProteinG: dish.estimatedProteinG,
         estimatedFatG: dish.estimatedFatG,
         estimatedCarbsG: dish.estimatedCarbsG,
       );
-      if (per100 != null) {
+      // v1.10：仅当宏量非全 0 才用包装换算结果（含糖饮料兜底走下游 n.* ratio）
+      if (per100 != null && (per100.$2 > 0 || per100.$3 > 0 || per100.$4 > 0)) {
         return (
           per100.$1 * serving / 100,
           per100.$2 * serving / 100,
@@ -419,6 +421,7 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
           // v1.9：包装食品 OCR 优先路径——有包装营养表数据时按包装换算，
           // 跳过品类校准（包装数据是精确值，不需要校准）
           // 参考 prompts.dart v1.9 规则 10 + 示例 7（珍宝珠酸条）
+          // v1.10：包装换算后宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ 回退品类校准
           final packagePer100 = dish.hasPackageNutrition
               ? dish.computePackageNutritionPer100g(
                   // v1.9：哨兵分支 n.foodItemId==0 来自 _aiFallbackNutrition，
@@ -428,21 +431,27 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
                   estimatedCarbsG: dish.estimatedCarbsG,
                 )
               : null;
+          // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
+          final packageMacrosAllZero = packagePer100 != null &&
+              packagePer100.$2 == 0 &&
+              packagePer100.$3 == 0 &&
+              packagePer100.$4 == 0;
           final (caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g) =
-              packagePer100 ??
-                  (() {
-                    // 无包装数据 → 走原 AI 估算 + 品类校准路径
-                    // P0：品类默认值校准——AI 估算的 per100g 偏离品类默认值 2 倍以上
-                    // 用默认值替代（防 AI 离谱估算，如啤酒估成 200 kcal/100g 实际 43）
-                    final rawCalPer100 = n.calories * per100;
-                    return FoodCategoryDefaults.calibrate(
-                      aiCaloriesPer100g: rawCalPer100,
-                      aiProteinPer100g: n.proteinG * per100,
-                      aiFatPer100g: n.fatG * per100,
-                      aiCarbsPer100g: n.carbsG * per100,
-                      category: dish.foodCategory,
-                    );
-                  })();
+              (packagePer100 != null && !packageMacrosAllZero)
+                  ? packagePer100
+                  : (() {
+                      // 无包装数据 / 包装换算宏量全 0 → 走 AI 估算 + 品类校准路径
+                      // P0：品类默认值校准——AI 估算的 per100g 偏离品类默认值 2 倍以上
+                      // 用默认值替代（防 AI 离谱估算，如啤酒估成 200 kcal/100g 实际 43）
+                      final rawCalPer100 = n.calories * per100;
+                      return FoodCategoryDefaults.calibrate(
+                        aiCaloriesPer100g: rawCalPer100,
+                        aiProteinPer100g: n.proteinG * per100,
+                        aiFatPer100g: n.fatG * per100,
+                        aiCarbsPer100g: n.carbsG * per100,
+                        category: dish.foodCategory,
+                      );
+                    })();
           if (!dish.hasPackageNutrition) {
             final rawCalPer100 = n.calories * per100;
             if (caloriesPer100g != rawCalPer100) {

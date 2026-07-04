@@ -153,6 +153,8 @@ class OfflineQueueController {
               // 跳过品类校准（包装数据是精确值，不需要校准）
               // 与 recognize_page 哨兵分支 / multi_dish_page resolveSingleFoodItemId 一致
               // 参考 prompts.dart v1.9 规则 10 + 示例 7（珍宝珠酸条）
+              // v1.10：包装换算后宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ 回退品类校准，
+              //   避免含糖饮料碳水显示 0（computePackageNutritionPer100g 三层兜底仍 0 时）
               final mid = result.estimatedWeightGMid;
               final per100 = mid > 0 ? 100.0 / mid : 0.0;
               final packagePer100 = result.hasPackageNutrition
@@ -162,22 +164,28 @@ class OfflineQueueController {
                       estimatedCarbsG: result.estimatedCarbsG,
                     )
                   : null;
+              // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
+              final packageMacrosAllZero = packagePer100 != null &&
+                  packagePer100.$2 == 0 &&
+                  packagePer100.$3 == 0 &&
+                  packagePer100.$4 == 0;
               final (caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g) =
-                  packagePer100 ??
-                      (() {
-                        // 无包装数据 → 走原 AI 估算 + 品类校准路径
-                        // P0：品类默认值校准——AI 估算的 per100g 偏离品类默认值 2 倍以上
-                        // 用默认值替代（防 AI 离谱估算，如啤酒估成 200 kcal/100g 实际 43）
-                        return FoodCategoryDefaults.calibrate(
-                          aiCaloriesPer100g: cal * per100,
-                          aiProteinPer100g:
-                              (result.estimatedProteinG ?? 0) * per100,
-                          aiFatPer100g: (result.estimatedFatG ?? 0) * per100,
-                          aiCarbsPer100g:
-                              (result.estimatedCarbsG ?? 0) * per100,
-                          category: result.foodCategory,
-                        );
-                      })();
+                  (packagePer100 != null && !packageMacrosAllZero)
+                      ? packagePer100
+                      : (() {
+                          // 无包装数据 / 包装换算宏量全 0 → 走 AI 估算 + 品类校准路径
+                          // P0：品类默认值校准——AI 估算的 per100g 偏离品类默认值 2 倍以上
+                          // 用默认值替代（防 AI 离谱估算，如啤酒估成 200 kcal/100g 实际 43）
+                          return FoodCategoryDefaults.calibrate(
+                            aiCaloriesPer100g: cal * per100,
+                            aiProteinPer100g:
+                                (result.estimatedProteinG ?? 0) * per100,
+                            aiFatPer100g: (result.estimatedFatG ?? 0) * per100,
+                            aiCarbsPer100g:
+                                (result.estimatedCarbsG ?? 0) * per100,
+                            category: result.foodCategory,
+                          );
+                        })();
               final foodItemRepo = FoodItemRepository(_db);
               foodItemId = await foodItemRepo.upsertAiRecognized(
                 name: result.dishName,
@@ -191,9 +199,11 @@ class OfflineQueueController {
               // v1.9：有包装数据时 actualCalories 用包装换算整菜热量
               // （与 recognize_controller._aiFallbackNutrition 一致，达到豆包级精度）
               // 无包装数据时用 AI 估算整菜值
-              // 蛋白/脂肪/碳水：包装通常不标，actual* 用 AI 估算原值
+              // v1.10：包装换算宏量全 0 时也走 AI 估算整菜值（与 per100g 路径一致，
+              //   per100g 已回退品类校准，actualCalories 不再用包装换算避免两者脱节）
+              // 蛋白/脂肪/碳水：actual* 用 AI 估算原值
               //   （proteinPer100g × mid / 100 = estimatedProteinG，数学等价）
-              if (packagePer100 != null && mid > 0) {
+              if (packagePer100 != null && !packageMacrosAllZero && mid > 0) {
                 actualCalories = caloriesPer100g * mid / 100;
               } else {
                 actualCalories = cal;
@@ -220,6 +230,8 @@ class OfflineQueueController {
               // v1.9：包装食品 OCR 优先路径——若复合菜恰好是预包装速冻食品等
               // （如速冻水饺被识别为 composite 但有包装营养表），优先用包装数据换算
               // 复合菜不做品类校准（无 meaningful food category），AI 估算路径直接用原值
+              // v1.10：包装换算后宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ 回退 AI 估算，
+              //   避免复合菜路径宏量显示 0（与单品路径 / 前台哨兵分支一致）
               final mid = result.estimatedWeightGMid;
               final per100 = mid > 0 ? 100.0 / mid : 0.0;
               final packagePer100 = result.hasPackageNutrition
@@ -229,17 +241,23 @@ class OfflineQueueController {
                       estimatedCarbsG: result.estimatedCarbsG,
                     )
                   : null;
+              // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
+              final packageMacrosAllZero = packagePer100 != null &&
+                  packagePer100.$2 == 0 &&
+                  packagePer100.$3 == 0 &&
+                  packagePer100.$4 == 0;
               final (caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g) =
-                  packagePer100 ??
-                      (() {
-                        // 无包装数据 → 走原 AI 估算路径（复合菜不做品类校准）
-                        return (
-                          result.estimatedCalories! * per100,
-                          (result.estimatedProteinG ?? 0) * per100,
-                          (result.estimatedFatG ?? 0) * per100,
-                          (result.estimatedCarbsG ?? 0) * per100,
-                        );
-                      })();
+                  (packagePer100 != null && !packageMacrosAllZero)
+                      ? packagePer100
+                      : (() {
+                          // 无包装数据 / 包装换算宏量全 0 → 走原 AI 估算路径（复合菜不做品类校准）
+                          return (
+                            result.estimatedCalories! * per100,
+                            (result.estimatedProteinG ?? 0) * per100,
+                            (result.estimatedFatG ?? 0) * per100,
+                            (result.estimatedCarbsG ?? 0) * per100,
+                          );
+                        })();
               final foodItemRepo = FoodItemRepository(_db);
               foodItemId = await foodItemRepo.upsertAiRecognized(
                 name: result.dishName,
@@ -252,7 +270,9 @@ class OfflineQueueController {
               );
               // v1.9：有包装数据时 actualCalories 用包装换算整菜热量（与单品路径一致）
               // 无包装数据时用 AI 估算整菜值
-              if (packagePer100 != null && mid > 0) {
+              // v1.10：包装换算宏量全 0 时也走 AI 估算整菜值（与 per100g 路径一致，
+              //   per100g 已回退 AI 估算，actualCalories 不再用包装换算避免两者脱节）
+              if (packagePer100 != null && !packageMacrosAllZero && mid > 0) {
                 actualCalories = caloriesPer100g * mid / 100;
               } else {
                 actualCalories = result.estimatedCalories!;
@@ -279,6 +299,8 @@ class OfflineQueueController {
               // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），按包装换算
               // per100g + actualCalories 都用包装换算值，跳过组分累加
               // 无包装数据 → 走原组分累加路径（per100g=0，actualCalories=composite.calories）
+              // v1.10：包装换算后宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ 回退组分累加，
+              //   避免复合菜路径宏量显示 0（与单品路径 / 前台哨兵分支一致）
               actualServingG = result.foodComponents
                   .fold<double>(0, (s, c) => s + c.estimatedG);
               final packagePer100 = result.hasPackageNutrition
@@ -288,7 +310,12 @@ class OfflineQueueController {
                       estimatedCarbsG: result.estimatedCarbsG,
                     )
                   : null;
-              if (packagePer100 != null) {
+              // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
+              final packageMacrosAllZero = packagePer100 != null &&
+                  packagePer100.$2 == 0 &&
+                  packagePer100.$3 == 0 &&
+                  packagePer100.$4 == 0;
+              if (packagePer100 != null && !packageMacrosAllZero) {
                 // 有包装：per100g 存包装换算值（未来查库按密度算更准），
                 // actualCalories 按 actualServingG 换算（与份量一致）
                 foodItemId = await foodItemRepo.upsertAiRecognized(
@@ -306,7 +333,7 @@ class OfflineQueueController {
                 actualFatG = packagePer100.$3 * actualServingG / 100;
                 actualCarbsG = packagePer100.$4 * actualServingG / 100;
               } else {
-                // 无包装 → 组分累加（原逻辑）
+                // 无包装 / 包装换算宏量全 0 → 组分累加（原逻辑）
                 foodItemId = await foodItemRepo.upsertAiRecognized(
                   name: result.dishName,
                   brand: result.brand,
