@@ -23,8 +23,8 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.15.0+16（pubspec.yaml）
-- **当前分支**：trae/agent-wX1X6Q（HEAD = c13143b v0.15.0 审计修复；v0.15.0 tag 指向 4b35dcb）
+- **当前版本**：0.16.0+17（pubspec.yaml）
+- **当前分支**：trae/agent-wX1X6Q（HEAD = v0.16.0 release；v0.16.0 tag 待打）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
   - `android/app/build.gradle.kts` 必须保持 `isMinifyEnabled=false` + `isShrinkResources=false`（否则 R8 剥掉 sentry/workmanager 反射类致启动崩溃）
@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-04
 
-**工作区状态**：v0.15.0 release 已 push 远程（commit 4b35dcb + tag v0.15.0）；v0.15.0 审计修复已 push（commit c13143b）；Phase 2.11 图标重设计 + 拍照识别页改造 + 推荐算法 v4 用户偏好学习已 push（commit 1dd3087）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）
-**当前分支**：trae/agent-wX1X6Q（HEAD = 27b6a85；v0.15.0 tag 指向 4b35dcb；v0.14.0 tag 指向 8bccee4）
+**工作区状态**：v0.16.0 release 已 push 远程（含 v5 AI 推荐审计修复 + 满意度反馈按钮改为点开才显示 + 测试 mock 修复 + 版本号 bump）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）
+**当前分支**：trae/agent-wX1X6Q（HEAD = v0.16.0 release；v0.15.0 tag 指向 4b35dcb；v0.14.0 tag 指向 8bccee4）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
@@ -430,7 +430,7 @@
 1. **AI 候选范围=纯生成**：AI 直接根据画像生成 5 道菜（不限于库内），用户 tap 后跳 ManualEntryPage 录入。比"库内重排"更灵活，符合用户"纯 AI 生成"选择
 2. **缓存当日有效**：key=`${date}_${mealType}`，用户跨天/换餐次自动重调，"换一批"forceRefresh。不随 RefreshBus 失效（避免记录一条就重新调 AI）
 3. **降级链**：GLM key 空→跳过；离线→跳过；AI 异常/超时→静默返回空（v4 兜底）；失败不缓存（下次允许重试）
-4. **JSON 解析容错**：_extractJson 找第一个 `{` 到最后一个 `}`，兼容 AI 偶尔在 JSON 外加 markdown/解释文字；malformed JSON 返回空不抛异常
+4. **JSON 解析容错**：_extractJson 用括号配对扫描（depth 计数器），兼容 AI 偶尔在 JSON 外加 markdown/解释文字 + 多个 JSON 对象场景；解析失败抛 FormatException（让调用方区分"AI 真返回 0 条"可缓存 vs "解析失败"不缓存）
 5. **temperature=0.8**：推荐需一定随机性，避免每次都推相同 5 道菜（"换一批"才有意义）
 6. **反馈表无外键**：foodName 直接存字符串（AI 推荐的食物可能不在库），避免用户记录前先入库的约束
 7. **schemaVersion 2→3 migration**：v2→v3 用 `m.createTable(recommendationFeedbacks)`，旧用户升级自动建表；导入旧版本备份（无 recommendation_feedbacks 段）时跳过该表插入
@@ -438,6 +438,45 @@
 **验证（2026-07-04 沙箱实测）**：
 - ✅ `flutter analyze` → No issues found
 - ✅ `flutter test` → 709 passed / 3 skipped / 0 failed（含 v5 新增 48 测试 + backup 测试更新）
+
+**Phase 2.13 v0.16.0 release：v5 AI 推荐审计修复 + 满意度反馈按钮优化（2026-07-04）**：
+
+用户反馈"满意度反馈按钮可以设计成点开才显示，不太占用空间，此外整体改进有没有问题，反复研究，有就找出来严谨修复"。对 v5 AI 推荐做全面审计，发现 5 个 high 级 + 5 个 medium 级问题，全部修复后发布 v0.16.0。
+
+**满意度反馈按钮改造（用户要求）**：
+- 原：每条推荐内联 3 个按钮（喜欢/一般/不喜欢）→ 占用过多垂直空间
+- 新：PopupMenuButton 三点菜单，点开才显示反馈选项 → 节省空间
+- 反馈后图标变为 check_circle（已反馈状态），tooltip 三态：提交中/已反馈/反馈满意度
+- enabled 守卫：提交中或已反馈时禁用，防重复提交
+
+**High 级问题修复（5 个）**：
+1. **冷启动配置竞态**：`ref.read(appConfigProvider).maybeWhen` 在 config loading 期间返回 orElse 空结果，AI 推荐永远不显示 → 改为 `await ref.read(appConfigProvider.future)`
+2. **_AiRecItem 状态泄漏**：换一批后旧 `_ratedRating` 状态绑到新推荐（用户没打过分却显示"已喜欢"）→ 加 `key: ValueKey(rec.name)` 强制新建 State
+3. **反馈失败不重置 _ratedRating**：`widget.onRate` 抛异常时 UI 永久显示"已喜欢"但 DB 没写 → `onRate` 改返回 `Future<bool>`，失败时 `setState(() => _ratedRating = null)`
+4. **OpenAIClient 连接泄漏**：每次进看板新建 `GlmFlashProvider` 但从不 close → 新增 `provider.close()` 在 finally 中；GlmFlashProvider 新增 `void close() { _client.close(); }`
+5. **缓存无互斥致重复调 AI**：用户连点"换一批"会并发多次调 AI → 缓存值改用 `Future<List<AiRecommendation>>`（共享同一 Future，结果只算一次）
+
+**Medium 级问题修复（5 个）**：
+6. **解析失败被缓存**：`_parseRecommendations` 吞掉所有异常返回空列表，空列表被缓存，当日同一 mealType 永远命中空缓存 → 解析失败抛 `FormatException`，`recommend()` catch 后删除缓存条目
+7. **缓存 key 无 profileHash**：用户改 profile 后缓存仍命中旧推荐 → key 改为 `${date}_${mealType}_${profile.hashCode}`
+8. **静态缓存无限增长**：跨天缓存条目不清理 → 新增 `_evictStaleCache(todayDate)` 清理非当日 key
+9. **loading 状态闪烁**：AI loading 时显示骨架屏与 v4 重复占位 → 改为 v4 + 顶部小尺寸加载提示（CircularProgressIndicator 12px + 文案"AI 正在生成个性化推荐…"），真正的渐进增强
+10. **重复 timeout**：`createChatCompletion` 内部 `.timeout(30s)` 与 service 层 `.timeout(30s)` 重复 → provider 层删除 timeout，由 service 层统一控制
+
+**测试 mock 修复（2 个 widget 测试）**：
+- `dashboard_drawer_test.dart` + `estimation_range_ui_test.dart`：v5 看板 initState 调 `appConfigProvider.future` 检查 GLM key，沙箱无 secure_storage 平台通道会抛 MissingPluginException，AI FutureBuilder 卡在 loading，CircularProgressIndicator 永不停止致 `pumpAndSettle` 超时 → 加 `FlutterSecureStorage.setMockInitialValues({})` + `secureConfigStoreProvider.overrideWithValue(store)`
+
+**Phase 2.13 文件清单（4 lib 修改 + 3 test 修改 + 4 版本号文件）**：
+- 修改 service：`lib/nutrition/ai_recommendation_service.dart`（缓存互斥 + profileHash key + _evictStaleCache + FormatException + 括号配对 JSON 提取 + take(5) + profile 由调用方传入）
+- 修改 dashboard：`lib/features/dashboard/dashboard_page.dart`（冷启动竞态 + ValueKey + 反馈失败处理 + 连接泄漏 + loading 提示 + _aiLoadingHint 替换 _aiLoadingSkeleton）
+- 修改 provider：`lib/ai/glm_flash_provider.dart`（新增 close() + 删除 createChatCompletion 重复 timeout）
+- 修改测试：`test/nutrition/ai_recommendation_service_test.dart`（适配 FormatException：4 测试改 throwsA + 新增"解析失败不缓存"测试 + 缓存测试改用 validJson）
+- 修改测试：`test/features/dashboard_drawer_test.dart` + `test/features/estimation_range_ui_test.dart`（secureConfigStoreProvider mock）
+- 版本号 bump：`pubspec.yaml`（0.15.0+16→0.16.0+17）+ `lib/core/error/sentry_init.dart`（eatwise@0.16.0）+ `lib/features/me/me_page.dart`（0.16.0）+ `lib/features/settings/settings_page.dart`（v0.16.0）
+
+**验证（2026-07-04 沙箱实测）**：
+- ✅ `flutter analyze` → No issues found
+- ✅ `flutter test` → 710 passed / 3 skipped / 0 failed（含新增"解析失败不缓存"测试）
 
 **Phase 3 调研结论（2026-07-04，决策：不推荐实施）**：
 
@@ -483,6 +522,9 @@
 - `image_cleanup_startup_test.dart T48` 日期敏感测试：测试硬编码日期但代码用 `DateTime.now()`，每过一段时间会失败。建议后续改成相对日期（`DateTime.now().subtract(Duration(days: 8))` 动态生成测试日期）
 
 **最近 commit**：
+- `（待填）` release: v0.16.0 v5 AI 推荐审计修复（5 high + 5 medium）+ 满意度反馈按钮改 PopupMenuButton + 测试 mock 修复 + 版本号 bump
+- `e09b233` docs: HANDOFF 回填 Phase 2.12 commit hash 27b6a85
+- `27b6a85` feat: AI 个性化推荐 v5（渐进增强 + 满意度反馈学习）
 - `c13143b` fix: v0.15.0 release 后大规模审计修复 24 个问题（UI 审计 8 个 + sentry_init 版本号同步 + HANDOFF 9 个文档问题 + 测试缺口评估降级）
 - `4b35dcb` release: v0.15.0 UI 优化 + 图标重设计（M3 Expressive 主题层 +6 组件主题 + 公共组件 +6 + 各页面优化 + 图标 Material 风格重设计）
 - `7b649f2` fix: v1.10 深度审查 BUG-2/BUG-5 High 级修复 + 124 个新测试覆盖（didFill 守卫跳过 cal 自洽修正 + _aiFallbackNutrition packageMacrosAllZero 守卫 + prompts schema 一致性 + OCR "糖"负向回视 + food_density 新品类）
@@ -1020,6 +1062,12 @@
 54. **v5 AI 推荐缓存 key 必须含 mealType**：`_cache` key = `"${date}_${mealType}"`，不能只用 date。因为早餐和晚餐的推荐完全不同（早餐推燕麦粥，晚餐推牛排），共用 key 会导致用户早餐看完推荐后晚餐还看到早餐的缓存。`forceRefresh=true` 时跳过缓存（"换一批"按钮）。缓存是静态 Map（进程内存），App 重启失效，当日有效（跨天 key 变化自然失效）
 
 55. **v5 schemaVersion 2→3 migration 必须用 createTable 不是 addColumn**：`recommendation_feedbacks` 是全新表（不是给旧表加列），migration 用 `m.createTable(recommendationFeedbacks)`。旧版本备份导入时（schemaVersion < 3）JSON 无 `recommendation_feedbacks` 段，importer 用 `tables['recommendation_feedbacks'] is List` 守卫跳过，不能强转 `as List` 否则旧备份导入崩。导出时必须包含该表（JsonExporter.export 新增 `recommendation_feedbacks` 段），否则新版本备份缺表数据
+
+56. **v5 DashboardPage widget 测试必须 mock secureConfigStoreProvider 否则 pumpAndSettle 超时**：v5 看板 initState 调 `_aiRecFuture = _loadAiRecommendations()`，内部 `await ref.read(appConfigProvider.future)` 检查 GLM key。沙箱无 secure_storage 平台通道，`AppConfig.load()` 抛 MissingPluginException，但抛出前 AI FutureBuilder 已进入 loading 态显示 `CircularProgressIndicator`（无限动画）。即使 Future 最终 completes with error 让 FutureBuilder 切到 v4 兜底，`pumpAndSettle` 仍可能超时（10s 内未 settle）。修复：测试 setUp 调 `FlutterSecureStorage.setMockInitialValues({})` 注入内存平台实现 + override `secureConfigStoreProvider.overrideWithValue(SecureConfigStore())`，让 `appConfigProvider` 走真实路径返回空 config（glmApiKey.isEmpty → `_loadAiRecommendations` 早早 return empty，FutureBuilder 立即切 v4 兜底，无 loading 动画）。**新增任何 DashboardPage widget 测试必须遵循此模式**。详见 `dashboard_drawer_test.dart` / `estimation_range_ui_test.dart`
+
+57. **v5 AI 推荐缓存值必须用 Future 不是 List 实现并发互斥**：`_cache` 是 `Map<String, Future<List<AiRecommendation>>>` 不是 `Map<String, List<AiRecommendation>>`。原因：用户连点"换一批"会并发触发多次 `recommend(forceRefresh: true)`，若缓存值是 List，forceRefresh 跳过缓存后多次并发调 AI 浪费 API 配额。用 Future 缓存后，即使 forceRefresh=false 的并发调用也共享同一 Future（第一个调用写入 Future，后续调用 await 同一 Future），AI 只调一次。失败时 `recommend()` catch 后 `_cache.remove(cacheKey)` 删除失败 Future，下次允许重试。**缓存 key 必须含 `profile.hashCode`**，否则用户改 profile（如目标从减脂→增肌）后缓存仍命中旧推荐
+
+58. **v5 _parseRecommendations 解析失败抛 FormatException 不返回空列表**：与 pitfall 53 配合——`recommend()` 的 catch 兜底所有异常返回空，但 `_parseRecommendations` 内部必须区分两种情况：①AI 真返回 0 条有效推荐（如全部缺 name/reason 被跳过）→ 返回空 List，**可缓存**（避免当日反复调 AI 拿到同样的 0 条）；②JSON 解析失败（无 JSON 对象/缺 recommendations 字段/malformed JSON）→ **抛 FormatException**，`recommend()` catch 后 `_cache.remove(cacheKey)` **不缓存**（下次允许重试，因为可能是临时模型抽风）。若把②也返回空列表，会导致模型一次解析失败后当日永远命中空缓存无法重试。`_extractJson` 用括号配对扫描（depth 计数器）而非简单 indexOf/lastIndexOf，支持多个 JSON 对象场景
 
 ---
 

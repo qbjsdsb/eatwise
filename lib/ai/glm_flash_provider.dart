@@ -113,19 +113,23 @@ class GlmFlashProvider {
     int maxCompletionTokens = 1000,
     double temperature = 0.7,
   }) async {
-    final res = await _client.chat.completions
-        .create(
-          ChatCompletionCreateRequest(
-            model: model,
-            messages: [
-              ChatMessage.system(systemPrompt),
-              ChatMessage.user(UserMessageContent.text(userPrompt)),
-            ],
-            maxCompletionTokens: maxCompletionTokens,
-            temperature: temperature,
-          ),
-        )
-        .timeout(const Duration(seconds: 30));
+    final res = await _client.chat.completions.create(
+      ChatCompletionCreateRequest(
+        model: model,
+        messages: [
+          ChatMessage.system(systemPrompt),
+          ChatMessage.user(UserMessageContent.text(userPrompt)),
+        ],
+        maxCompletionTokens: maxCompletionTokens,
+        temperature: temperature,
+      ),
+    );
     return res.text ?? '';
+  }
+
+  /// 关闭底层 HTTP 客户端，释放连接资源
+  /// 调用方用完 provider 后应调 close() 避免 OpenAIClient 连接泄漏
+  void close() {
+    _client.close();
   }
 }

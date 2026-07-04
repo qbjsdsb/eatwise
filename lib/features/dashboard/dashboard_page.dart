@@ -102,44 +102,44 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   /// v5 AI 推荐：渐进增强，失败静默返回空列表（v4 兜底）
   Future<AiRecommendationResult> _loadAiRecommendations(
       {bool forceRefresh = false}) async {
-    final config = ref.read(appConfigProvider);
-    return config.maybeWhen(
-      data: (c) async {
-        // GLM key 未配置 → 静默返回空（v4 兜底，不报错）
-        if (c.glmApiKey.isEmpty) {
-          return const AiRecommendationResult(
-              recommendations: [], fromCache: false);
-        }
-        // 离线守卫：无网络不调 AI
-        final online =
-            await ref.read(recognize.networkAvailableProvider.future);
-        if (!online) {
-          return const AiRecommendationResult(
-              recommendations: [], fromCache: false);
-        }
-        final db = await ref.read(recognize.databaseProvider.future);
-        final baseUrl = c.glmBaseUrl.isEmpty
-            ? 'https://open.bigmodel.cn/api/paas/v4'
-            : c.glmBaseUrl;
-        final service = AiRecommendationService(
-          GlmFlashProvider(apiKey: c.glmApiKey, baseUrl: baseUrl),
-          ProfileRepository(db),
-          MealLogRepository(db),
-          FoodItemRepository(db),
-          RecommendationFeedbackRepository(db),
-        );
-        final now = DateTime.now();
-        return service.recommend(
-          AiRecommendationRequest(
-            todayDate: todayYmd(),
-            mealType: _currentMealType(now.hour),
-          ),
-          forceRefresh: forceRefresh,
-        );
-      },
-      orElse: () => const AiRecommendationResult(
-          recommendations: [], fromCache: false),
+    // await config future 避免冷启动竞态（config 异步从 SecureConfigStore 加载）
+    final c = await ref.read(appConfigProvider.future);
+    // GLM key 未配置 → 静默返回空（v4 兜底，不报错）
+    if (c.glmApiKey.isEmpty) {
+      return const AiRecommendationResult(
+          recommendations: [], fromCache: false);
+    }
+    // 离线守卫：无网络不调 AI
+    final online = await ref.read(recognize.networkAvailableProvider.future);
+    if (!online) {
+      return const AiRecommendationResult(
+          recommendations: [], fromCache: false);
+    }
+    final db = await ref.read(recognize.databaseProvider.future);
+    final baseUrl = c.glmBaseUrl.isEmpty
+        ? 'https://open.bigmodel.cn/api/paas/v4'
+        : c.glmBaseUrl;
+    final provider = GlmFlashProvider(apiKey: c.glmApiKey, baseUrl: baseUrl);
+    final service = AiRecommendationService(
+      provider,
+      ProfileRepository(db),
+      MealLogRepository(db),
+      FoodItemRepository(db),
+      RecommendationFeedbackRepository(db),
     );
+    try {
+      final now = DateTime.now();
+      return await service.recommend(
+        AiRecommendationRequest(
+          todayDate: todayYmd(),
+          mealType: _currentMealType(now.hour),
+        ),
+        forceRefresh: forceRefresh,
+      );
+    } finally {
+      // 用完即关，避免 OpenAIClient 连接泄漏（每次进看板都新建 provider）
+      provider.close();
+    }
   }
 
   /// 用户点"重新生成"按钮：强制刷新 AI 推荐
@@ -160,19 +160,29 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
 
   /// 用户对某条 AI 推荐打分（1=不喜欢 / 2=一般 / 3=喜欢）
   /// 写库后不重新调 AI（避免频繁调 API），下次推荐时反馈会被注入 prompt
-  Future<void> _rateRecommendation(
+  /// 返回 true=成功，false=失败（_AiRecItem 据此重置 UI 状态）
+  Future<bool> _rateRecommendation(
       AiRecommendation rec, int rating, String mealType) async {
-    final db = await ref.read(recognize.databaseProvider.future);
-    final repo = RecommendationFeedbackRepository(db);
-    await repo.insertFeedback(
-      foodName: rec.name,
-      rating: rating,
-      mealType: mealType,
-      recommendDate: todayYmd(),
-    );
-    if (!mounted) return;
-    final label = rating == 3 ? '已记录喜欢' : rating == 2 ? '已记录一般' : '已记录不喜欢';
-    showAppToast(context, label);
+    try {
+      final db = await ref.read(recognize.databaseProvider.future);
+      final repo = RecommendationFeedbackRepository(db);
+      await repo.insertFeedback(
+        foodName: rec.name,
+        rating: rating,
+        mealType: mealType,
+        recommendDate: todayYmd(),
+      );
+      if (!mounted) return true;
+      final label =
+          rating == 3 ? '已记录喜欢' : rating == 2 ? '已记录一般' : '已记录不喜欢';
+      showAppToast(context, label);
+      return true;
+    } catch (e) {
+      debugPrint('反馈写入失败：$e');
+      if (!mounted) return false;
+      showAppToast(context, '反馈失败，请重试');
+      return false;
+    }
   }
 
   /// 按当前小时推断餐次（推荐算法 v3 时段感知用）。
@@ -399,13 +409,20 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                     ],
                   ),
                 ),
-                // AI 推荐区（渐进增强：AI 有结果时显示，loading/失败时回退 v4）
+                // AI 推荐区（渐进增强：AI loading 时先显示 v4 + 加载提示，
+                // AI 返回后替换为 AI 推荐；AI 失败/空时保持 v4）
                 FutureBuilder<AiRecommendationResult>(
                   future: _aiRecFuture,
                   builder: (context, aiSnap) {
-                    // AI loading 中：显示骨架，同时 v4 不显示（避免重复）
+                    // AI loading 中：先显示 v4 本地推荐（秒出）+ 顶部加载提示
+                    // 这是真正的渐进增强——用户不空等，v4 立即可点
                     if (aiSnap.connectionState != ConnectionState.done) {
-                      return _aiLoadingSkeleton(textTheme, cs);
+                      return Column(
+                        children: [
+                          _aiLoadingHint(cs),
+                          _v4Recommendations(d, textTheme, cs),
+                        ],
+                      );
                     }
                     // AI 失败/空：回退 v4 本地推荐
                     if (aiSnap.hasError ||
@@ -450,169 +467,55 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     );
   }
 
-  /// AI loading 骨架（避免空白闪烁）
-  Widget _aiLoadingSkeleton(TextTheme tt, ColorScheme cs) {
-    return Column(
-      children: List.generate(
-        3,
-        (_) => Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: double.infinity,
-                      height: 14,
-                      decoration: BoxDecoration(
-                        color: cs.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      width: 180,
-                      height: 10,
-                      decoration: BoxDecoration(
-                        color: cs.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+  /// AI loading 提示（渐进增强：v4 已秒出，AI 在后台生成）
+  ///
+  /// 用线性进度条 + 文案提示用户 AI 正在生成更精准推荐，
+  /// 不用骨架屏（避免与下方 v4 推荐重复占位），保持视觉简洁。
+  Widget _aiLoadingHint(ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.5,
+              color: cs.primary.withValues(alpha: 0.7),
+            ),
           ),
-        ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'AI 正在生成个性化推荐…',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  /// AI 推荐列表（含满意度反馈）
+  /// AI 推荐列表（含满意度反馈，点开才显示）
   Widget _aiRecommendations(List<AiRecommendation> recs, TextTheme tt,
       ColorScheme cs, String mealType) {
     return Column(
       children: [
         for (final rec in recs) ...[
           Divider(height: 1, indent: 16, endIndent: 16, color: cs.outlineVariant),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Row(
-              children: [
-                const LeadingIconContainer(Icons.auto_awesome_rounded),
-                Expanded(
-                  child: _aiRecContent(rec, tt, cs, mealType),
-                ),
-              ],
-            ),
+          // ValueKey(rec.name)：换一批后 rec.name 变化 → 强制新建 State，
+          // 避免旧 _ratedRating 状态泄漏到新推荐
+          _AiRecItem(
+            key: ValueKey(rec.name),
+            rec: rec,
+            mealType: mealType,
+            onTap: () => _pushAndRefresh(ManualEntryPage(initialName: rec.name)),
+            onRate: (rating) => _rateRecommendation(rec, rating, mealType),
           ),
         ],
       ],
-    );
-  }
-
-  /// AI 推荐单项内容（标题 + 理由 + 营养 + 反馈按钮）
-  Widget _aiRecContent(
-      AiRecommendation rec, TextTheme tt, ColorScheme cs, String mealType) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InkWell(
-          onTap: () => _pushAndRefresh(ManualEntryPage(initialName: rec.name)),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(rec.name,
-                          style: tt.titleSmall,
-                          maxLines: 1, overflow: TextOverflow.ellipsis),
-                    ),
-                    const Icon(Icons.chevron_right, size: 18),
-                  ],
-                ),
-                const SizedBox(height: 2),
-                Text(rec.reason,
-                    style: tt.bodySmall
-                        ?.copyWith(color: cs.onSurfaceVariant),
-                    maxLines: 2, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
-                Text(
-                  '${rec.estimatedCalories.toStringAsFixed(0)} kcal · 蛋白 ${rec.estimatedProtein.toStringAsFixed(0)}g',
-                  style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
-                ),
-              ],
-            ),
-          ),
-        ),
-        // 满意度反馈按钮行
-        Padding(
-          padding: const EdgeInsets.only(left: 8, right: 8, bottom: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              _feedbackButton(
-                icon: Icons.thumb_down_outlined,
-                label: '不喜欢',
-                color: cs.error,
-                onTap: () => _rateRecommendation(rec, 1, mealType),
-              ),
-              const SizedBox(width: 4),
-              _feedbackButton(
-                icon: Icons.thumbs_up_down_outlined,
-                label: '一般',
-                color: cs.onSurfaceVariant,
-                onTap: () => _rateRecommendation(rec, 2, mealType),
-              ),
-              const SizedBox(width: 4),
-              _feedbackButton(
-                icon: Icons.thumb_up_outlined,
-                label: '喜欢',
-                color: cs.primary,
-                onTap: () => _rateRecommendation(rec, 3, mealType),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 反馈按钮（小尺寸 icon + 文字）
-  Widget _feedbackButton({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: color),
-            const SizedBox(width: 2),
-            Text(label, style: TextStyle(fontSize: 11, color: color)),
-          ],
-        ),
-      ),
     );
   }
 
@@ -761,5 +664,196 @@ class DashboardData {
     required this.weightKg,
     required this.meals,
     required this.foodNames,
+  });
+}
+
+/// AI 推荐单项组件（StatefulWidget 维护"已反馈"状态）
+///
+/// 反馈按钮设计为点开才显示（PopupMenuButton 三点菜单），
+/// 避免每条推荐占用过多垂直空间。反馈后图标变为已反馈状态。
+class _AiRecItem extends StatefulWidget {
+  final AiRecommendation rec;
+  final String mealType;
+  final VoidCallback onTap;
+  // rating: 1=不喜欢 / 2=一般 / 3=喜欢。返回 true=成功，false=失败
+  final Future<bool> Function(int rating) onRate;
+
+  const _AiRecItem({
+    super.key,
+    required this.rec,
+    required this.mealType,
+    required this.onTap,
+    required this.onRate,
+  });
+
+  @override
+  State<_AiRecItem> createState() => _AiRecItemState();
+}
+
+class _AiRecItemState extends State<_AiRecItem> {
+  // 已反馈的 rating（null=未反馈）。反馈后立即更新 UI，避免重复点。
+  int? _ratedRating;
+  bool _rating = false; // 防重入
+
+  // 反馈选项配置
+  static const _feedbackOptions = <_FeedbackOption>[
+    _FeedbackOption(rating: 3, label: '喜欢', icon: Icons.thumb_up_outlined),
+    _FeedbackOption(rating: 2, label: '一般', icon: Icons.thumbs_up_down_outlined),
+    _FeedbackOption(rating: 1, label: '不喜欢', icon: Icons.thumb_down_outlined),
+  ];
+
+  Future<void> _handleRate(int rating) async {
+    if (_rating || _ratedRating != null) return; // 防重入 + 已反馈不重复
+    setState(() {
+      _rating = true;
+      _ratedRating = rating; // 乐观更新
+    });
+    try {
+      final ok = await widget.onRate(rating);
+      if (!mounted) return;
+      if (!ok) {
+        // 失败：重置 UI 状态，允许重试
+        setState(() => _ratedRating = null);
+      }
+    } catch (_) {
+      // onRate 内部已 try/catch，理论上不会冒泡；防御性兜底
+      if (mounted) setState(() => _ratedRating = null);
+    } finally {
+      if (mounted) setState(() => _rating = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final rec = widget.rec;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: Row(
+        children: [
+          const LeadingIconContainer(Icons.auto_awesome_rounded),
+          Expanded(
+            child: InkWell(
+              onTap: widget.onTap,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(rec.name,
+                              style: tt.titleSmall,
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ),
+                        const Icon(Icons.chevron_right, size: 18),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(rec.reason,
+                        style: tt.bodySmall
+                            ?.copyWith(color: cs.onSurfaceVariant),
+                        maxLines: 2, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        Text(
+                          '${rec.estimatedCalories.toStringAsFixed(0)} kcal · 蛋白 ${rec.estimatedProtein.toStringAsFixed(0)}g',
+                          style: tt.labelSmall
+                              ?.copyWith(color: cs.onSurfaceVariant),
+                        ),
+                        // 已反馈时显示标签
+                        if (_ratedRating != null) ...[
+                          const SizedBox(width: 8),
+                          _ratedChip(cs),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // 三点菜单：点开才显示反馈选项
+          PopupMenuButton<int>(
+            icon: _rating
+                ? SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: cs.primary,
+                    ),
+                  )
+                : Icon(
+                    _ratedRating != null
+                        ? Icons.check_circle_outline
+                        : Icons.more_vert,
+                    size: 20,
+                    color: _ratedRating != null
+                        ? cs.primary
+                        : cs.onSurfaceVariant,
+                  ),
+            tooltip: _rating
+                ? '提交中'
+                : _ratedRating != null
+                    ? '已反馈'
+                    : '反馈满意度',
+            enabled: !_rating && _ratedRating == null,
+            onSelected: (rating) => _handleRate(rating),
+            itemBuilder: (context) => [
+              for (final opt in _feedbackOptions)
+                PopupMenuItem<int>(
+                  value: opt.rating,
+                  child: Row(
+                    children: [
+                      Icon(opt.icon, size: 18, color: cs.onSurfaceVariant),
+                      const SizedBox(width: 8),
+                      Text(opt.label),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 已反馈标签（小尺寸 chip）
+  Widget _ratedChip(ColorScheme cs) {
+    final label = _ratedRating == 3
+        ? '已喜欢'
+        : _ratedRating == 2
+            ? '已评一般'
+            : '已不喜欢';
+    final color = _ratedRating == 3
+        ? cs.primary
+        : _ratedRating == 1
+            ? cs.error
+            : cs.onSurfaceVariant;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(label, style: TextStyle(fontSize: 10, color: color)),
+    );
+  }
+}
+
+/// 反馈选项配置（内部用）
+class _FeedbackOption {
+  final int rating;
+  final String label;
+  final IconData icon;
+
+  const _FeedbackOption({
+    required this.rating,
+    required this.label,
+    required this.icon,
   });
 }

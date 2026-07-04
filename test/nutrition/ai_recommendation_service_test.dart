@@ -73,18 +73,21 @@ void main() {
       expect(AiRecommendationService.parseRecommendations(''), isEmpty);
     });
 
-    test('无 JSON 对象 → 返回空列表', () {
-      expect(AiRecommendationService.parseRecommendations('纯文字无JSON'), isEmpty);
+    test('无 JSON 对象 → 抛 FormatException', () {
+      expect(() => AiRecommendationService.parseRecommendations('纯文字无JSON'),
+          throwsA(isA<FormatException>()));
     });
 
-    test('JSON 缺 recommendations 字段 → 返回空列表', () {
+    test('JSON 缺 recommendations 字段 → 抛 FormatException', () {
       const raw = '{"items":[]}';
-      expect(AiRecommendationService.parseRecommendations(raw), isEmpty);
+      expect(() => AiRecommendationService.parseRecommendations(raw),
+          throwsA(isA<FormatException>()));
     });
 
-    test('recommendations 不是 List → 返回空列表', () {
+    test('recommendations 不是 List → 抛 FormatException', () {
       const raw = '{"recommendations":"not a list"}';
-      expect(AiRecommendationService.parseRecommendations(raw), isEmpty);
+      expect(() => AiRecommendationService.parseRecommendations(raw),
+          throwsA(isA<FormatException>()));
     });
 
     test('单项缺 name → 跳过该项', () {
@@ -131,9 +134,10 @@ void main() {
       expect(list[0].estimatedProtein, 0);
     });
 
-    test('JSON 格式错误（malformed）→ 返回空列表不抛异常', () {
+    test('JSON 格式错误（malformed）→ 抛 FormatException（service 层兜底）', () {
       const raw = '{"recommendations":[{"name":"test"';
-      expect(AiRecommendationService.parseRecommendations(raw), isEmpty);
+      expect(() => AiRecommendationService.parseRecommendations(raw),
+          throwsA(isA<FormatException>()));
     });
 
     test('name/reason 含前后空格 → trim', () {
@@ -147,19 +151,25 @@ void main() {
   });
 
   group('recommend 缓存', () {
+    // 用有效 JSON 才能缓存（解析失败不缓存）
+    const validJson = '{"recommendations":['
+        '{"name":"鸡胸肉沙拉","reason":"高蛋白","estimatedCalories":350,"estimatedProtein":35}'
+        ']}';
+
     test('命中缓存 → fromCache=true', () async {
       final service = AiRecommendationService(
-        _FakeGlmProvider('{}'), // 不会被调用（命中缓存）
+        _FakeGlmProvider(validJson),
         profileRepo,
         mealRepo,
         foodRepo,
         feedbackRepo,
       );
-      // 第一次调用：实际调 AI（返回空 JSON）
+      // 第一次调用：实际调 AI
       final r1 = await service.recommend(
         const AiRecommendationRequest(todayDate: '2026-07-04', mealType: 'lunch'),
       );
       expect(r1.fromCache, false);
+      expect(r1.recommendations, isNotEmpty);
       // 第二次调用：命中缓存
       final r2 = await service.recommend(
         const AiRecommendationRequest(todayDate: '2026-07-04', mealType: 'lunch'),
@@ -169,7 +179,7 @@ void main() {
 
     test('forceRefresh=true → 跳过缓存强制刷新', () async {
       final service = AiRecommendationService(
-        _FakeGlmProvider('{}'),
+        _FakeGlmProvider(validJson),
         profileRepo,
         mealRepo,
         foodRepo,
@@ -189,7 +199,7 @@ void main() {
 
     test('不同 mealType → 缓存隔离', () async {
       final service = AiRecommendationService(
-        _FakeGlmProvider('{}'),
+        _FakeGlmProvider(validJson),
         profileRepo,
         mealRepo,
         foodRepo,
@@ -208,7 +218,7 @@ void main() {
 
     test('不同 date → 缓存隔离', () async {
       final service = AiRecommendationService(
-        _FakeGlmProvider('{}'),
+        _FakeGlmProvider(validJson),
         profileRepo,
         mealRepo,
         foodRepo,
@@ -221,6 +231,28 @@ void main() {
         const AiRecommendationRequest(todayDate: '2026-07-05', mealType: 'lunch'),
       );
       expect(r.fromCache, false);
+    });
+
+    test('解析失败不缓存（下次允许重试）', () async {
+      // '{}' 无 recommendations → 解析抛 FormatException
+      final service = AiRecommendationService(
+        _FakeGlmProvider('{}'),
+        profileRepo,
+        mealRepo,
+        foodRepo,
+        feedbackRepo,
+      );
+      // 第一次：失败返回空
+      final r1 = await service.recommend(
+        const AiRecommendationRequest(todayDate: '2026-07-04', mealType: 'lunch'),
+      );
+      expect(r1.recommendations, isEmpty);
+      expect(r1.fromCache, false);
+      // 第二次：不命中缓存（fromCache=false，会再次尝试）
+      final r2 = await service.recommend(
+        const AiRecommendationRequest(todayDate: '2026-07-04', mealType: 'lunch'),
+      );
+      expect(r2.fromCache, false);
     });
   });
 

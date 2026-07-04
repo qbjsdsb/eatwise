@@ -2,6 +2,8 @@
 import 'package:drift/native.dart';
 import 'package:eatwise/ai/nutrition_lookup.dart';
 import 'package:eatwise/ai/vision_provider.dart';
+import 'package:eatwise/core/config/app_config.dart';
+import 'package:eatwise/core/config/secure_config_store.dart';
 import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/data/repositories/food_item_repository.dart';
 import 'package:eatwise/data/repositories/meal_log_repository.dart';
@@ -10,6 +12,7 @@ import 'package:eatwise/features/recognize/calibration_page.dart';
 import 'package:eatwise/features/recognize/providers.dart' as recognize;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -52,6 +55,12 @@ void main() {
   });
 
   testWidgets('看板宏量显示 g/kg 双展示', (tester) async {
+    // 沙箱无 secure_storage 平台通道，注入内存 mock（v5 看板 initState 会
+    // 调 appConfigProvider.future 检查 GLM key，不 mock 会抛 MissingPluginException
+    // 导致 AI FutureBuilder 卡在 loading，CircularProgressIndicator 永不停止）
+    FlutterSecureStorage.setMockInitialValues({});
+    final store = SecureConfigStore();
+
     final db = EatWiseDatabase(NativeDatabase.memory());
     addTearDown(db.close);
     // 默认 profile weightKg=70（DB 首次创建时种子）
@@ -76,6 +85,7 @@ void main() {
 
     final container = ProviderContainer(overrides: [
       recognize.databaseProvider.overrideWith((ref) async => db),
+      secureConfigStoreProvider.overrideWithValue(store),
     ]);
     addTearDown(container.dispose);
 
