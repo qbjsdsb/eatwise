@@ -1,3 +1,4 @@
+import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/data/repositories/food_item_repository.dart';
 import 'off_provider.dart';
 import 'vision_provider.dart';
@@ -145,17 +146,76 @@ class NutritionLookup {
 
   /// 单品区间计算（Low/Mid/High 三档份量）
   /// 设计 5.6：估算区间 ±10%（MVP 统一，单品实际 ±3-5% 但 UI 简化展示）
+  ///
+  /// M10 修复：先查一次库拿 food（或 OFF 云查一次），用同一 food/off 数据
+  /// 计算三档。原实现调 lookupSingleItem 3 次，DB miss + OFF miss 时会调
+  /// OFF 3 次（网络浪费 + 速率限制风险），DB hit 时 3 次全表扫描。
   Future<NutritionRange?> lookupSingleItemWithRange({
     required String dishName,
     required double servingGLow,
     required double servingGMid,
     required double servingGHigh,
   }) async {
-    final low = await lookupSingleItem(dishName: dishName, servingG: servingGLow);
-    final mid = await lookupSingleItem(dishName: dishName, servingG: servingGMid);
-    final high = await lookupSingleItem(dishName: dishName, servingG: servingGHigh);
-    if (low == null || mid == null || high == null) return null;
-    return NutritionRange(low: low, mid: mid, high: high);
+    final food = await _repo.findByNameOrAlias(dishName);
+    if (food != null) {
+      // 复合菜占位记录（per100g=0, componentsJson 非空）视为未命中，
+      // 与 lookupSingleItem 一致（防 0 热量污染）
+      if (food.componentsJson != null) return null;
+      return NutritionRange(
+        low: _nutritionFromFood(food, servingGLow),
+        mid: _nutritionFromFood(food, servingGMid),
+        high: _nutritionFromFood(food, servingGHigh),
+      );
+    }
+    // DB miss → OFF 云查一次（非三次），命中落库 + 用同一 OFF 数据算三档
+    if (_offProvider != null) {
+      final off = await _offProvider.lookup(dishName);
+      if (off != null) {
+        final foodId = await _repo.insertOff(
+          name: dishName,
+          caloriesPer100g: off.caloriesPer100g,
+          proteinPer100g: off.proteinPer100g,
+          fatPer100g: off.fatPer100g,
+          carbsPer100g: off.carbsPer100g,
+          defaultServingG: off.defaultServingG,
+          aliases: <String>[dishName],
+        );
+        return NutritionRange(
+          low: _nutritionFromOff(off, foodId, servingGLow),
+          mid: _nutritionFromOff(off, foodId, servingGMid),
+          high: _nutritionFromOff(off, foodId, servingGHigh),
+        );
+      }
+    }
+    return null;
+  }
+
+  /// 从本地库 FoodItem 计算单品营养（含可食部分系数 ediblePercent）
+  /// 与 lookupSingleItem DB 命中路径逻辑一致
+  NutritionResult _nutritionFromFood(FoodItem food, double servingG) {
+    final edibleFactor = (food.ediblePercent ?? 100).clamp(1, 100) / 100;
+    final effectiveG = servingG * edibleFactor;
+    return NutritionResult(
+      foodItemId: food.id,
+      calories: food.caloriesPer100g * effectiveG / 100,
+      proteinG: food.proteinPer100g * effectiveG / 100,
+      fatG: food.fatPer100g * effectiveG / 100,
+      carbsG: food.carbsPer100g * effectiveG / 100,
+      oilG: 0,
+    );
+  }
+
+  /// 从 OFF 云查结果计算单品营养（不乘 ediblePercent，OFF 数据是 per100g 成品值）
+  /// 与 lookupSingleItem OFF 命中路径逻辑一致
+  NutritionResult _nutritionFromOff(OffResult off, int foodItemId, double servingG) {
+    return NutritionResult(
+      foodItemId: foodItemId,
+      calories: off.caloriesPer100g * servingG / 100,
+      proteinG: off.proteinPer100g * servingG / 100,
+      fatG: off.fatPer100g * servingG / 100,
+      carbsG: off.carbsPer100g * servingG / 100,
+      oilG: 0,
+    );
   }
 
   /// 复合菜区间计算（Low/Mid/High 三档份量，按比例缩放）

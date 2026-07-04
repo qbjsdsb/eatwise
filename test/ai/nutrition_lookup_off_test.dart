@@ -163,4 +163,54 @@ void main() {
     expect(r.componentMisses, ['不存在的食材']);
     expect(off.callCount, 0); // 复合菜不触发 OFF（设计如此）
   });
+
+  // M10 特征测试：lookupSingleItemWithRange OFF 路径安全网
+  // 确保 M10 性能优化（查库 3 次→1 次）不改变 OFF 路径可观察行为。
+  group('lookupSingleItemWithRange OFF 路径（M10 安全网）', () {
+    test('DB miss + OFF 命中：三档基于同一 OFF 数据计算', () async {
+      final offResult = const OffResult(
+        name: 'Coca Cola',
+        brand: 'Coca-Cola',
+        caloriesPer100g: 42,
+        proteinPer100g: 0,
+        fatPer100g: 0,
+        carbsPer100g: 10.6,
+        defaultServingG: 250,
+      );
+      final off = FakeOffProvider(offResult);
+      final lookup = NutritionLookup(repo, offProvider: off);
+
+      final range = await lookup.lookupSingleItemWithRange(
+        dishName: '可乐',
+        servingGLow: 200,
+        servingGMid: 250,
+        servingGHigh: 300,
+      );
+      expect(range, isNotNull);
+      // OFF 路径不乘 ediblePercent（insertOff 不设 ediblePercent）
+      // low: 42*200/100=84, mid: 42*250/100=105, high: 42*300/100=126
+      expect(range!.low.calories, closeTo(84, 0.01));
+      expect(range.mid.calories, closeTo(105, 0.01));
+      expect(range.high.calories, closeTo(126, 0.01));
+      // foodItemId 三档相同（同一 OFF 落库 id）
+      expect(range.low.foodItemId, range.mid.foodItemId);
+      expect(range.mid.foodItemId, range.high.foodItemId);
+      // OFF 只调 1 次（M10 优化前后均如此，验证不退化）
+      expect(off.callCount, 1);
+    });
+
+    test('DB miss + OFF miss → 返回 null', () async {
+      final off = FakeOffProvider(null);
+      final lookup = NutritionLookup(repo, offProvider: off);
+
+      final range = await lookup.lookupSingleItemWithRange(
+        dishName: '不存在的食物',
+        servingGLow: 80,
+        servingGMid: 100,
+        servingGHigh: 120,
+      );
+      expect(range, isNull);
+      expect(off.callCount, 1);
+    });
+  });
 }

@@ -197,4 +197,95 @@ void main() {
       expect(result.calories, closeTo(172.8, 0.01));
     });
   });
+
+  // M10 特征测试：lookupSingleItemWithRange 行为安全网（重构查库 3 次→1 次用）
+  // 这些测试文档化现有行为，确保 M10 性能优化不改变可观察行为。
+  group('lookupSingleItemWithRange 特征测试（M10 安全网）', () {
+    test('DB 命中：三档基于同一 food 计算，比例 = servingG 比例', () async {
+      final range = await lookup.lookupSingleItemWithRange(
+        dishName: '番茄',
+        servingGLow: 80,
+        servingGMid: 100,
+        servingGHigh: 120,
+      );
+      expect(range, isNotNull);
+      // 番茄：cal100=18, protein=0.9, fat=0.2, carbs=3.9, edible=null(100%)
+      // low: 18*80/100=14.4, mid: 18*100/100=18, high: 18*120/100=21.6
+      expect(range!.low.calories, closeTo(14.4, 0.01));
+      expect(range.mid.calories, closeTo(18, 0.01));
+      expect(range.high.calories, closeTo(21.6, 0.01));
+      // 比例一致（同一 food per100g × 不同 servingG）
+      expect(range.low.proteinG / range.mid.proteinG, closeTo(80 / 100, 0.001));
+      expect(range.mid.proteinG / range.high.proteinG,
+          closeTo(100 / 120, 0.001));
+      // foodItemId 三档相同（同一 food）
+      expect(range.low.foodItemId, range.mid.foodItemId);
+      expect(range.mid.foodItemId, range.high.foodItemId);
+    });
+
+    test('DB miss → 返回 null（无 OFF 注入）', () async {
+      final range = await lookup.lookupSingleItemWithRange(
+        dishName: '不存在的食物',
+        servingGLow: 80,
+        servingGMid: 100,
+        servingGHigh: 120,
+      );
+      expect(range, isNull);
+    });
+
+    test('ediblePercent 食物三档：effectiveG 按可食部分缩放', () async {
+      // 香蕉 edible=65%
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+            name: '香蕉',
+            defaultServingG: 100,
+            caloriesPer100g: 93,
+            proteinPer100g: 1.4,
+            fatPer100g: 0.2,
+            carbsPer100g: 22.0,
+            ediblePercent: const Value(65),
+            source: 'china_fct',
+            sourceVersion: 'test',
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          ));
+      final range = await lookup.lookupSingleItemWithRange(
+        dishName: '香蕉',
+        servingGLow: 100,
+        servingGMid: 200,
+        servingGHigh: 300,
+      );
+      expect(range, isNotNull);
+      // low: 100*0.65=65g → 93*65/100=60.45
+      // mid: 200*0.65=130g → 93*130/100=120.9
+      // high: 300*0.65=195g → 93*195/100=181.35
+      expect(range!.low.calories, closeTo(60.45, 0.01));
+      expect(range.mid.calories, closeTo(120.9, 0.01));
+      expect(range.high.calories, closeTo(181.35, 0.01));
+    });
+
+    test('复合菜占位记录（componentsJson != null）→ 返回 null', () async {
+      // 插入一个复合菜占位记录（per100g=0, componentsJson 非空）
+      // lookupSingleItem 对这类记录返回 null（视为未命中，防 0 热量污染）
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+            name: '番茄炒蛋',
+            defaultServingG: 250,
+            caloriesPer100g: 0,
+            proteinPer100g: 0,
+            fatPer100g: 0,
+            carbsPer100g: 0,
+            componentsJson:
+                const Value('[{"name":"鸡蛋","estimated_g":120}]'),
+            source: 'composite',
+            sourceVersion: 'test',
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          ));
+      final range = await lookup.lookupSingleItemWithRange(
+        dishName: '番茄炒蛋',
+        servingGLow: 200,
+        servingGMid: 250,
+        servingGHigh: 300,
+      );
+      expect(range, isNull,
+          reason: '复合菜占位记录不应被单品区间查库命中');
+    });
+  });
 }
