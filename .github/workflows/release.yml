@@ -48,8 +48,30 @@ jobs:
       - name: Generate drift code (build_runner)
         run: dart run build_runner build --delete-conflicting-outputs
 
+      - name: 注入 release keystore（从 GitHub Secrets）
+        # M16 应用内更新：从 secrets 解码 keystore 到 android/app/，生成 key.properties
+        # 未配置 secret 时回退 debug 签名（不阻塞 CI，但 CI build 无法覆盖安装旧版）
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "⚠️  未配置 ANDROID_KEYSTORE_BASE64 secret，回退到 debug 签名（CI build 仍无法覆盖安装）"
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/eatwise-release.jks
+          cat > android/app/key.properties <<EOF
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyPassword=$ANDROID_KEY_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=eatwise-release.jks
+          EOF
+          echo "✅ keystore 注入完成"
+
       - name: Build release APK
-        # release 用 debug 签名（build.gradle.kts 已配 signingConfig debug）
+        # 有 key.properties 用固定 release 签名（支持覆盖安装），否则回退 debug
         run: flutter build apk --release --no-tree-shake-icons
 
       - name: Build debug APK (诊断用，崩溃显示红屏堆栈)
@@ -114,24 +136,25 @@ jobs:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           name: EatWise ${{ steps.tag.outputs.release_tag }}
           body: |
+            ## 安装说明
+
+            1. 下载下方 apk（优先下 app-release.apk）
+            2. 手机用数据线传过去（或扫码下载）
+            3. 手机设置开启"允许安装未知来源应用"
+            4. **直接覆盖安装即可**（v0.18.0 起用固定 keystore 签名，无需卸载旧版；v0.17.0 及之前需先卸载一次以切换签名）
+            5. 首次启动在「设置」页填入你的 Qwen API Key（视觉识别用）
+            6. 在「设置 → 检查更新」可一键升级到下一版
+
             ## ⚠️ 闪退排查：请先装 app-debug.apk
 
             如果 app-release.apk 闪退，请改装 **app-debug.apk**：
             - debug 版崩溃时会显示**红色错误页+完整堆栈**
             - 截图发给开发者即可定位根因
 
-            ## 安装说明
-
-            1. 下载下方 apk（优先下 app-debug.apk 诊断闪退）
-            2. 手机用数据线传过去（或扫码下载）
-            3. 手机设置开启"允许安装未知来源应用"
-            4. **先卸载旧版本**再装新版（签名/包名相同，不卸载装不上）
-            5. 首次启动在「设置」页填入你的 Qwen API Key（视觉识别用）
-
             ## 签名说明
 
-            本包使用 debug 签名（自用版），可正常安装运行，
-            但**不能上架应用商店**。如需正式发布需配置专属签名密钥。
+            本包使用固定 release 签名（v0.18.0 起），可正常覆盖安装，
+            但**不能上架应用商店**。
 
             ## 版本信息
 
