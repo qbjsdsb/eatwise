@@ -100,7 +100,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_loading) return const Scaffold(body: LoadingState());
     final cs = Theme.of(context).colorScheme;
     return PopScope(
       canPop: !_dirty,

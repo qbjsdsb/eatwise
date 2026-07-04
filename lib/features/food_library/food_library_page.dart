@@ -122,8 +122,9 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
           if (!_searching && _frequent.isNotEmpty) SectionTitle('常吃'),
           if (!_searching && _frequent.isEmpty)
             // 首屏加载中显示转圈，避免数据未到时误显"暂无常用食物"
+            // LoadingState 内部 Center 在 Column unbounded 高度下会报错，用 SizedBox 约束高度
             _initialLoading
-                ? const LoadingState()
+                ? const SizedBox(height: 200, child: LoadingState())
                 : const EmptyState(
                     icon: Icons.restaurant_menu,
                     title: '暂无常用食物',

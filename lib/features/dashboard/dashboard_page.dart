@@ -259,6 +259,12 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     return FutureBuilder<List<RecommendedFood>>(
       future: _recFuture,
       builder: (context, snap) {
+        // 推荐服务异常时静默隐藏（推荐是锦上添花，不应阻塞主界面），
+        // 但用 hasError 显式分支避免被 !hasData 吞掉日志（开发期 debugPrint 排查）
+        if (snap.hasError) {
+          debugPrint('推荐加载失败：${snap.error}');
+          return const SizedBox.shrink();
+        }
         if (!snap.hasData || snap.data!.isEmpty) {
           return const SizedBox.shrink();
         }

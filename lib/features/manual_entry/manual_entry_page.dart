@@ -323,7 +323,6 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
 
   void _showError(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg)));
+    showAppToast(context, msg);
   }
 }

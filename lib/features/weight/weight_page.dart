@@ -77,7 +77,7 @@ class WeightPageState extends ConsumerState<WeightPage> {
     if (_loading) {
       return Scaffold(
         appBar: widget.embedded ? null : AppBar(title: const Text('体重记录')),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const LoadingState(),
       );
     }
     return Scaffold(
@@ -171,9 +171,9 @@ class WeightPageState extends ConsumerState<WeightPage> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _legendDot(cs.tertiary, '热量 (kcal)', textTheme),
+              LegendDot(color: cs.tertiary, label: '热量 (kcal)'),
               const SizedBox(width: 16),
-              _legendDot(cs.primary, '体重 (kg)', textTheme),
+              LegendDot(color: cs.primary, label: '体重 (kg)'),
             ],
           ),
         ),
@@ -343,25 +343,6 @@ class WeightPageState extends ConsumerState<WeightPage> {
             ],
           )),
         ),
-      ],
-    );
-  }
-
-  /// 图例小色块 + 文案
-  Widget _legendDot(Color color, String label, TextTheme textTheme) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(4), // MD3 最小圆角
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(label, style: textTheme.labelSmall),
       ],
     );
   }

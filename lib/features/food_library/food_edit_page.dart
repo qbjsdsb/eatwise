@@ -159,8 +159,7 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
       final repo = FoodItemRepository(db);
       await repo.updateDefaultServing(widget.foodItem.id, serving);
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已保存默认份量')));
+        showAppToast(context, '已保存默认份量');
         _dirty = false; // 清 dirty 让 PopScope 放行 programmatic pop
         Navigator.of(context).pop();
       }
@@ -199,8 +198,7 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
         carbsPer100g: carbs,
       );
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已保存')));
+        showAppToast(context, '已保存');
         _dirty = false; // 清 dirty 让 PopScope 放行 programmatic pop
         Navigator.of(context).pop();
       }
@@ -213,7 +211,6 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
 
   void _showError(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(msg)));
+    showAppToast(context, msg);
   }
 }

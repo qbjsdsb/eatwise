@@ -56,13 +56,12 @@ class _MePageState extends ConsumerState<MePage> {
               future: _future,
               builder: (context, snap) {
                 if (snap.hasError) {
-                  return ErrorState(onRetry: _refresh);
+                  // SliverToBoxAdapter 给的是 bounded 宽度 + unbounded 高度，
+                  // ErrorState/LoadingState 内部 Center 会 expand，需 SizedBox 提供高度约束
+                  return SizedBox(height: 240, child: ErrorState(onRetry: _refresh));
                 }
                 if (!snap.hasData) {
-                  return const Padding(
-                    padding: EdgeInsets.all(32),
-                    child: LoadingState(),
-                  );
+                  return const SizedBox(height: 240, child: LoadingState());
                 }
                 final p = snap.data!;
                 final textTheme = Theme.of(context).textTheme;

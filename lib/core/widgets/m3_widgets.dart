@@ -497,64 +497,6 @@ class HeroCard extends StatelessWidget {
   }
 }
 
-/// 宏量营养素进度条：标签 + 进度条 + 数值，统一 dashboard 三宏布局。
-///
-/// 抽象 dashboard._miniMacro 的"标签 + LinearProgressIndicator + 数值"三段式，
-/// 避免硬编码高度 6 / 宽度 40+80。颜色用 [MacroColors] 跨页统一语义色。
-class MacroBar extends StatelessWidget {
-  const MacroBar({
-    super.key,
-    required this.label,
-    required this.value,
-    required this.goal,
-    required this.color,
-    this.height = 6,
-  });
-
-  final String label;
-  final double value;
-  final double goal;
-  final Color color;
-  final double height;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-    final pct = goal > 0 ? (value / goal).clamp(0.0, 1.0) : 0.0;
-    return Row(
-      children: [
-        SizedBox(
-          width: 40,
-          child: Text(label,
-              style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant)),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(height / 2),
-            child: LinearProgressIndicator(
-              value: pct,
-              minHeight: height,
-              backgroundColor: cs.surfaceContainerHighest,
-              valueColor: AlwaysStoppedAnimation(color),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        SizedBox(
-          width: 80,
-          child: Text(
-            '${value.toStringAsFixed(0)}/${goal.toStringAsFixed(0)}g',
-            style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
-            textAlign: TextAlign.end,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 /// 图例圆点：12x12 圆角方块 + 文案，用于 weight_page 趋势图图例。
 ///
 /// 抽象 weight_page._legendDot 的硬编码 12x12 + borderRadius 4，

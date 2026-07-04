@@ -23,8 +23,8 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.12.0+13（pubspec.yaml）
-- **当前分支**：v0.10.0-m3-merge（基于 v0.8.0，叠加 HEAD 的 AI 估热+主题色+Sentry）
+- **当前版本**：0.15.0+16（pubspec.yaml）
+- **当前分支**：trae/agent-wX1X6Q（HEAD = 4b35dcb v0.15.0 release；v0.15.0 tag 指向 4b35dcb）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
   - `android/app/build.gradle.kts` 必须保持 `isMinifyEnabled=false` + `isShrinkResources=false`（否则 R8 剥掉 sentry/workmanager 反射类致启动崩溃）
@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-04
 
-**工作区状态**：v0.15.0 release 已完成（UI 优化 + 图标重设计 + 版本号 bump），待 push；v1.10 深度审查已 commit 7b649f2
-**当前分支**：trae/agent-wX1X6Q（与 v0.10.0-m3-merge 同步在 2cc8249；v0.14.0 tag 指向 8bccee4 版本号 bump commit）
+**工作区状态**：v0.15.0 release 已 push 远程（commit 4b35dcb + tag v0.15.0）；v1.10 深度审查已 commit 7b649f2
+**当前分支**：trae/agent-wX1X6Q（HEAD = 4b35dcb；v0.15.0 tag 指向 4b35dcb；v0.14.0 tag 指向 8bccee4）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
@@ -219,7 +219,7 @@
 - 修改：`lib/ai/vision_provider.dart` / `lib/ai/prompts.dart` / `lib/core/util/recognition_post_processor.dart` / `lib/core/util/recognition_validator.dart` / `lib/data/seed/food_category_defaults.dart` / `lib/features/offline/offline_queue_controller.dart` / `lib/features/recognize/calibration_page.dart` / `lib/features/recognize/multi_dish_page.dart` / `lib/features/recognize/recognize_page.dart`
 - 修改测试：`test/ai/vision_response_parser_test.dart` / `test/core/recognition_post_processor_test.dart` / `test/core/recognition_validator_test.dart` / `test/data/food_category_defaults_test.dart`
 
-**Phase 2.8 v1.10 深度审查 + 测试补强（2026-07-04，待 commit）**：
+**Phase 2.8 v1.10 深度审查 + 测试补强（2026-07-04，commit 7b649f2）**：
 
 用户要求"设计更复杂严谨的测试，一定要找出所有问题"。通过手动审查 + Task agent 深度审查发现 10 个 bug（BUG-1~BUG-10），其中 2 个 High 级（BUG-2/BUG-5），修复 7 个 + 补 124 个新测试覆盖。
 
@@ -259,7 +259,7 @@
 - 修改测试：`test/core/recognition_validator_test.dart` / `test/features/recognize_controller_test.dart` / `test/ai/food_density_test.dart` / `test/ai/package_nutrition_ocr_parser_test.dart`
 - 新建测试：`test/ai/prompts_schema_test.dart`
 
-**Phase 2.9 v0.15.0 release：UI 优化 + 图标重设计（2026-07-04，待 commit）**：
+**Phase 2.9 v0.15.0 release：UI 优化 + 图标重设计（2026-07-04，commit 4b35dcb）**：
 
 用户要求"整体软件界面再次进行优化，严谨一点，反复检查，还有软件的图标还是丑，我希望能更谷歌味道一点"。通过 Task agent 深度审查 13 个 UI 文件列出 P0-P3 优化点，实施 P0+P1+部分 P2 改动 + 图标重设计。
 
@@ -297,18 +297,58 @@
   - 全部 fill（非 stroke）+ 圆角，缩放 48dp 仍清晰
 - 不改 mipmap PNG（位图兜底，Android 8.0+ 用 adaptive vector）
 
-**版本号 bump**：0.14.0+15 → 0.15.0+16（pubspec.yaml + me_page + settings_page 关于对话框）
+**版本号 bump**：0.14.0+15 → 0.15.0+16（pubspec.yaml + me_page + settings_page 关于对话框 + sentry_init.dart release 默认值）
 
 **验证（2026-07-04 沙箱实测）**：
 - ✅ `flutter analyze` → No issues found
 - ✅ `flutter test` → 610 passed / 3 skipped / 1 failed（T48 pre-existing 日期漂移，与本次改动无关）
 
-**Phase 2.9 文件清单（11 lib + 1 yaml + 2 xml）**：
+**Phase 2.9 文件清单（12 lib + 1 yaml + 2 xml）**：
 - 主题层：`lib/app.dart`（+6 组件主题 + edge-to-edge）/ `lib/main_shell.dart`（FAB 删局部样式）
 - 公共组件：`lib/core/widgets/m3_widgets.dart`（+6 组件 + SectionTitle padding 参数）
 - 各页面：`lib/features/dashboard/dashboard_page.dart` / `lib/features/me/me_page.dart` / `lib/features/food_library/food_library_page.dart` / `lib/features/weight/weight_page.dart` / `lib/features/recognize/recognize_page.dart` / `lib/features/insight/insight_page.dart` / `lib/features/profile/profile_page.dart` / `lib/features/settings/settings_page.dart`
 - 图标：`android/app/src/main/res/drawable/ic_launcher_background.xml` / `android/app/src/main/res/drawable/ic_launcher_foreground.xml`
-- 版本号：`pubspec.yaml`
+- 版本号：`pubspec.yaml` / `lib/core/error/sentry_init.dart`（release 默认值 0.14.0 → 0.15.0）
+
+**Phase 2.10 v0.15.0 release 后大规模审计修复（2026-07-04，待 commit）**：
+
+用户要求"发布完成后再进行一轮大规模的问题检查，势必找出所有的问题并且修复，所有环节所有项目都要检查测试"。通过 3 个并行 Task agent 深度审计（UI 改动完整性 + v1.10 测试完整性 + release 完整性）发现 ~24 个问题，全部修复或降级记录。
+
+**审计发现与修复**：
+
+1. **sentry_init.dart 版本号遗漏**（release 完整性审计发现）：release 后检查发现 `defaultValue: 'eatwise@0.14.0'` 未同步到 0.15.0。修复：改为 `eatwise@0.15.0`
+
+2. **UI 审计 8 个问题修复**：
+   - **me_page LoadingState/ErrorState 在 SliverToBoxAdapter 内布局不正确**（严重）：SliverToBoxAdapter 给 unbounded 高度，LoadingState 内部 Center 会 expand 失败。修复：用 SizedBox(height: 240) 包裹提供高度约束
+   - **food_library 首屏 LoadingState 未包在 Expanded 中**（严重）：同上 unbounded 高度问题。修复：用 SizedBox(height: 200) 包裹
+   - **dashboard 推荐 FutureBuilder 缺 snap.hasError 分支**（逻辑）：错误被 `!hasData` 静默吞掉。修复：加 hasError 显式分支 + debugPrint 排查
+   - **today_meals_page 用 EmptyState 模拟错误态**（一致性）：改用 ErrorState（与 dashboard/me_page 同构）
+   - **4 页面裸 CircularProgressIndicator**（一致性）：profile/weight/today_meals/settings 的 `_loading` 分支用 `Center(child: CircularProgressIndicator())`，颜色不统一。修复：替换为 LoadingState()（用 onSurfaceVariant 加载色）
+   - **11 处简单 SnackBar 未改 showAppToast**（一致性）：today_meals 4 处（_showEditDialog 保存失败 / 已反馈过 / 已记录反馈 / 反馈失败 / 删除失败）+ food_edit 3 处（_showError + 已保存默认份量 + 已保存）+ manual_entry 1 处（_showError）+ calibration 1 处（记录失败）。注意 today_meals 撤销 SnackBar 带 SnackBarAction 保留内联（陷阱 49）
+   - **MacroBar/LegendDot 定义后未回填替换**（设计完成度）：weight_page._legendDot 替换为 LegendDot（已回填）；MacroBar 因 dashboard hero card 上需要 labelColor 对比色（MacroBar 用 onSurfaceVariant 不可读）无人能用，删除（过度设计）
+   - **SectionTitle padding 参数 21 处调用无一处使用**（过度设计）：保留（参数已实现且文档说明用途，删除是 breaking change）
+
+3. **HANDOFF.md 9 个文档问题修复**：
+   - L26 版本号 0.12.0+13 → 0.15.0+16
+   - L27 分支 v0.10.0-m3-merge → trae/agent-wX1X6Q（HEAD = 4b35dcb）
+   - L39 "待 push" → "已 push 远程"
+   - L222 Phase 2.8 标题 "待 commit" → "commit 7b649f2"
+   - L262 Phase 2.9 标题 "待 commit" → "commit 4b35dcb"
+   - L300 版本号 bump 说明补 sentry_init.dart
+   - L306-311 文件清单 11 lib → 12 lib + 补 sentry_init.dart
+   - L357 最近 commit 首条 "(待 commit)" → "4b35dcb"
+
+4. **测试缺口评估降级**（v1.10 测试审计发现）：
+   - multi_dish_page / offline_queue_controller / calibration_page 的 packageMacrosAllZero 守卫无直接测试
+   - 评估结论：recognize_controller 已有 aiFallbackNutritionForTest 覆盖单品路径守卫；其他 3 处守卫逻辑相同（v1.10 同期镜像），analyze 通过确认无语法错误；补 widget test 需 mock OCR/AI/DB 多依赖，复杂度高且 multi_dish_page widget test 已在已知未修复项（见下文）；降级记录待后续评估，不引入重构风险
+
+**Phase 2.10 文件清单（11 lib + 1 md）**：
+- 修复：`lib/core/error/sentry_init.dart`（版本号同步）/ `lib/core/widgets/m3_widgets.dart`（删 MacroBar）/ `lib/features/dashboard/dashboard_page.dart`（hasError 分支）/ `lib/features/dashboard/today_meals_page.dart`（ErrorState + LoadingState + 4 处 showAppToast）/ `lib/features/me/me_page.dart`（SizedBox 约束）/ `lib/features/food_library/food_library_page.dart`（SizedBox 约束）/ `lib/features/weight/weight_page.dart`（LoadingState + LegendDot 回填 + 删 _legendDot）/ `lib/features/profile/profile_page.dart`（LoadingState）/ `lib/features/settings/settings_page.dart`（LoadingState）/ `lib/features/food_library/food_edit_page.dart`（3 处 showAppToast）/ `lib/features/manual_entry/manual_entry_page.dart`（_showError showAppToast）/ `lib/features/recognize/calibration_page.dart`（showAppToast）
+- 文档：`HANDOFF.md`（9 个文档问题修复 + 本章节）
+
+**验证（2026-07-04 沙箱实测）**：
+- ✅ `flutter analyze` → No issues found
+- ✅ `flutter test` → 610 passed / 3 skipped / 1 failed（T48 pre-existing 日期漂移，与本次改动无关）
 
 **Phase 3 调研结论（2026-07-04，决策：不推荐实施）**：
 
@@ -354,7 +394,7 @@
 - `image_cleanup_startup_test.dart T48` 日期敏感测试：测试硬编码日期但代码用 `DateTime.now()`，每过一段时间会失败。建议后续改成相对日期（`DateTime.now().subtract(Duration(days: 8))` 动态生成测试日期）
 
 **最近 commit**：
-- `(待 commit)` release: v0.15.0 UI 优化 + 图标重设计（M3 Expressive 主题层 +6 组件主题 + 公共组件 +6 + 各页面优化 + 图标 Material 风格重设计）
+- `4b35dcb` release: v0.15.0 UI 优化 + 图标重设计（M3 Expressive 主题层 +6 组件主题 + 公共组件 +6 + 各页面优化 + 图标 Material 风格重设计）
 - `7b649f2` fix: v1.10 深度审查 BUG-2/BUG-5 High 级修复 + 124 个新测试覆盖（didFill 守卫跳过 cal 自洽修正 + _aiFallbackNutrition packageMacrosAllZero 守卫 + prompts schema 一致性 + OCR "糖"负向回视 + food_density 新品类）
 - `8058012` feat: multi_dish_page 复合菜路径 packageMacrosAllZero 守卫 + OCR "糖"模式负向回视防误匹配
 - `e9dacaf` docs: HANDOFF 补 v1.10 三层防御架构详情 + 修复 validator warning

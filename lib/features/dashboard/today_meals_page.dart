@@ -81,7 +81,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     if (_loading) {
       return Scaffold(
         appBar: widget.embedded ? null : AppBar(title: const Text('今日记录')),
-        body: const Center(child: CircularProgressIndicator()),
+        body: const LoadingState(),
       );
     }
     // 按餐次分组
@@ -100,12 +100,9 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     return Scaffold(
       appBar: widget.embedded ? null : AppBar(title: const Text('今日记录')),
       body: _loadError
-          ? EmptyState(
-              icon: Icons.error_outline,
-              title: '数据加载失败',
-              subtitle: '请检查数据库后重试',
-              actionLabel: '重试',
-              onAction: () {
+          ? ErrorState(
+              message: '数据加载失败',
+              onRetry: () {
                 setState(() {
                   _loading = true;
                   _loadError = false;
@@ -202,12 +199,12 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         try {
           await repo.deleteMealLog(m.id);
         } catch (e) {
-          // 删除失败：页面已销毁则无法回滚 UI/提示（best-effort，下次加载会显示原记录）
-          if (!mounted) return;
-          await _load();
-          if (!mounted) return;
-          showAppToast(context, '删除失败：$e');
-        }
+      // 删除失败：页面已销毁则无法回滚 UI/提示（best-effort，下次加载会显示原记录）
+      if (!mounted) return;
+      await _load();
+      if (!mounted) return;
+      showAppToast(context, '删除失败：$e');
+    }
       },
       // 用 MD3 Card.outlined 变体（替代手写 elevation:0 + outline），
       // 圆角 12（MD3 medium）统一 dashboard，内 padding 16 统一 dashboard
@@ -381,8 +378,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       if (mounted) _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('保存失败：$e')));
+        showAppToast(context, '保存失败：$e');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -395,8 +391,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       final feedbackRepo = RecognitionFeedbackRepository(db);
       if (await feedbackRepo.hasFeedback(m.id)) {
         if (mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('已反馈过')));
+          showAppToast(context, '已反馈过');
         }
         return;
       }
@@ -548,14 +543,12 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('已记录反馈')));
+        showAppToast(context, '已记录反馈');
       }
     } catch (e) {
       // 整个反馈流程异常兜底：给用户反馈，不静默卡住
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('反馈失败：$e')));
+        showAppToast(context, '反馈失败：$e');
       }
     }
   }

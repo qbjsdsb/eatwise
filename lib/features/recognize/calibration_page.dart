@@ -660,8 +660,7 @@ class _CalibrationPageState extends State<CalibrationPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('记录失败：$e')));
+        showAppToast(context, '记录失败：$e');
       }
     } finally {
       if (mounted) setState(() => _isRecording = false);
