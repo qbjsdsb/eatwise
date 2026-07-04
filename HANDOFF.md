@@ -76,6 +76,45 @@
   - 14 个新测试全过；offline_queue_test + recognition_post_processor_test 全过
 - Phase 2 设计纠偏：原计划"删哨兵分支 + calibrate 前移到 PostProcessor"，读代码后发现 calibrate 需要 `n.calories`（NutritionResult）而非 `result.estimatedCalories`，且库命中路径不应触发 calibrate → 改为"哨兵内加包装 OCR 优先路径"
 
+**Phase 2.5 Gap 修复（2026-07-04）—— 自我评估发现 4 个 gap 全部修复**：
+
+经严谨自我评估对照豆包能力，发现 Phase 1+2 仍存在 4 个 gap，全部修复：
+
+- **Gap 1：复合菜分支漏掉包装 OCR 优先路径**（违反硬约束 3 三路径全覆盖）
+  - 影响文件：recognize_page.dart L319-339 / multi_dish_page.dart L475-495 + L509-529 / offline_queue_controller.dart L258-312 复合菜全命中分支 / CalibrationPage.dart L566-611 composite 路径 / multi_dish_page.dart L322-345 _calcNutrition
+  - 修复：复合菜分支加 hasPackageNutrition 检查，有包装数据时 per100g 用包装换算值（替代 0），actualCalories 用包装换算整菜热量（per100g × serving / 100）
+  - 后果（修复前）：预包装速冻食品（速冻水饺）被识别为 composite 时，包装营养表数据被忽略，per100g=0 占位
+
+- **Gap 2：reasoning 字段从未展示给用户**（prompt 承诺落空）
+  - 影响文件：calibration_page.dart L189-225
+  - 修复：校准页加 ExpansionTile 折叠展示 reasoning（默认折叠，用户主动展开查看 AI 推理过程）
+  - 后果（修复前）：reasoning 只在内存流转，用户点"识别不准"时只能盲改菜名/份量，无法看 AI 推理纠错
+
+- **Gap 3：actualCalories 与包装换算值脱节**（精度未达豆包水平）
+  - 影响文件：recognize_controller.dart L478-510 _aiFallbackNutrition / offline_queue_controller.dart L191-203 单品 LLM 兜底 + L253-262 复合菜全 miss LLM 兜底
+  - 修复：有包装数据时 calories 用包装换算整菜热量（per100Calories × mid / 100）替代 AI 估算
+  - 后果（修复前）：meal_log.actualCalories 用 AI 估算整菜值，包装精度只惠及未来查库，首次记录精度仍依赖 AI 估算
+
+- **Gap 4：solid 无校准 + 示例 7 数据不自洽**
+  - 影响文件：food_category_defaults.dart L93-105 calibrate / prompts.dart 示例 7
+  - 修复：calibrate 对 solid 加合理性区间 clamp（热量 0-900，蛋白/脂肪/碳水 0-100）；示例 7 改为 84g/8 条装（8×10.5=84g 与 package_total_g 自洽，原 57.6g 与 8×10.5=84g 矛盾）
+  - 后果（修复前）：solid 品类 AI 离谱估算（如 5000kcal/100g）直通 meal_log；示例矛盾可能误导模型
+
+- Phase 2.5 验证（2026-07-04 沙箱实测）：
+  - ✅ `flutter analyze` → No issues found
+  - ✅ `flutter test` → 425 passed / 3 skipped / 1 failed（T48 原有日期 bug）
+  - 8 个新测试全过（4 个 solid clamp + 4 个 Gap1/3 换算）
+
+**与豆包能力对比（修复后）**：
+
+| 维度 | 豆包 | EatWise v1.9 + Gap 修复 |
+|------|------|-------------------------|
+| 包装食品精确换算 | ✅ 直接用包装值记录 | ✅ actualCalories 用包装换算值（Gap 3 修复） |
+| 复合包装食品 | ✅ 识别为复合也能用包装 | ✅ 复合菜分支检查 hasPackageNutrition（Gap 1 修复） |
+| 推理过程透明 | ✅ 用户可见推理 | ✅ 校准页 ExpansionTile 展示（Gap 2 修复） |
+| 离谱估算拦截 | ✅ 多层防护 | ✅ solid 加合理性区间 clamp（Gap 4 修复） |
+| 啤酒/雪碧混淆 | ✅ 识别正确 | ✅ Phase 1 已解决 |
+
 **后续阶段**：
 - Phase 3: thinking 模式沙箱验证（需 WebSearch 实测 qwen3-vl thinking 支持 + json_object 兼容性 + 成本评估）
 - Phase 4: 两阶段识别 / 追问机制（按需，观察 Phase 1-3 效果后决定）

@@ -53,7 +53,7 @@ void main() {
       expect(result.$1, 43); // 10/43≈0.23，低于 0.5 倍，用默认值
     });
 
-    test('calibrate solid 不校准，保留 AI 值', () {
+    test('calibrate solid 合理值（547 薯片）保留 AI 值', () {
       final result = FoodCategoryDefaults.calibrate(
         aiCaloriesPer100g: 547, // 薯片
         aiProteinPer100g: 6,
@@ -61,7 +61,55 @@ void main() {
         aiCarbsPer100g: 53,
         category: 'solid',
       );
-      expect(result.$1, 547); // solid 无默认值，不校准
+      expect(result.$1, 547); // solid 无默认值，但在合理性区间内保留
+    });
+
+    test('v1.9 Gap4: calibrate solid 离谱高热量（5000）clamp 到 900', () {
+      final result = FoodCategoryDefaults.calibrate(
+        aiCaloriesPer100g: 5000, // AI 离谱估算
+        aiProteinPer100g: 6,
+        aiFatPer100g: 35,
+        aiCarbsPer100g: 53,
+        category: 'solid',
+      );
+      expect(result.$1, 900); // clamp 到 solid 上限 900
+    });
+
+    test('v1.9 Gap4: calibrate solid 负热量 clamp 到 0', () {
+      final result = FoodCategoryDefaults.calibrate(
+        aiCaloriesPer100g: -100,
+        aiProteinPer100g: 0,
+        aiFatPer100g: 0,
+        aiCarbsPer100g: 0,
+        category: 'solid',
+      );
+      expect(result.$1, 0);
+    });
+
+    test('v1.9 Gap4: calibrate solid 蛋白/脂肪/碳水超 100 clamp 到 100', () {
+      final result = FoodCategoryDefaults.calibrate(
+        aiCaloriesPer100g: 500,
+        aiProteinPer100g: 150, // 超 100g/100g 不可能
+        aiFatPer100g: 200,
+        aiCarbsPer100g: 120,
+        category: 'solid',
+      );
+      expect(result.$1, 500); // 热量在区间内保留
+      expect(result.$2, 100); // 蛋白 clamp 到 100
+      expect(result.$3, 100); // 脂肪 clamp 到 100
+      expect(result.$4, 100); // 碳水 clamp 到 100
+    });
+
+    test('v1.9 Gap4: calibrate solid 边界值 900 保留', () {
+      final result = FoodCategoryDefaults.calibrate(
+        aiCaloriesPer100g: 900, // 边界值
+        aiProteinPer100g: 0,
+        aiFatPer100g: 100,
+        aiCarbsPer100g: 0,
+        category: 'solid',
+      );
+      expect(result.$1, 900); // 边界值保留
+      expect(result.$3, 100); // 脂肪边界值保留
     });
 
     test('calibrate 水（默认 0）AI 任何正值都算偏离', () {

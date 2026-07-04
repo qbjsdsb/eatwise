@@ -318,13 +318,22 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
                       }
                     } else if (state.compositeNutrition != null) {
                       // 复合菜：存入 food_item（source=ai_recognized，components_json 存组分快照）
+                      // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），
+                      // per100g 用包装换算值（替代 0），actualCalories 在 CalibrationPage 按包装换算
+                      final packagePer100 = result.hasPackageNutrition
+                          ? result.computePackageNutritionPer100g(
+                              estimatedProteinG: result.estimatedProteinG,
+                              estimatedFatG: result.estimatedFatG,
+                              estimatedCarbsG: result.estimatedCarbsG,
+                            )
+                          : null;
                       foodItemId = await foodRepo.upsertAiRecognized(
                         name: result.dishName,
                         brand: result.brand,
-                        caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储，实际值在 meal_log
-                        proteinPer100g: 0,
-                        fatPer100g: 0,
-                        carbsPer100g: 0,
+                        caloriesPer100g: packagePer100?.$1 ?? 0,
+                        proteinPer100g: packagePer100?.$2 ?? 0,
+                        fatPer100g: packagePer100?.$3 ?? 0,
+                        carbsPer100g: packagePer100?.$4 ?? 0,
                         confidence: result.confidence,
                         componentsJson: componentsSnapshot,
                       );

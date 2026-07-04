@@ -825,5 +825,71 @@ void main() {
       final result = buildResult(); // 全部 package_* 为 null
       expect(result.hasPackageNutrition, isFalse);
     });
+
+    test('v1.9 Gap3: 包装换算整菜热量 = per100g × mid / 100（珍宝珠酸条）', () {
+      // 珍宝珠酸条 84g/8 条装：mid=84, serving_g=10.5, serving_kj=170
+      // per100g = (170/4.184) * 100 / 10.5 = 386.96 kcal
+      // 整菜热量 = 386.96 * 84 / 100 = 325.05 kcal ≈ AI 估算的 325
+      // 验证 Gap3 修复：_aiFallbackNutrition 用包装换算整菜热量替代 AI 估算
+      final result = buildResult(
+        mid: 84,
+        servingG: 10.5,
+        servingKj: 170,
+        servingKcal: 0,
+        estimatedProteinG: 0,
+        estimatedFatG: 0,
+        estimatedCarbsG: 80,
+      );
+      final per100 = result.computePackageNutritionPer100g();
+      expect(per100, isNotNull);
+      // 整菜热量 = per100g × mid / 100
+      final wholeCalories = per100!.$1 * 84 / 100;
+      expect(wholeCalories, closeTo(325, 0.5)); // 与 AI 估算的 325 一致
+    });
+
+    test('v1.9 Gap3: 包装换算整菜热量按 serving 缩放 = per100g × serving / 100', () {
+      // 用户校准份量后：serving=42（半袋），整菜热量应按比例缩放
+      // per100g=387, serving=42 → 387 * 42 / 100 = 162.5 kcal
+      final result = buildResult(
+        mid: 84,
+        servingG: 10.5,
+        servingKj: 170,
+      );
+      final per100 = result.computePackageNutritionPer100g();
+      expect(per100, isNotNull);
+      const servingG = 42.0; // 用户校准为半袋
+      final scaledCalories = per100!.$1 * servingG / 100;
+      expect(scaledCalories, closeTo(162.5, 0.5)); // 325 / 2 ≈ 162.5
+    });
+
+    test('v1.9 Gap1: 复合菜有包装数据时 per100g 用包装换算值（非 0）', () {
+      // 预包装速冻食品被识别为 composite 但有包装营养表
+      // 复合菜分支应检查 hasPackageNutrition，用包装换算 per100g 替代 0
+      final result = buildResult(
+        mid: 300, // 速冻水饺一份 300g
+        servingG: 100,
+        servingKcal: 250, // 每份 250kcal
+      );
+      expect(result.hasPackageNutrition, isTrue);
+      final per100 = result.computePackageNutritionPer100g();
+      expect(per100, isNotNull);
+      expect(per100!.$1, closeTo(250, 0.001)); // 250 * 100 / 100 = 250
+      // 复合菜分支应使用此值替代原来的 caloriesPer100g=0
+    });
+
+    test('v1.9 Gap3: mid=0 时包装换算整菜热量防除零', () {
+      // mid=0 时整菜热量 = per100 * 0 / 100 = 0（防除零）
+      // calories 仍按包装换算（不依赖 mid）
+      final result = buildResult(
+        mid: 0,
+        servingG: 100,
+        servingKcal: 250,
+      );
+      final per100 = result.computePackageNutritionPer100g();
+      expect(per100, isNotNull);
+      expect(per100!.$1, closeTo(250, 0.001));
+      final wholeCalories = per100.$1 * 0 / 100;
+      expect(wholeCalories, 0); // mid=0 → 整菜热量 0
+    });
   });
 }

@@ -91,9 +91,17 @@ class FoodCategoryDefaults {
     required String category,
   }) {
     final defCal = defaults[category]?.$1;
-    // 无默认值的品类（solid 等）不校准，保留 AI 估算
+    // 无默认值的品类（solid 等）不加品类默认值校准（差异太大无意义），
+    // 但加合理性区间 clamp，防止 AI 离谱估算（如米饭估成 5000kcal/100g）直通 meal_log
+    // 区间依据：solid 热量上限 900（纯脂肪油 889，solid 不含纯油），
+    // 蛋白/脂肪/碳水不可能超 100g/100g
     if (defCal == null) {
-      return (aiCaloriesPer100g, aiProteinPer100g, aiFatPer100g, aiCarbsPer100g);
+      return (
+        aiCaloriesPer100g.clamp(0.0, 900.0),
+        aiProteinPer100g.clamp(0.0, 100.0),
+        aiFatPer100g.clamp(0.0, 100.0),
+        aiCarbsPer100g.clamp(0.0, 100.0),
+      );
     }
     // 偏离 2 倍以上（高或低）用默认值；defCal=0（water）时 AI 任何正值都算偏离
     final ratio = defCal > 0 ? aiCaloriesPer100g / defCal : (aiCaloriesPer100g > 0 ? 999.0 : 1.0);

@@ -188,9 +188,16 @@ class OfflineQueueController {
                 carbsPer100g: carbsPer100g,
                 confidence: result.confidence,
               );
-              // actual* 仍用 AI 估算的整菜值（与 recognize_page 一致：
-              // food_item 存 per100g 用作未来查库的"密度参考"，meal_log 存本餐实际摄入量）
-              actualCalories = cal;
+              // v1.9：有包装数据时 actualCalories 用包装换算整菜热量
+              // （与 recognize_controller._aiFallbackNutrition 一致，达到豆包级精度）
+              // 无包装数据时用 AI 估算整菜值
+              // 蛋白/脂肪/碳水：包装通常不标，actual* 用 AI 估算原值
+              //   （proteinPer100g × mid / 100 = estimatedProteinG，数学等价）
+              if (packagePer100 != null && mid > 0) {
+                actualCalories = caloriesPer100g * mid / 100;
+              } else {
+                actualCalories = cal;
+              }
               actualProteinG = result.estimatedProteinG ?? 0;
               actualFatG = result.estimatedFatG ?? 0;
               actualCarbsG = result.estimatedCarbsG ?? 0;
@@ -243,8 +250,13 @@ class OfflineQueueController {
                 carbsPer100g: carbsPer100g,
                 confidence: result.confidence,
               );
-              // actual* 仍用 AI 估算的整菜值（food_item 存 per100g 用作未来查库密度参考）
-              actualCalories = result.estimatedCalories!;
+              // v1.9：有包装数据时 actualCalories 用包装换算整菜热量（与单品路径一致）
+              // 无包装数据时用 AI 估算整菜值
+              if (packagePer100 != null && mid > 0) {
+                actualCalories = caloriesPer100g * mid / 100;
+              } else {
+                actualCalories = result.estimatedCalories!;
+              }
               actualProteinG = result.estimatedProteinG ?? 0;
               actualFatG = result.estimatedFatG ?? 0;
               actualCarbsG = result.estimatedCarbsG ?? 0;
@@ -264,22 +276,52 @@ class OfflineQueueController {
                     .toList(),
                 'oil_g': composite.oilG,
               });
-              foodItemId = await foodItemRepo.upsertAiRecognized(
-                name: result.dishName,
-                brand: result.brand,
-                caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储
-                proteinPer100g: 0,
-                fatPer100g: 0,
-                carbsPer100g: 0,
-                confidence: result.confidence,
-                componentsJson: componentsJson,
-              );
-              actualCalories = composite.calories;
-              actualProteinG = composite.proteinG;
-              actualFatG = composite.fatG;
-              actualCarbsG = composite.carbsG;
+              // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），按包装换算
+              // per100g + actualCalories 都用包装换算值，跳过组分累加
+              // 无包装数据 → 走原组分累加路径（per100g=0，actualCalories=composite.calories）
               actualServingG = result.foodComponents
                   .fold<double>(0, (s, c) => s + c.estimatedG);
+              final packagePer100 = result.hasPackageNutrition
+                  ? result.computePackageNutritionPer100g(
+                      estimatedProteinG: result.estimatedProteinG,
+                      estimatedFatG: result.estimatedFatG,
+                      estimatedCarbsG: result.estimatedCarbsG,
+                    )
+                  : null;
+              if (packagePer100 != null) {
+                // 有包装：per100g 存包装换算值（未来查库按密度算更准），
+                // actualCalories 按 actualServingG 换算（与份量一致）
+                foodItemId = await foodItemRepo.upsertAiRecognized(
+                  name: result.dishName,
+                  brand: result.brand,
+                  caloriesPer100g: packagePer100.$1,
+                  proteinPer100g: packagePer100.$2,
+                  fatPer100g: packagePer100.$3,
+                  carbsPer100g: packagePer100.$4,
+                  confidence: result.confidence,
+                  componentsJson: componentsJson,
+                );
+                actualCalories = packagePer100.$1 * actualServingG / 100;
+                actualProteinG = packagePer100.$2 * actualServingG / 100;
+                actualFatG = packagePer100.$3 * actualServingG / 100;
+                actualCarbsG = packagePer100.$4 * actualServingG / 100;
+              } else {
+                // 无包装 → 组分累加（原逻辑）
+                foodItemId = await foodItemRepo.upsertAiRecognized(
+                  name: result.dishName,
+                  brand: result.brand,
+                  caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储
+                  proteinPer100g: 0,
+                  fatPer100g: 0,
+                  carbsPer100g: 0,
+                  confidence: result.confidence,
+                  componentsJson: componentsJson,
+                );
+                actualCalories = composite.calories;
+                actualProteinG = composite.proteinG;
+                actualFatG = composite.fatG;
+                actualCarbsG = composite.carbsG;
+              }
             }
           }
 

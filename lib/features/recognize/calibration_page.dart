@@ -186,6 +186,43 @@ class _CalibrationPageState extends State<CalibrationPage> {
                           ],
                         ),
                       ),
+                    // v1.9：展示 AI 推理过程（CoT），让用户看到识别思路，错了能精准纠正
+                    // 默认折叠避免占空间，用户主动展开查看
+                    if (widget.recognitionResult.reasoning != null &&
+                        widget.recognitionResult.reasoning!.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      Card(
+                        margin: EdgeInsets.zero,
+                        child: ExpansionTile(
+                          tilePadding:
+                              const EdgeInsets.symmetric(horizontal: 12),
+                          title: Row(
+                            children: [
+                              Icon(Icons.psychology_outlined,
+                                  size: 18,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .primary),
+                              const SizedBox(width: 8),
+                              Text('AI 推理过程',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall),
+                            ],
+                          ),
+                          children: [
+                            Padding(
+                              padding:
+                                  const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                              child: Text(
+                                widget.recognitionResult.reasoning!,
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     // 多份识别警告：AI 识别为多份时显眼提示，避免用户忽略数量错识
                     // （如一罐芬达被识别成两罐，用户直接确认会记录两罐的克数）
                     if (_quantity > 1) ...[
@@ -564,29 +601,51 @@ class _CalibrationPageState extends State<CalibrationPage> {
           widget.singleNutrition!.carbsG * ratio,
         );
       } else if (widget.compositeNutrition != null) {
-        // 按调整后份量重算
-        final composite = widget.compositeNutrition!;
-        double cal = 0, protein = 0, fat = 0, carbs = 0;
-        for (var i = 0; i < composite.componentHits.length; i++) {
-          final hit = composite.componentHits[i];
-          final g = _componentServings[i] ?? hit.estimatedG;
-          cal += hit.caloriesPer100g * g / 100;
-          protein += hit.proteinPer100g * g / 100;
-          fat += hit.fatPer100g * g / 100;
-          carbs += hit.carbsPer100g * g / 100;
-        }
-        cal += oilCaloriesPer100g * _oilG / 100;
-        fat += oilFatPer100g * _oilG / 100;
         // 复合菜用总组分份量之和
         final totalG = _componentServings.values.fold<double>(0, (s, g) => s + g);
-        await widget.onConfirm(
-          totalG,
-          cal,
-          protein,
-          fat,
-          carbs,
-          componentsSnapshot: _buildSnapshotJson(),
-        );
+        // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），按包装换算（精确值），
+        // 跳过组分累加。包装 per100g × totalG / 100 = 整菜热量，与份量一致
+        final packagePer100 =
+            widget.recognitionResult.hasPackageNutrition
+                ? widget.recognitionResult.computePackageNutritionPer100g(
+                    estimatedProteinG:
+                        widget.recognitionResult.estimatedProteinG,
+                    estimatedFatG: widget.recognitionResult.estimatedFatG,
+                    estimatedCarbsG: widget.recognitionResult.estimatedCarbsG,
+                  )
+                : null;
+        if (packagePer100 != null) {
+          await widget.onConfirm(
+            totalG,
+            packagePer100.$1 * totalG / 100,
+            packagePer100.$2 * totalG / 100,
+            packagePer100.$3 * totalG / 100,
+            packagePer100.$4 * totalG / 100,
+            componentsSnapshot: _buildSnapshotJson(),
+          );
+        } else {
+          // 无包装数据 → 按调整后组分份量重算（原逻辑）
+          final composite = widget.compositeNutrition!;
+          double cal = 0, protein = 0, fat = 0, carbs = 0;
+          for (var i = 0; i < composite.componentHits.length; i++) {
+            final hit = composite.componentHits[i];
+            final g = _componentServings[i] ?? hit.estimatedG;
+            cal += hit.caloriesPer100g * g / 100;
+            protein += hit.proteinPer100g * g / 100;
+            fat += hit.fatPer100g * g / 100;
+            carbs += hit.carbsPer100g * g / 100;
+          }
+          cal += oilCaloriesPer100g * _oilG / 100;
+          fat += oilFatPer100g * _oilG / 100;
+          await widget.onConfirm(
+            totalG,
+            cal,
+            protein,
+            fat,
+            carbs,
+            componentsSnapshot: _buildSnapshotJson(),
+          );
+        }
       }
       if (mounted) {
         _dirty = false; // 清 dirty 让 PopScope 放行 programmatic pop

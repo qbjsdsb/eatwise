@@ -478,12 +478,29 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   /// v1.4：库未命中时的 AI 整菜估算兜底（prompt v1.4 提供 estimated_calories 等字段）。
   /// 返回 null 表示无 AI 估算（旧 prompt 兼容），调用方保持 null 走未命中弹窗。
   /// foodItemId=0 为哨兵，recognize_page 写库前用 upsertAiRecognized 创建 food_item 替换为真实 id。
+  ///
+  /// v1.9：有包装营养表数据时，calories 用包装换算的整菜热量替代 AI 估算
+  /// （包装换算整菜热量 = per100Calories × mid / 100，与 computePackageNutritionPer100g 一致）。
+  /// 蛋白/脂肪/碳水包装通常不标，仍用 AI 估算原值（下游 CalibrationPage 按 ratio 缩放自然正确）。
+  /// 这样 meal_log.actualCalories = 包装换算值 × ratio = per100g × serving / 100，达到豆包级精度。
   NutritionResult? _aiFallbackNutrition(VisionRecognitionResult r) {
     final cal = r.estimatedCalories;
     if (cal == null) return null;
+    double actualCal = cal;
+    if (r.hasPackageNutrition) {
+      final per100 = r.computePackageNutritionPer100g(
+        estimatedProteinG: r.estimatedProteinG,
+        estimatedFatG: r.estimatedFatG,
+        estimatedCarbsG: r.estimatedCarbsG,
+      );
+      if (per100 != null) {
+        final mid = r.estimatedWeightGMid;
+        actualCal = per100.$1 * mid / 100;
+      }
+    }
     return NutritionResult(
       foodItemId: 0,
-      calories: cal,
+      calories: actualCal,
       proteinG: r.estimatedProteinG ?? 0,
       fatG: r.estimatedFatG ?? 0,
       carbsG: r.estimatedCarbsG ?? 0,

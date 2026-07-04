@@ -326,6 +326,23 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
     // 防除零：estimatedWeightGMid <= 0 时 ratio=1（用原值）
     final mid = dish.estimatedWeightGMid;
     final ratio = mid > 0 ? serving / mid : 1.0;
+    // v1.9：有包装营养表数据时，按包装 per100g 换算（精确值），跳过库值/AI 估算
+    // 包装换算热量 = per100g × serving / 100（直接用份量，与单品 ratio 缩放结果一致）
+    if (dish.hasPackageNutrition) {
+      final per100 = dish.computePackageNutritionPer100g(
+        estimatedProteinG: dish.estimatedProteinG,
+        estimatedFatG: dish.estimatedFatG,
+        estimatedCarbsG: dish.estimatedCarbsG,
+      );
+      if (per100 != null) {
+        return (
+          per100.$1 * serving / 100,
+          per100.$2 * serving / 100,
+          per100.$3 * serving / 100,
+          per100.$4 * serving / 100,
+        );
+      }
+    }
     if (index == 0) {
       // 主菜
       if (widget.mainSingle != null) {
@@ -475,13 +492,21 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
             } else {
               final oilG = widget.mainComposite?.oilG ?? 0;
               componentsSnapshot = _encodeComponents(dish, oilG: oilG);
+              // v1.9：复合菜有包装营养表数据时，per100g 用包装换算值（替代 0）
+              final packagePer100 = dish.hasPackageNutrition
+                  ? dish.computePackageNutritionPer100g(
+                      estimatedProteinG: dish.estimatedProteinG,
+                      estimatedFatG: dish.estimatedFatG,
+                      estimatedCarbsG: dish.estimatedCarbsG,
+                    )
+                  : null;
               foodItemId = await foodRepo.upsertAiRecognized(
                 name: dish.dishName,
                 brand: dish.brand,
-                caloriesPer100g: 0,
-                proteinPer100g: 0,
-                fatPer100g: 0,
-                carbsPer100g: 0,
+                caloriesPer100g: packagePer100?.$1 ?? 0,
+                proteinPer100g: packagePer100?.$2 ?? 0,
+                fatPer100g: packagePer100?.$3 ?? 0,
+                carbsPer100g: packagePer100?.$4 ?? 0,
                 confidence: dish.confidence,
                 componentsJson: componentsSnapshot,
               );
@@ -501,13 +526,21 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
             } else {
               final oilG = item.compositeNutrition?.oilG ?? 0;
               componentsSnapshot = _encodeComponents(dish, oilG: oilG);
+              // v1.9：复合菜有包装营养表数据时，per100g 用包装换算值（替代 0）
+              final packagePer100 = dish.hasPackageNutrition
+                  ? dish.computePackageNutritionPer100g(
+                      estimatedProteinG: dish.estimatedProteinG,
+                      estimatedFatG: dish.estimatedFatG,
+                      estimatedCarbsG: dish.estimatedCarbsG,
+                    )
+                  : null;
               foodItemId = await foodRepo.upsertAiRecognized(
                 name: dish.dishName,
                 brand: dish.brand,
-                caloriesPer100g: 0,
-                proteinPer100g: 0,
-                fatPer100g: 0,
-                carbsPer100g: 0,
+                caloriesPer100g: packagePer100?.$1 ?? 0,
+                proteinPer100g: packagePer100?.$2 ?? 0,
+                fatPer100g: packagePer100?.$3 ?? 0,
+                carbsPer100g: packagePer100?.$4 ?? 0,
                 confidence: dish.confidence,
                 componentsJson: componentsSnapshot,
               );
