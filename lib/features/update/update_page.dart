@@ -14,6 +14,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/update/apk_installer.dart';
 import '../../core/update/update_models.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../recognize/providers.dart' as recognize;
@@ -111,11 +112,23 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
   }
 
   Future<void> _install() async {
-    // M16-F2：接入 ApkInstaller.triggerInstall(path) 触发系统安装器
-    // 当前 E1 阶段仅 toast 提示，F2 完成后替换
     if (_downloadedPath == null) return;
-    if (!mounted) return;
-    showAppToast(context, '即将打开系统安装器（M16-F2 接入原生通道）');
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      await ApkInstaller.triggerInstall(_downloadedPath!);
+      // 触发后系统安装器会弹窗，用户安装完手动返回 app
+      if (!mounted) return;
+      showAppToast(context, '已打开系统安装器，请在弹窗中确认安装');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _state = _UpdateState.error;
+        _errorMsg = '触发安装器失败：$e';
+      });
+    } finally {
+      if (mounted) _busy = false;
+    }
   }
 
   @override
