@@ -84,6 +84,7 @@ Future<void> _runOfflineBackfill(EatWiseDatabase db) async {
     db: db,
     visionProvider: visionProvider,
     nutritionLookup: lookup,
+    secureConfigStore: store, // M11：后台回补计入月度识别次数（复用已实例化的 store）
   );
   // 后台回补只调 processPending 一次（不启动 connectivity 监听）
   await controller.processPending();

@@ -3,10 +3,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
+import '../../core/config/secure_config_store.dart';
 import '../../core/util/recognition_post_processor.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
@@ -26,6 +28,9 @@ class OfflineQueueController {
   final VisionProvider? _fallbackProvider;
   final NutritionLookup _nutritionLookup;
   final CircuitBreaker? _circuitBreaker; // T37：后台回补断路器（可选）
+  // M11：月度识别计数（可选，与 recognize_controller 模式一致）
+  // 后台回补成功时 +1，设置页"本月识别次数"与实际 token 消耗对齐
+  final SecureConfigStore? _secureConfigStore;
   StreamSubscription<List<ConnectivityResult>>? _sub;
   bool _wasOffline = true;
   bool _processing = false;
@@ -36,11 +41,13 @@ class OfflineQueueController {
     VisionProvider? fallbackProvider,
     required NutritionLookup nutritionLookup,
     CircuitBreaker? circuitBreaker, // T37：可选命名参数（与 recognize_controller 模式一致）
+    SecureConfigStore? secureConfigStore, // M11：可选命名参数（月度计数）
   })  : _db = db,
         _visionProvider = visionProvider,
         _fallbackProvider = fallbackProvider,
         _nutritionLookup = nutritionLookup,
-        _circuitBreaker = circuitBreaker;
+        _circuitBreaker = circuitBreaker,
+        _secureConfigStore = secureConfigStore;
 
   /// 启动监听（App 启动时调用）
   Future<void> start() async {
@@ -370,6 +377,18 @@ class OfflineQueueController {
             );
             await pendingRepo.markDone(p.id, foodItemId);
           });
+
+          // M11：后台回补成功计入月度识别次数（与前台 recognize_controller 一致）
+          // 事务成功后才计数（事务失败会被 catch 块 markFailed，不应计数）
+          // best-effort：计数失败不覆盖回补主流程（与 recognize_controller 模式一致）
+          if (_secureConfigStore != null) {
+            try {
+              final now = DateTime.now();
+              await _secureConfigStore.incrementMonthlyCount(now.year, now.month);
+            } catch (e) {
+              debugPrint('M11 incrementMonthlyCount 失败（不影响回补）：$e');
+            }
+          }
         } catch (e) {
           // T37 断路器：retryable 视觉调用失败记录（halfOpen 失败 → 重新 open）
           // best-effort：断路器操作本身异常不可逃逸 catch 块
@@ -407,12 +426,14 @@ final offlineQueueControllerProvider =
   final glm4v = ref.read(recognize.glm4vProviderProvider);
   final lookup = await ref.read(recognize.nutritionLookupProvider.future);
   final breaker = ref.read(recognize.circuitBreakerProvider); // T37：注入断路器
+  final store = SecureConfigStore(); // M11：注入月度计数 store
   final controller = OfflineQueueController(
     db: db,
     visionProvider: qwen,
     fallbackProvider: glm4v,
     nutritionLookup: lookup,
     circuitBreaker: breaker, // T37：后台回补接入断路器
+    secureConfigStore: store, // M11：后台回补计入月度识别次数
   );
   // Provider 销毁时停止 connectivity 订阅，避免 StreamSubscription 泄漏
   ref.onDispose(controller.stop);

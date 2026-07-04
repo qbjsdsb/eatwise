@@ -4,10 +4,12 @@ import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:eatwise/ai/nutrition_lookup.dart';
 import 'package:eatwise/ai/vision_provider.dart';
+import 'package:eatwise/core/config/secure_config_store.dart';
 import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/data/repositories/food_item_repository.dart';
 import 'package:eatwise/data/repositories/pending_recognition_repository.dart';
 import 'package:eatwise/features/offline/offline_queue_controller.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Sprint 2 T14 离线队列测试
@@ -186,6 +188,117 @@ void main() {
     final all = await db.pendingRecognitions.select().get();
     expect(all.first.retryCount, 1);
     expect(all.first.errorMessage, contains('识别异常'));
+  });
+
+  // M11 修复：后台回补成功计入月度识别次数
+  // 原实现：OfflineQueueController.processPending 成功 markDone 时不调
+  //   incrementMonthlyCount，设置页"本月识别次数"偏低，T43 计数与实际 token 消耗脱节。
+  // 修复：构造器加可选 SecureConfigStore，markDone 前 best-effort 计数
+  //   （try-catch 不影响主流程，与 recognize_controller 模式一致）。
+  group('M11 后台回补计入月度识别次数', () {
+    late SecureConfigStore store;
+
+    setUp(() {
+      // 沙箱无平台通道，注入内存 mock 平台实现
+      FlutterSecureStorage.setMockInitialValues({});
+      store = SecureConfigStore();
+    });
+
+    test('M11-RED: 回补成功时调 incrementMonthlyCount（计数 +1）', () async {
+      await seedApple(); // 苹果已入库，Fake provider 会识别为苹果
+      final imgPath = await writeFakeImage('apple_m11');
+      await pendingRepo.enqueue(
+          imagePath: imgPath, mealType: 'breakfast', date: '2026-07-02');
+
+      final controller = OfflineQueueController(
+        db: db,
+        visionProvider: _FakeAppleProvider(),
+        nutritionLookup: NutritionLookup(FoodItemRepository(db)),
+        secureConfigStore: store, // M11 新增参数
+      );
+      await controller.processPending();
+
+      // pending 应清空（回补成功）
+      expect(await pendingRepo.countPending(), 0);
+      // M11 关键断言：月度计数 +1（与前台 recognize_controller 一致）
+      final now = DateTime.now();
+      final count = await store.getMonthlyCount(now.year, now.month);
+      expect(count, 1,
+          reason: '后台回补成功应计入月度识别次数，否则设置页计数偏低');
+    });
+
+    test('M11: 不传 secureConfigStore 时向后兼容（不计数也不崩溃）', () async {
+      await seedApple();
+      final imgPath = await writeFakeImage('apple_no_store');
+      await pendingRepo.enqueue(
+          imagePath: imgPath, mealType: 'breakfast', date: '2026-07-02');
+
+      // 不传 secureConfigStore（旧调用方 background_dispatcher 未传）
+      final controller = OfflineQueueController(
+        db: db,
+        visionProvider: _FakeAppleProvider(),
+        nutritionLookup: NutritionLookup(FoodItemRepository(db)),
+      );
+      await controller.processPending();
+
+      // 回补仍成功（向后兼容，计数可选不影响主流程）
+      expect(await pendingRepo.countPending(), 0);
+      final meals = await db.mealLogs.select().get();
+      expect(meals.length, 1);
+    });
+
+    test('M11: 回补失败时 不调 incrementMonthlyCount（与前台一致）', () async {
+      // 前台 recognize_controller：离线入队/L3 转手动不计数
+      // 后台回补失败（识别异常）也不应计数，否则计数偏高
+      final imgPath = await writeFakeImage('fail_m11');
+      await pendingRepo.enqueue(
+          imagePath: imgPath, mealType: 'breakfast', date: '2026-07-02');
+
+      final controller = OfflineQueueController(
+        db: db,
+        visionProvider: _ThrowingProvider(),
+        nutritionLookup: NutritionLookup(FoodItemRepository(db)),
+        secureConfigStore: store,
+      );
+      await controller.processPending();
+
+      // 回补失败（retryCount +1，仍 pending）
+      expect(await pendingRepo.countPending(), 1);
+      // M11 关键断言：失败时计数不增加
+      final now = DateTime.now();
+      final count = await store.getMonthlyCount(now.year, now.month);
+      expect(count, 0,
+          reason: '回补失败不应计数（与前台 recognize_controller 一致）');
+    });
+
+    test('M11: 多条 pending 全部成功时计数 +N（每条计一次）', () async {
+      await seedApple();
+      final imgPath = await writeFakeImage('apple_multi');
+      await pendingRepo.enqueue(
+          imagePath: imgPath, mealType: 'breakfast', date: '2026-07-02');
+      await pendingRepo.enqueue(
+          imagePath: imgPath, mealType: 'lunch', date: '2026-07-02');
+      await pendingRepo.enqueue(
+          imagePath: imgPath, mealType: 'dinner', date: '2026-07-02');
+
+      final controller = OfflineQueueController(
+        db: db,
+        visionProvider: _FakeAppleProvider(),
+        nutritionLookup: NutritionLookup(FoodItemRepository(db)),
+        secureConfigStore: store,
+      );
+      await controller.processPending();
+
+      // 3 条全部成功
+      expect(await pendingRepo.countPending(), 0);
+      final meals = await db.mealLogs.select().get();
+      expect(meals.length, 3);
+      // M11 关键断言：计数 +3（每条计一次）
+      final now = DateTime.now();
+      final count = await store.getMonthlyCount(now.year, now.month);
+      expect(count, 3,
+          reason: '3 条 pending 全部成功应计数 +3');
+    });
   });
 }
 
