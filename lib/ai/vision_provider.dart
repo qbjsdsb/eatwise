@@ -34,6 +34,26 @@ class VisionRecognitionResult {
   // 包装液体食品（weight_source=package_label）按此类别查密度表把 ml 换算成真实克数
   // 旧 prompt(v1.0-v1.6) 无此字段 → 默认 solid（不换算）
   final String foodCategory;
+  // v1.9：CoT 推理过程（营养师诊断视角）
+  // 描述怎么识别的、读了哪些包装信息、怎么换算的、隐藏热量如何估算
+  // 旧 prompt(v1.0-v1.8) 无此字段 → null
+  // 下游解析时忽略此字段，但用户能在反馈页看到推理过程（错了能精准纠正）
+  final String? reasoning;
+  // v1.9：包装营养表 OCR 路径（包装食品精确换算用）
+  // 包装食品读营养成分表后按比例换算，避免凭印象估算
+  // 6 个字段全部 null/空/0 表示无包装或读不到（走 ai_estimate 路径）
+  // package_nutrition_table_ocr：营养成分表原文（含数字+单位），便于后端核对
+  final String packageNutritionTableOcr;
+  // package_serving_g：包装标称每份克数（如 10.5）
+  // package_serving_kj：包装标称每份能量千焦（如 170）
+  // package_serving_kcal：包装标称每份能量千卡（包装只标 kJ 时为 null 由后端换算）
+  final double? packageServingG;
+  final double? packageServingKj;
+  final double? packageServingKcal;
+  // package_total_g：整包装净含量克数（如 57.6）
+  // package_servings_per_pack：每包装份数（如 8）
+  final double? packageTotalG;
+  final double? packageServingsPerPack;
 
   const VisionRecognitionResult({
     required this.dishName,
@@ -56,6 +76,13 @@ class VisionRecognitionResult {
     this.estimatedCarbsG,
     this.weightSource = 'ai_estimate',
     this.foodCategory = 'solid',
+    this.reasoning,
+    this.packageNutritionTableOcr = '',
+    this.packageServingG,
+    this.packageServingKj,
+    this.packageServingKcal,
+    this.packageTotalG,
+    this.packageServingsPerPack,
   });
 
   /// 是否多菜（additionalDishes 非空）
@@ -64,11 +91,19 @@ class VisionRecognitionResult {
   /// 是否多份（quantity > 1）
   bool get isMultiQuantity => quantity > 1;
 
+  /// v1.9：是否有包装营养表数据（用于 LLM-first 优先路径判断）
+  /// 任一 package_serving_* 字段非空非 0 即视为有包装数据
+  bool get hasPackageNutrition =>
+      (packageServingG != null && packageServingG! > 0) ||
+      (packageServingKj != null && packageServingKj! > 0) ||
+      (packageServingKcal != null && packageServingKcal! > 0);
+
   /// 复制并覆盖部分字段
   /// - dishName：改菜名重试后透传新菜名给校准页
   /// - estimatedCalories：营养素自洽校验失败时用修正值覆盖（批次 1）
   /// - foodComponents：组分份量交叉验证失败时用缩放后组分覆盖（建议 7）
   /// - perUnitG/estimatedWeightG*/foodCategory：建议 3 密度换算后覆盖
+  /// - reasoning：v1.9 CoT 推理过程透传（避免 PostProcessor 重建时丢失）
   VisionRecognitionResult copyWith({
     String? dishName,
     double? estimatedCalories,
@@ -78,6 +113,7 @@ class VisionRecognitionResult {
     double? estimatedWeightGMid,
     double? estimatedWeightGHigh,
     String? foodCategory,
+    String? reasoning,
   }) {
     return VisionRecognitionResult(
       dishName: dishName ?? this.dishName,
@@ -100,6 +136,13 @@ class VisionRecognitionResult {
       estimatedCarbsG: estimatedCarbsG,
       weightSource: weightSource,
       foodCategory: foodCategory ?? this.foodCategory,
+      reasoning: reasoning ?? this.reasoning,
+      packageNutritionTableOcr: packageNutritionTableOcr,
+      packageServingG: packageServingG,
+      packageServingKj: packageServingKj,
+      packageServingKcal: packageServingKcal,
+      packageTotalG: packageTotalG,
+      packageServingsPerPack: packageServingsPerPack,
     );
   }
 
@@ -164,6 +207,20 @@ class VisionRecognitionResult {
       foodCategory: (json['food_category'] as String?)?.isNotEmpty == true
           ? json['food_category'] as String
           : 'solid',
+      // v1.9 reasoning 缺失时为 null（旧 prompt 兼容）
+      // 模型未遵循 prompt 不写 reasoning 也会变 null，下游忽略
+      reasoning: (json['reasoning'] as String?)?.isNotEmpty == true
+          ? json['reasoning'] as String
+          : null,
+      // v1.9 包装营养表 OCR 路径，缺失时为空串/null（旧 prompt 兼容）
+      packageNutritionTableOcr:
+          (json['package_nutrition_table_ocr'] as String?) ?? '',
+      packageServingG: (json['package_serving_g'] as num?)?.toDouble(),
+      packageServingKj: (json['package_serving_kj'] as num?)?.toDouble(),
+      packageServingKcal: (json['package_serving_kcal'] as num?)?.toDouble(),
+      packageTotalG: (json['package_total_g'] as num?)?.toDouble(),
+      packageServingsPerPack:
+          (json['package_servings_per_pack'] as num?)?.toDouble(),
     );
   }
 }

@@ -34,9 +34,27 @@
 
 ## 2. 当前状态（每次会话结束更新）
 
-**最后更新**：2026-07-03
+**最后更新**：2026-07-04
 
-**工作区状态**：clean（v0.13.0 已发布，workflow success；v0.12.0 已发布）
+**工作区状态**：有未提交改动（AI 识别准确度重构 Phase 1 进行中，未跑测试）
+**当前分支**：v0.10.0-m3-merge
+
+**AI 识别准确度重构 Phase 1（进行中，2026-07-04）**：
+- 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
+- 根因诊断：4 个范式级缺陷
+  1. 规则 8 禁止解释文字 → 关掉模型推理能力（shortcut learning 致雪花→雪碧）
+  2. 用 qwen3-vl-flash 轻量模型做硬视觉判别
+  3. one-shot 架构没法自我纠正
+  4. database-first 反噬 LLM 知识（用弱库覆盖强 LLM）
+- Phase 1 改动（已完成代码，未跑测试）：
+  - prompts.dart v1.8 → v1.9：营养师人设 + reasoning 字段(CoT) + 包装营养表 OCR 路径(6 字段) + 隐藏热量显式估算 + 盘子尺度参照 + 规则 8 修改 + 示例 7(珍宝珠酸条)+示例 8(麻婆豆腐)
+  - vision_provider.dart：VisionRecognitionResult 加 7 个字段(reasoning + packageNutritionTableOcr + packageServingG/Kj/Kcal/TotalG/ServingsPerPack) + hasPackageNutrition getter + copyWith 加 reasoning
+  - recognition_post_processor.dart：两处手动重建透传新字段
+  - 测试：vision_response_parser_test + recognition_post_processor_test 加 v1.9 group
+- Phase 1 静态自检：✅ 5 处 lib 构造全部覆盖，30 处 test 构造向后兼容，qwen/glm provider 自动跟随 Prompts.version
+- Phase 1 待办：⚠️ 沙箱无 flutter，需用户本地跑 `flutter analyze` + `flutter test` 验证
+- 后续 Phase 2（LLM-first 反转方案 B）+ Phase 3（thinking 模式沙箱验证）待 Phase 1 验证通过后推进
+
 **最近 commit**：
 - `1fdff0e` chore: bump 版本号到 0.13.0+14 准备发布 v0.13.0
 - `11a0cba` docs: HANDOFF 补 Phase 3 C/D 批详情 + 陷阱 49（confirmAction/showAppToast 抽象偏好）

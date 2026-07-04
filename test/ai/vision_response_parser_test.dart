@@ -458,4 +458,179 @@ void main() {
       expect(result.additionalDishes[0].isMultiQuantity, true);
     });
   });
+
+  group('v1.9 CoT 推理 + 包装营养表 OCR 解析', () {
+    test('reasoning 字段正常解析', () {
+      final json = {
+        'dish_name': '啤酒',
+        'brand': '雪花',
+        'estimated_weight_g_mid': 500,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'reasoning': '看到绿色瓶身第一反应是雪碧，但仔细读瓶身文字是雪花，是啤酒不是雪碧',
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.9');
+      expect(result.reasoning,
+          '看到绿色瓶身第一反应是雪碧，但仔细读瓶身文字是雪花，是啤酒不是雪碧');
+    });
+
+    test('reasoning 字段缺失（旧 prompt v1.8 兼容）→ null', () {
+      final json = {
+        'dish_name': '苹果',
+        'estimated_weight_g_mid': 180,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        // reasoning 缺失
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.8');
+      expect(result.reasoning, isNull);
+    });
+
+    test('reasoning 字段为空串 → null（兜底，避免下游展示空字符串）', () {
+      final json = {
+        'dish_name': '苹果',
+        'estimated_weight_g_mid': 180,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'reasoning': '',
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.9');
+      expect(result.reasoning, isNull);
+    });
+
+    test('包装营养表 6 个字段正常解析（珍宝珠酸条案例）', () {
+      final json = {
+        'dish_name': '酸条',
+        'brand': '珍宝珠',
+        'estimated_weight_g_mid': 57.6,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.95,
+        'estimated_calories': 325,
+        'estimated_protein_g': 0,
+        'estimated_fat_g': 0,
+        'estimated_carbs_g': 80,
+        'package_nutrition_table_ocr': '每份10.5g 能量170kJ 蛋白质0g 脂肪0g 碳水10g',
+        'package_serving_g': 10.5,
+        'package_serving_kj': 170,
+        'package_serving_kcal': 0,
+        'package_total_g': 57.6,
+        'package_servings_per_pack': 8,
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.9');
+      expect(result.packageNutritionTableOcr,
+          '每份10.5g 能量170kJ 蛋白质0g 脂肪0g 碳水10g');
+      expect(result.packageServingG, 10.5);
+      expect(result.packageServingKj, 170);
+      expect(result.packageServingKcal, 0);
+      expect(result.packageTotalG, 57.6);
+      expect(result.packageServingsPerPack, 8);
+      // hasPackageNutrition getter：任一 serving_* > 0 即 true
+      expect(result.hasPackageNutrition, isTrue);
+    });
+
+    test('包装字段全部缺失（散装/无包装食品）→ 默认值 + hasPackageNutrition=false', () {
+      final json = {
+        'dish_name': '苹果',
+        'estimated_weight_g_mid': 180,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        // 6 个 package_* 字段全部缺失（v1.8 旧响应）
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.9');
+      expect(result.packageNutritionTableOcr, '');
+      expect(result.packageServingG, isNull);
+      expect(result.packageServingKj, isNull);
+      expect(result.packageServingKcal, isNull);
+      expect(result.packageTotalG, isNull);
+      expect(result.packageServingsPerPack, isNull);
+      expect(result.hasPackageNutrition, isFalse);
+    });
+
+    test('包装字段为 int 类型时正确转 double', () {
+      final json = {
+        'dish_name': '酸条',
+        'estimated_weight_g_mid': 57,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'package_serving_g': 10, // int 而非 double
+        'package_serving_kj': 170,
+        'package_total_g': 57,
+        'package_servings_per_pack': 8,
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.9');
+      expect(result.packageServingG, 10.0);
+      expect(result.packageServingKj, 170.0);
+      expect(result.packageTotalG, 57.0);
+      expect(result.packageServingsPerPack, 8.0);
+    });
+
+    test('包装字段为字符串数字时 as num 失败抛异常（malformed）', () {
+      final json = {
+        'dish_name': '酸条',
+        'estimated_weight_g_mid': 57,
+        'is_single_item': true,
+        'food_components': [],
+        'cooking_method': 'raw',
+        'confidence': 0.9,
+        'package_serving_g': '10.5', // 字符串，as num 失败
+      };
+      expect(() => VisionRecognitionResult.fromJson(json, 'v1.9'),
+          throwsA(anything));
+    });
+
+    test('copyWith 透传 reasoning 字段（v1.9 新增）', () {
+      final original = VisionRecognitionResult(
+        dishName: '啤酒',
+        brand: '雪花',
+        estimatedWeightGLow: 490,
+        estimatedWeightGMid: 500,
+        estimatedWeightGHigh: 510,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.9',
+        reasoning: '读瓶身文字是雪花不是雪碧',
+        packageNutritionTableOcr: '每份10.5g 能量170kJ',
+        packageServingG: 10.5,
+        packageServingKj: 170,
+      );
+      // copyWith 修改其他字段，reasoning + package_* 应原样保留
+      final modified = original.copyWith(estimatedCalories: 220);
+      expect(modified.reasoning, '读瓶身文字是雪花不是雪碧');
+      expect(modified.packageNutritionTableOcr, '每份10.5g 能量170kJ');
+      expect(modified.packageServingG, 10.5);
+      expect(modified.packageServingKj, 170);
+      expect(modified.estimatedCalories, 220);
+    });
+
+    test('copyWith 显式覆盖 reasoning 字段', () {
+      final original = VisionRecognitionResult(
+        dishName: '啤酒',
+        estimatedWeightGLow: 490,
+        estimatedWeightGMid: 500,
+        estimatedWeightGHigh: 510,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.9',
+        reasoning: '旧推理',
+      );
+      final modified = original.copyWith(reasoning: '新推理');
+      expect(modified.reasoning, '新推理');
+    });
+  });
 }

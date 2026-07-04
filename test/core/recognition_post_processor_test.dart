@@ -426,4 +426,108 @@ void main() {
       expect(identical(result, original), isTrue);
     });
   });
+
+  group('v1.9 reasoning + package_* 字段透传', () {
+    test('process 后 reasoning 字段不丢失（密度换算路径）', () {
+      // 500ml 食用油触发密度换算 → 重建主菜
+      // 验证 reasoning + package_* 字段在重建后仍保留
+      final original = VisionRecognitionResult(
+        dishName: '食用油',
+        brand: '金龙鱼',
+        estimatedWeightGLow: 485,
+        estimatedWeightGMid: 500,
+        estimatedWeightGHigh: 515,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.9',
+        quantity: 1,
+        unit: '瓶',
+        perUnitG: 500,
+        weightSource: 'package_label',
+        foodCategory: 'oil',
+        estimatedCalories: 4094,
+        estimatedProteinG: 0,
+        estimatedFatG: 460,
+        estimatedCarbsG: 0,
+        reasoning: '500ml 金龙鱼食用油，密度 0.92 真实约 460g',
+        packageNutritionTableOcr: '每100g 889kcal',
+        packageServingG: 100,
+        packageServingKj: 3720,
+        packageServingKcal: 889,
+        packageTotalG: 500,
+        packageServingsPerPack: 5,
+      );
+      final result = RecognitionPostProcessor.process(original);
+      // 密度换算后 mid 变 460，但 reasoning + package_* 必须保留
+      expect(result.estimatedWeightGMid, closeTo(460, 0.1));
+      expect(result.reasoning, '500ml 金龙鱼食用油，密度 0.92 真实约 460g');
+      expect(result.packageNutritionTableOcr, '每100g 889kcal');
+      expect(result.packageServingG, 100);
+      expect(result.packageServingKj, 3720);
+      expect(result.packageServingKcal, 889);
+      expect(result.packageTotalG, 500);
+      expect(result.packageServingsPerPack, 5);
+    });
+
+    test('process 后 reasoning 字段不丢失（additionalDishes 修正路径）', () {
+      // 主菜 + 附加菜，附加菜 calories 不自洽触发 correctAdditionalDishes 重建
+      // 验证主菜的 reasoning + package_* 在重建后仍保留
+      final original = VisionRecognitionResult(
+        dishName: '米饭',
+        estimatedWeightGLow: 180,
+        estimatedWeightGMid: 200,
+        estimatedWeightGHigh: 220,
+        foodComponents: const [],
+        cookingMethod: 'steam',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.9',
+        reasoning: '一碗米饭约 200g，以 11cm 饭碗为参照',
+        packageNutritionTableOcr: '',
+        additionalDishes: [
+          VisionRecognitionResult(
+            dishName: '宫保鸡丁',
+            estimatedWeightGLow: 240,
+            estimatedWeightGMid: 250,
+            estimatedWeightGHigh: 260,
+            foodComponents: const [],
+            cookingMethod: 'stir-fry',
+            isSingleItem: false,
+            confidence: 0.85,
+            promptVersion: 'v1.9',
+            estimatedCalories: 9999, // 严重不自洽触发修正
+            estimatedProteinG: 20,
+            estimatedFatG: 15,
+            estimatedCarbsG: 10,
+          ),
+        ],
+      );
+      final result = RecognitionPostProcessor.process(original);
+      // 主菜 reasoning 必须保留（correctAdditionalDishes 重建主菜）
+      expect(result.reasoning, '一碗米饭约 200g，以 11cm 饭碗为参照');
+      expect(result.dishName, '米饭');
+    });
+
+    test('process 后 reasoning 为 null 时仍为 null（旧 prompt 兼容）', () {
+      final original = VisionRecognitionResult(
+        dishName: '苹果',
+        estimatedWeightGLow: 150,
+        estimatedWeightGMid: 180,
+        estimatedWeightGHigh: 220,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.8',
+        // reasoning + package_* 全部缺失（v1.8 旧响应）
+      );
+      final result = RecognitionPostProcessor.process(original);
+      expect(result.reasoning, isNull);
+      expect(result.packageNutritionTableOcr, '');
+      expect(result.packageServingG, isNull);
+      expect(result.hasPackageNutrition, isFalse);
+    });
+  });
 }

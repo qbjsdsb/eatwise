@@ -75,6 +75,7 @@ class RecognitionPostProcessor {
     }
 
     // 重建带换算后的附加菜
+    // v1.9：透传 reasoning + 6 个 package_* 字段（OCR 数据不参与换算，原样保留）
     return VisionRecognitionResult(
       dishName: convertedMain.dishName,
       brand: convertedMain.brand,
@@ -96,6 +97,13 @@ class RecognitionPostProcessor {
       estimatedCarbsG: convertedMain.estimatedCarbsG,
       weightSource: convertedMain.weightSource,
       foodCategory: convertedMain.foodCategory,
+      reasoning: convertedMain.reasoning,
+      packageNutritionTableOcr: convertedMain.packageNutritionTableOcr,
+      packageServingG: convertedMain.packageServingG,
+      packageServingKj: convertedMain.packageServingKj,
+      packageServingKcal: convertedMain.packageServingKcal,
+      packageTotalG: convertedMain.packageTotalG,
+      packageServingsPerPack: convertedMain.packageServingsPerPack,
     );
   }
 
@@ -168,6 +176,7 @@ class RecognitionPostProcessor {
     }
     if (!changed) return result;
     // 重建 result 带修正后的 additionalDishes
+    // v1.9：透传 reasoning + 6 个 package_* 字段（主菜 OCR 数据不参与附加菜修正，原样保留）
     return VisionRecognitionResult(
       dishName: result.dishName,
       brand: result.brand,
@@ -189,6 +198,13 @@ class RecognitionPostProcessor {
       estimatedCarbsG: result.estimatedCarbsG,
       weightSource: result.weightSource,
       foodCategory: result.foodCategory,
+      reasoning: result.reasoning,
+      packageNutritionTableOcr: result.packageNutritionTableOcr,
+      packageServingG: result.packageServingG,
+      packageServingKj: result.packageServingKj,
+      packageServingKcal: result.packageServingKcal,
+      packageTotalG: result.packageTotalG,
+      packageServingsPerPack: result.packageServingsPerPack,
     );
   }
 }
