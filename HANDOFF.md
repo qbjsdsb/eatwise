@@ -23,8 +23,8 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.16.0+17（pubspec.yaml）
-- **当前分支**：trae/agent-wX1X6Q（HEAD = e6ae182 v0.16.0 release；v0.16.0 tag 指向 e6ae182）
+- **当前版本**：0.18.0+19（pubspec.yaml）
+- **当前分支**：trae/agent-wX1X6Q（HEAD = bfa54e6 v0.18.0 release；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
   - `android/app/build.gradle.kts` 必须保持 `isMinifyEnabled=false` + `isShrinkResources=false`（否则 R8 剥掉 sentry/workmanager 反射类致启动崩溃）
@@ -36,8 +36,12 @@
 
 **最后更新**：2026-07-05
 
-**工作区状态**：v0.18.0 release 待 push（13 个 M16 commit ff717a7~14b9c35 + 本次 HANDOFF 回填，含应用内自更新功能：GitHub Releases 检查 + APK 下载 + 系统安装器 + 固定签名 keystore，详见下方"M16 应用内自更新"章节）；v0.17.0 release 待 push（10 个 M15 commit 4d35805~e6b5f3a，含图标重设计 + 每日历史记录查看功能）；v0.16.0 release 已 push 远程（commit e6ae182 + tag v0.16.0，含 v5 AI 推荐审计修复 + 满意度反馈按钮改为点开才显示 + 测试 mock 修复 + 版本号 bump）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push（AI 推荐失败修复 + 改菜名 mixin 三入口 + 周月总结滚动窗口+宏量+偏好+覆盖率+数据守卫）；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5，详见下方"深度审查修复批次"章节）
-**当前分支**：trae/agent-wX1X6Q（HEAD = 14b9c35，13 个 M16 commit 待推送 ff717a7~14b9c35；远端 origin/trae/agent-wX1X6Q 停在 9d62aa7；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
+**工作区状态**：clean。v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，含 13 个功能 Task + 2 个 CI 修复 commit + 1 个 HANDOFF 回填 commit；应用内自更新功能：GitHub Releases 检查 + APK 下载 + 系统安装器 + 固定签名 keystore，详见下方"M16 应用内自更新"章节）；v0.18.0 GitHub Release 已发布（含 app-release.apk 74.84 MB + app-debug.apk 166.97 MB）；4 个 GitHub Secrets 已上传（ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD）；CI build 第 3 次成功（前 2 次失败：Kotlin DSL import 缺失 + MainActivity.kt arguments 类型转换，已修复）。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a，图标重设计 + 每日历史记录查看）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push（AI 推荐失败修复 + 改菜名 mixin 三入口 + 周月总结滚动窗口+宏量+偏好+覆盖率+数据守卫）；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5，详见下方"深度审查修复批次"章节）
+**当前分支**：trae/agent-wX1X6Q（HEAD = bfa54e6，远端 origin/trae/agent-wX1X6Q 已同步到 bfa54e6；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
+
+**待用户执行的收尾项**（沙箱无法完成）：
+1. **删除 classic PAT** `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`：访问 https://github.com/settings/tokens 手动删除（classic PAT 无法通过 API 自删，已用完上传 secrets 的使命，不应保留）
+2. **本地真机验证 v0.18.0 应用内更新全链路**：装 v0.18.0 APK（v0.17.0 旧版需卸载一次因签名切换）→ 在 app 内"设置 → 检查更新"验证 GitHub Release API 调用 + APK 下载 + 系统安装器触发全链路 → 下个版本起直接 app 内一键升级（不再卸载）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
@@ -1024,11 +1028,24 @@
 - `flutter analyze` → 0 issues
 - `flutter test` → 831 passed, 0 failed（M16 新增 44 个测试：15+6+6+7+5+3+2）
 
-**待用户本地验证**（沙箱无法测）：
-- 生成 keystore：`bash scripts/generate_keystore.sh` → 上传 4 个 secret 到 GitHub（ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD）
-- 推 tag 触发 CI build → 装 v0.18.0 APK 验证签名切换成功（v0.17.0 旧版需卸载一次）
-- 在 app 内"设置 → 检查更新"验证 GitHub Release API 调用 + 下载 + 系统安装器全链路
-- v0.18.0 装好后，下个版本直接 app 内一键升级（不再卸载）
+**沙箱已完成项**（v0.18.0 release 全流程）：
+- ✅ keystore 生成：沙箱用 `scripts/generate_keystore.sh` 生成 `eatwise-release.jks`（不进 repo）
+- ✅ GitHub Secrets 上传：用 classic PAT `ghp_...p5DD1`（用户提供）+ libsodium sealed box 加密，上传 4 个 secrets（ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD）
+- ✅ push 16 个 M16 commit 到远程（HEAD = bfa54e6）
+- ✅ 推 v0.18.0 tag 触发 CI build
+- ✅ CI build 第 3 次成功（前 2 次失败已修复，见下方"CI 修复"）
+- ✅ GitHub Release v0.18.0 已发布（app-release.apk 74.84 MB + app-debug.apk 166.97 MB）
+- ✅ APK 签名：CI log 确认"✅ keystore 注入完成"+ Build release APK step success（沙箱 v2 签名块解析失败，改用 CI log 确认）
+
+**CI 修复（2 个 commit，build 1 + build 2 失败后修复）**：
+- **build 1 失败 → commit `d082748`**：`build.gradle.kts` Kotlin DSL 编译错误 `Unresolved reference 'util'/'io'`（`java.util.Properties` / `java.io.FileInputStream` 不能在 `android {}` 块内用全限定名）→ 在文件顶部加 `import java.io.FileInputStream` + `import java.util.Properties`，块内用简短名
+- **build 2 失败 → commit `bfa54e6`**：`MainActivity.kt:20` `Argument type mismatch: actual type is 'Int', but 'String' was expected`（`call.argument<String>(0)` 的 `0` 是 Int，但 `argument<T>(String key)` 需要 String key；Dart 侧 `invokeMethod('triggerInstall', apkPath)` 直接传 String 作为 arguments）→ 改为 `val apkPath = call.arguments as? String`
+
+**待用户本地验证 + 收尾**（沙箱无法完成）：
+1. **删除 classic PAT** `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`：访问 https://github.com/settings/tokens 手动删除（classic PAT 无法通过 API 自删，已用完上传 secrets 的使命，不应保留）
+2. **装 v0.18.0 APK**：v0.17.0 旧版需卸载一次（签名切换），v0.18.0 起可覆盖安装
+3. **在 app 内"设置 → 检查更新"验证全链路**：GitHub Release API 调用 → 版本比较 → APK 下载到 cache dir → 系统安装器触发
+4. **下个版本起**直接 app 内一键升级（不再卸载）
 
 ---
 
