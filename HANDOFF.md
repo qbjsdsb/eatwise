@@ -263,7 +263,9 @@
 
 ### 3.6 主题色
 - themeSeedProvider（NotifierProvider<int>）+ secure_config_store 持久化
-- 默认莫奈《睡莲》青绿 0xFF5B8C7B，12 色预设 kThemePresets
+- **代码默认值是 M3 基线紫 0xFF6750A4**（`ThemeNotifier.build()` 与 `SecureConfigStore.getThemeSeed()` 默认都是这个值），不是莫奈青绿
+- `0xFF5B8C7B 莫奈《睡莲》青绿` 只是 `kThemePresets` 列表第一项（设置页默认选中色），新用户首次安装实际显示基线紫，需用户主动选色才变青绿
+- 12 色预设 kThemePresets
 - main.dart runApp 前快速读，首帧即用正确主题色避免闪烁
 
 ### 3.7 启动流程（main.dart）
@@ -518,6 +520,8 @@
 48. **Undo SnackBar 乐观删除必须捕获 messenger 引用 + 用 undone 标志**：Dismissible 的 `onDismissed` 回调里 `setState(() => _meals.removeAt(index))` 后立即 `showSnackBar`，但 await 4s 后 widget 可能已 unmounted。必须 `final messenger = ScaffoldMessenger.of(context)` 在 await 前捕获引用（context 可能失效但 messenger 仍可用），用 `var undone = false` 标志在 SnackBarAction.onPressed 置 true，await 后检查 `if (undone) return` 跳过 DB delete。删除失败要 `await _load()` 回滚 UI + 错误提示。比"立即删"多一个 4s 窗口给用户反悔
 
 49. **confirmAction/showAppToast 抽象：SnackBarAction 重试按钮与图表 fontSize 必须保持内联**：D5/D6 抽象出共享 `confirmAction`（确认对话框）+ `showAppToast`（toast）后，有两类场景必须保留内联实现不能用共享抽象——①**SnackBarAction 重试按钮**：recognize_page 4 处错误态 SnackBar 带"重试"按钮（SnackBarAction），是功能性入口（点击重新触发识别），showAppToast 不支持 SnackBarAction 参数，强行替换会丢重试功能。带 action 的 SnackBar 必须保留 `ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:..., action: SnackBarAction(label:'重试', onPressed:...)))` 内联写法；②**图表 fontSize 精确控制**：fl_chart 坐标轴标签、tooltip 的硬编码 `fontSize: 10/11/12` 需精确像素控制（图表内文字与数据点对齐，textTheme 的相对单位会破坏对齐），不能转 textTheme。E 批评估跳过即因此。新增 toast 时先检查是否带 SnackBarAction，是则保留内联；新增图表文字样式时不要转 textTheme
+
+50. **主题色默认值是 M3 基线紫 0xFF6750A4 不是莫奈青绿**：`ThemeNotifier.build()`（theme_controller.dart L11）和 `SecureConfigStore.getThemeSeed()` 默认值（secure_config_store.dart）都是 M3 基线紫 `0xFF6750A4`。`0xFF5B8C7B 莫奈睡莲青绿` 只是 `kThemePresets` 列表第一项（settings_page 设置页默认选中色）。新用户首次安装由 main.dart 读 storage（仍是基线紫），实际显示基线紫，需用户主动进设置页选色才变青绿。HANDOFF 第 3.6 节曾误写"默认莫奈青绿"已修正。改默认色必须同步改 ThemeNotifier.build + SecureConfigStore.getThemeSeed + kThemePresets[0] 三处，否则首帧色与设置页选中态不一致
 
 ---
 
