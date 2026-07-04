@@ -60,6 +60,15 @@ class ProfileRepository {
   /// 特殊人群字段（specialCondition/dietPreference/healthCondition）：
   /// 用 sentinel 区分"不更新"（absent）和"显式清空"（设为 'none'）。
   /// null 参数 = 不更新该字段；非 null（含 'none'）= 写入该值。
+  ///
+  /// M7 已知限制：bodyFatPct / carbGPerKg 这两个 nullable 数值字段，
+  /// null 参数 = 不更新（Value.absent），无法显式置空。
+  /// 原因：drift 的 Value.absent 语义是"不更新"，Value(null) 才是"置空"，
+  /// 当前实现把 null 一律映射为 Value.absent（见下方 `?? : Value.absent()`），
+  /// 丢失置空语义。若用户清空体脂率/碳水系数，UI 应传 0 或默认值而非 null，
+  /// 否则 DB 保留旧值，用户会困惑"清空后看到旧值"。
+  /// （tdeeAdjustmentKcal 是 NOT NULL 字段，无此问题；String 字段用 'none' sentinel。）
+  /// 如需支持显式置空，需引入 sentinel 对象或 Optional 包装，成本较高收益低，暂不实施。
   Future<void> update({
     double? heightCm,
     double? weightKg,
