@@ -280,9 +280,9 @@ class VisionRecognitionResult {
       foodComponents: ((json['food_components'] as List?) ?? [])
           .map((e) => FoodComponent.fromJson(e as Map<String, dynamic>))
           .toList(),
-      cookingMethod: json['cooking_method'] as String,
-      isSingleItem: json['is_single_item'] as bool,
-      confidence: (json['confidence'] as num).toDouble(),
+      cookingMethod: (json['cooking_method'] as String?) ?? 'raw',
+      isSingleItem: (json['is_single_item'] as bool?) ?? true,
+      confidence: (json['confidence'] as num?)?.toDouble() ?? 0.5,
       promptVersion: promptVersion,
       additionalDishes: additional,
       quantity: quantity,

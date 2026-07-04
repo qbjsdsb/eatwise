@@ -115,7 +115,7 @@ void main() {
       expect(() => VisionRecognitionResult.fromJson(json, 'v1.0'), throwsA(anything));
     });
 
-    test('必填字段缺失（confidence）抛异常（malformed）', () {
+    test('confidence 缺失时兜底 0.5（H1 修复：模型偶发漏返不崩溃）', () {
       final json = {
         'dish_name': '米饭',
         'estimated_weight_g_mid': 100,
@@ -123,7 +123,9 @@ void main() {
         'cooking_method': 'boil',
         // confidence 缺失
       };
-      expect(() => VisionRecognitionResult.fromJson(json, 'v1.0'), throwsA(anything));
+      // H1 修复前：as num 强转抛 _TypeError；修复后兜底 0.5
+      final result = VisionRecognitionResult.fromJson(json, 'v1.0');
+      expect(result.confidence, 0.5);
     });
 
     test('字段类型错误：estimated_weight_g_mid 为字符串抛异常（as num 失败）', () {
@@ -1199,6 +1201,39 @@ void main() {
       expect(per100!.$1, closeTo(26, 0.1)); // 65*100/250=26
       expect(per100.$4, closeTo(6.4, 0.001)); // 16*100/250=6.4
       expect(per100.$4 > 0, isTrue); // 关键：碳水不为 0
+    });
+  });
+
+  // H1 修复：模型偶发漏返 cooking_method/is_single_item/confidence 时不崩溃
+  group('H1 fromJson 关键字段缺失兜底', () {
+    test('cooking_method/is_single_item/confidence 全缺时不崩溃', () {
+      // 模拟 Qwen-VL 偶发漏返三个核心字段
+      final json = {
+        'dish_name': '番茄炒蛋',
+        'estimated_weight_g_low': 100,
+        'estimated_weight_g_mid': 150,
+        'estimated_weight_g_high': 200,
+        'food_components': [],
+        // 故意漏掉 cooking_method / is_single_item / confidence
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.10');
+      expect(result.cookingMethod, 'raw'); // 兜底默认
+      expect(result.isSingleItem, true); // 兜底默认
+      expect(result.confidence, 0.5); // 兜底默认
+      expect(result.dishName, '番茄炒蛋'); // 正常解析
+    });
+
+    test('cooking_method 为 null 时不崩溃', () {
+      final json = {
+        'dish_name': '测试',
+        'estimated_weight_g_mid': 100,
+        'cooking_method': null, // 显式 null
+        'is_single_item': true,
+        'confidence': 0.8,
+        'food_components': [],
+      };
+      final result = VisionRecognitionResult.fromJson(json, 'v1.10');
+      expect(result.cookingMethod, 'raw');
     });
   });
 }
