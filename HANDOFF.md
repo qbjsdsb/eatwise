@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-05
 
-**工作区状态**：v0.16.0 release 已 push 远程（commit e6ae182 + tag v0.16.0，含 v5 AI 推荐审计修复 + 满意度反馈按钮改为点开才显示 + 测试 mock 修复 + 版本号 bump）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push（AI 推荐失败修复 + 改菜名 mixin 三入口 + 周月总结滚动窗口+宏量+偏好+覆盖率+数据守卫）；**深度审查修复批次（2026-07-05）已 commit 23 个待 push**（H1-H6 / M1-M14 / L1-L5，详见下方"深度审查修复批次"章节）
-**当前分支**：trae/agent-wX1X6Q（HEAD = 1d8da3d 待 push，23 个 commit 待推送 194d4ca~1d8da3d；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
+**工作区状态**：v0.17.0 release 待 push（10 个 M15 commit 4d35805~e6b5f3a + 本次 HANDOFF 回填，含图标重设计 + 每日历史记录查看功能）；v0.16.0 release 已 push 远程（commit e6ae182 + tag v0.16.0，含 v5 AI 推荐审计修复 + 满意度反馈按钮改为点开才显示 + 测试 mock 修复 + 版本号 bump）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push（AI 推荐失败修复 + 改菜名 mixin 三入口 + 周月总结滚动窗口+宏量+偏好+覆盖率+数据守卫）；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5，详见下方"深度审查修复批次"章节）
+**当前分支**：trae/agent-wX1X6Q（HEAD = e6b5f3a，10 个 M15 commit 待推送 4d35805~e6b5f3a；远端 origin/trae/agent-wX1X6Q 停在 9554067；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
@@ -906,6 +906,57 @@
 - 修复：profile_page pop 后 + weight_page _save 末尾都加 RefreshBus.instance.notify()；weight_page insert 后同步 ProfileRepository.update(weightKg: weight)
 - 设计决策：weight_page 不同步重算 dailyCalorieTarget（BMR 重算只在用户主动编辑档案时做，日常体重波动通过 TDEE 校准 adjustmentKcal 微调）
 - 4 个 widget 测试全过（ProfilePage/WeightPage notify + weightKg 同步 + weight_logs 不影响）
+
+---
+
+**M15 图标重设计 + 每日历史记录查看（2026-07-05）—— 严格 TDD 实现 6+5 个 Task**：
+
+用户提两个需求：(1) 软件图标"非常难看"，要"更像谷歌公司会发布的"、"和软件匹配"、"符合安卓设计规范"；(2) "看不到每一天的历史数据"，要完善每日历史查看。要求"严谨一点"，用 `byted-seedream-image-generate` + `test-driven-development` + `writing-plans` 三个 skill。沙箱无 ARK_API_KEY 不能调图像生成 API，改为直接基于 Material Design 规范手绘 vector path。完整计划文件 `docs/superpowers/plans/2026-07-05-icon-redesign-and-history-page.md`，3 个 Section 共 13 个 Task 全部 TDD（Red-Green-Refactor）执行。
+
+**Section A：图标重设计（6 个 Task，commit 4d35805~bb271d7）**：
+- **A1（commit 4d35805）颜色抽到 colors.xml**：原 drawable/ic_launcher_background.xml 和 ic_launcher_foreground.xml 硬编码颜色，主题化困难。新增 `values/colors.xml` + `values-night/colors.xml` 各 2 行（ic_launcher_background=#FF6E40 / ic_launcher_foreground=#FFFFFF），后续 drawable 用 `@color/...` 引用
+- **A2（commit e2ea87a）background 引用 @color 资源**：drawable/ic_launcher_background.xml 的 `<solid android:color="#FF6E40" />` 改为 `@color/ic_launcher_background`，连注释里的颜色值也移除（测试断言 `isNot(contains('#FF6E40'))` 会匹配注释）
+- **A3（commit 43a4e15）前景重设计为餐叉+餐刀几何符号**：旧版"碗+蒸汽"风格偏写实卡通，不够 Google Material Symbols 简洁几何感。重写为餐叉（3 齿圆角矩形 + 连接条 + 柄）+ 餐刀（刀身 + 柄）纯几何 fill 路径，颜色 #FFFFFF，符合 Google Material Symbols "纯符号化、几何 fill、简洁对称" 设计语言，与软件"吃饭记录"主题强匹配
+- **A4（commit 6940ecf）补全 ic_launcher_round + AndroidManifest roundIcon 声明**：原只有 mipmap-anydpi-v26/ic_launcher.xml，缺 ic_launcher_round.xml，OEM 圆角启动器（Pixel 等）会回退到 PNG fallback 显示不圆角。新建 mipmap-anydpi-v26/ic_launcher_round.xml（与 ic_launcher.xml 结构相同，复用同一 drawable），AndroidManifest.xml `<application>` 加 `android:roundIcon="@mipmap/ic_launcher_round"`
+- **A5（commit bb271d7）重新生成 mipmap PNG fallback**：沙箱无 resvg/convert/inkscape，写 `scripts/render_icon_png.py` 用 Pillow 从 vector path 几何渲染（108×108 画布 + 圆角矩形餐叉餐刀 + 圆形蒙版 + LANCZOS 缩放），生成 5 密度（mdpi 48 / hdpi 72 / xhdpi 96 / xxhdpi 144 / xxxhdpi 192）× 2 版本（ic_launcher.png + ic_launcher_round.png），共 10 个 PNG 替换旧版"碗+蒸汽"
+- **关键测试**：`test/icon_assets_test.dart` 7 个用例覆盖 colors.xml 含两个颜色 / drawable 引用 @color 且不含硬编码 / 前景含 path "M38,24"（餐叉）+ "M62,24"（餐刀）+ 不含 "steam" / mipmap-anydpi-v26/ic_launcher_round.xml 存在且引用正确 / AndroidManifest 含 roundIcon 声明 / 5 密度都有 ic_launcher.png + ic_launcher_round.png
+
+**Section B：每日历史记录查看（5 个 Task，commit 522269a~dffe1b0）**：
+- **B1（commit 522269a）TodayMealsPage 加日期切换栏**：原 `_today` 是 `late final String` 只能存今日，无法切其他日期。改为 `late String _selectedDate`（可变状态），默认今日。body 改 Column 结构，顶部常驻 `_buildDateNavigator()`（左箭头/日期文本/右箭头/跳今日按钮），下方 Divider + Expanded 包内容区。日期文本点击弹 DatePicker。AppBar 标题动态化：今日显"今日记录" / 非今日显"X月X日 记录"。复用 `MealLogRepository.getMealsByDate(String date)`（已支持任意日期，零数据层改动）
+- **B2（commit 513fe5e）日期切换交互测试**：8 个 widget 测试覆盖默认显示今日 / 点左箭头切前一天 / 后一天按钮今日禁用 / 点跳今日按钮回今日 / 4 条路径验证
+- **B3（commit 2dbf8a8）DatePicker 弹窗验证**：测试点击日期文本弹 showDatePicker，用 `tester.sendKeyEvent(LogicalKeyboardKey.escape)` 关闭（默认 locale 无"取消/确定"按钮）
+- **B4（commit dffe1b0）非今日空态文案动态化 + 隐藏拍照按钮**：非今日空态显"该日暂无记录"/"该日没有拍照记录"且不显"去拍照"按钮（actionLabel=null/onAction=null），今日空态保留"今日暂无记录"/"去拍照"按钮
+- **关键测试**：`test/features/today_meals_page_history_test.dart` 8 个 widget 测试，覆盖日期切换栏渲染 / 前后一天切换 / 跳今日 / DatePicker 弹窗 / 非今日空态文案+无拍照按钮 / 今日空态保留拍照按钮
+
+**Section C：版本号 + HANDOFF（2 个 Task）**：
+- **C1（commit e6b5f3a）bump 版本号**：pubspec.yaml `0.16.0+17` → `0.17.0+18`（minor bump 因新增 UI 功能）
+- **C2（本次 commit）HANDOFF 回填 M15**：本章节 + 第 2 节当前状态更新
+
+**关键 API 核实**（避免计划初稿误用）：
+- `todayYmd()` → `String`（无参，今日 YMD）；`formatYmd(DateTime d)` → `String`（DateTime 转 YMD，**不是 `todayYmd(DateTime)` 重载**）；`parseYmd(String s)` → `DateTime`（**抛 FormatException 而非返回 null**，需 try-catch）
+- `EmptyState`（m3_widgets.dart L101-115）：`actionLabel` 和 `onAction` 均 `String?`/`VoidCallback?` 可选，传 null 隐藏按钮
+- `container.dispose()` 返回 void 不能 await（直接调用）
+
+**完整文件清单**（10 个 M15 commit + 本次 HANDOFF commit）：
+- `android/app/src/main/res/values/colors.xml`（A1）
+- `android/app/src/main/res/values-night/colors.xml`（A1）
+- `android/app/src/main/res/drawable/ic_launcher_background.xml`（A2 重写）
+- `android/app/src/main/res/drawable/ic_launcher_foreground.xml`（A3 重写，核心设计变更）
+- `android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml`（A4 新建）
+- `android/app/src/main/AndroidManifest.xml`（A4 加 roundIcon）
+- `android/app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher.png`（A5 重新生成）
+- `android/app/src/main/res/mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher_round.png`（A5 重新生成）
+- `scripts/render_icon_png.py`（A5 新建，Pillow PNG 渲染脚本）
+- `lib/features/dashboard/today_meals_page.dart`（B1+B4 重大修改，日期切换栏 + 空态动态化）
+- `test/icon_assets_test.dart`（A1-A4 测试，7 用例）
+- `test/features/today_meals_page_history_test.dart`（B1-B4 测试，8 用例）
+- `pubspec.yaml`（C1 版本号 bump）
+- `docs/superpowers/plans/2026-07-05-icon-redesign-and-history-page.md`（计划文件，用户已批准）
+- `HANDOFF.md`（C2 本次回填）
+
+**验证**：
+- `flutter analyze` → 0 issues
+- `flutter test` → 787 passed, 0 failed（Section A 后 779 / Section B 后 787）
 
 ---
 
