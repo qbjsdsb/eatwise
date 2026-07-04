@@ -5,6 +5,7 @@ import 'package:eatwise/data/repositories/meal_log_repository.dart';
 import 'package:eatwise/features/dashboard/today_meals_page.dart';
 import 'package:eatwise/features/recognize/providers.dart' as recognize;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -154,5 +155,23 @@ void main() {
     // 不应再显示"今日"按钮（已是今日，TextButton 隐藏）
     // 注：AppBar 标题 '今日记录' 是 Text widget，find.text('今日') 精确匹配不会命中 '今日记录'
     expect(find.text('今日'), findsNothing);
+  });
+
+  testWidgets('B3: 点击日期文本弹 DatePicker', (tester) async {
+    await pumpPage(tester);
+
+    // 点击日期文本（默认显示"今天"）
+    await tester.tap(find.text('今天'));
+    await tester.pumpAndSettle(const Duration(seconds: 2));
+
+    // DatePicker 应弹出
+    expect(find.byType(DatePickerDialog), findsOneWidget);
+
+    // 用 escape 关闭 DatePicker（默认 locale 下无 '取消'/'确定' 按钮）
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle(const Duration(seconds: 2));
+
+    // 关闭后 DatePicker 应消失
+    expect(find.byType(DatePickerDialog), findsNothing);
   });
 }
