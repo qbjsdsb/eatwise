@@ -317,15 +317,65 @@ void main() {
       expect(r.carbsG, 0);
     });
 
-    test('已知限制：蔗糖/果糖/乳糖会匹配（语义上合理，单糖也算碳水）', () {
-      // 负向回视字表不含"蔗/果/乳"，"蔗糖5g"会匹配为 carbsG=5
-      // 语义上单糖/双糖都属于碳水，这是合理行为
-      final r1 = PackageNutritionOcrParser.parse('蔗糖5g');
-      expect(r1.carbsG, 5);
-      final r2 = PackageNutritionOcrParser.parse('果糖3g');
-      expect(r2.carbsG, 3);
-      final r3 = PackageNutritionOcrParser.parse('乳糖4g');
-      expect(r3.carbsG, 4);
+    // 旧测试"已知限制：蔗糖/果糖/乳糖会匹配"已被 M8 修复取代（见下方 M8 group）
+    // M8 修复后，蔗糖/果糖/乳糖/麦芽糖/葡萄糖这些"多字糖类配料名"不再被当作营养成分表的"糖"提取
+  });
+
+  // M8 修复：多字糖类（蔗糖/果糖/乳糖/麦芽糖/葡萄糖）负向回视
+  // 问题：原正则 (?<![低无加含少减高])糖 不防多字糖类，
+  //   当 OCR 同时抓到配料表和营养成分表时，"蔗糖 5g"会被误提取为 carbsG=5。
+  // 修复：负向回视扩展加 果乳蔗麦芽葡 6 字，配料名前缀字全部阻止匹配。
+  // 语义：营养成分表行标"糖"（单字），配料表才标"蔗糖/果糖/乳糖"等，
+  //   PackageNutritionOcrParser 是营养成分表解析器，不应提取配料表的糖类。
+  group('M8 修复：多字糖类负向回视（蔗糖/果糖/乳糖/麦芽糖/葡萄糖）', () {
+    test('M8-RED: 不误匹配配料表中的蔗糖', () {
+      // 配料表的"蔗糖 5g"是配料名+重量，不是营养成分表的糖含量
+      final result = PackageNutritionOcrParser.parse(
+          '配料：蔗糖 5g，水。营养成分表：能量 100kJ，蛋白质 2g');
+      expect(result.carbsG, isNull,
+          reason: '蔗糖是配料名，不应被当作营养成分表的糖提取');
+    });
+
+    test('M8-RED: 不误匹配果糖/乳糖/麦芽糖/葡萄糖', () {
+      expect(PackageNutritionOcrParser.parse('果糖3g').carbsG, isNull,
+          reason: '果糖是配料名');
+      expect(PackageNutritionOcrParser.parse('乳糖4g').carbsG, isNull,
+          reason: '乳糖是配料名');
+      expect(PackageNutritionOcrParser.parse('麦芽糖5g').carbsG, isNull,
+          reason: '麦芽糖是配料名');
+      expect(PackageNutritionOcrParser.parse('葡萄糖6g').carbsG, isNull,
+          reason: '葡萄糖是配料名');
+    });
+
+    test('M8: 仍能正确提取营养成分表的糖', () {
+      final result = PackageNutritionOcrParser.parse(
+          '营养成分表：能量 100kJ，蛋白质 2g，脂肪 1g，糖 5g');
+      expect(result.carbsG, 5.0);
+    });
+
+    test('M8: 配料表蔗糖 + 营养成分表糖共存时只提取营养成分表的糖', () {
+      // 真实场景：OCR 同时抓到配料表和营养成分表
+      final result = PackageNutritionOcrParser.parse(
+          '配料：水，蔗糖 5g。营养成分表：每份100g 能量100kJ 蛋白质0g 脂肪0g 糖8g');
+      expect(result.carbsG, 8.0,
+          reason: '应提取营养成分表的"糖 8g"，而非配料表的"蔗糖 5g"');
+    });
+
+    test('M8: 仅配料表蔗糖无营养成分表糖 → carbsG=null', () {
+      final result = PackageNutritionOcrParser.parse('配料：水，蔗糖 5g，柠檬酸');
+      expect(result.carbsG, isNull,
+          reason: '配料表中蔗糖不应被提取，且无营养成分表的糖兜底');
+    });
+
+    test('M8 回归：低糖/无糖/加糖/含糖/少糖/减糖/高糖 仍被负向回视阻止', () {
+      // M8 扩展字表后，原 7 个修饰词仍必须被阻止（不能因扩展而破坏原防误匹配）
+      expect(PackageNutritionOcrParser.parse('低糖11g').carbsG, isNull);
+      expect(PackageNutritionOcrParser.parse('无糖0g').carbsG, isNull);
+      expect(PackageNutritionOcrParser.parse('加糖5g').carbsG, isNull);
+      expect(PackageNutritionOcrParser.parse('含糖8g').carbsG, isNull);
+      expect(PackageNutritionOcrParser.parse('少糖3g').carbsG, isNull);
+      expect(PackageNutritionOcrParser.parse('减糖5g').carbsG, isNull);
+      expect(PackageNutritionOcrParser.parse('高糖12g').carbsG, isNull);
     });
   });
 }
