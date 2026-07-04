@@ -89,5 +89,23 @@ void main() {
         reason: 'AndroidManifest 应声明 android:roundIcon（部分启动器需要）',
       );
     });
+
+    test('5 个 mipmap 密度都有 ic_launcher.png 和 ic_launcher_round.png', () {
+      const densities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi', 'xxxhdpi'];
+      for (final d in densities) {
+        final png = File('$androidResDir/mipmap-$d/ic_launcher.png');
+        expect(
+          png.existsSync(),
+          true,
+          reason: 'mipmap-$d/ic_launcher.png 应存在（方形图标 PNG fallback）',
+        );
+        final pngRound = File('$androidResDir/mipmap-$d/ic_launcher_round.png');
+        expect(
+          pngRound.existsSync(),
+          true,
+          reason: 'mipmap-$d/ic_launcher_round.png 应存在（圆角图标 PNG fallback）',
+        );
+      }
+    });
   });
 }
