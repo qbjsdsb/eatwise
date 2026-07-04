@@ -9,6 +9,7 @@ import '../../core/theme/theme_controller.dart';
 import '../../core/util/date_format.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/backup/auto_backup.dart';
+import '../update/update_page.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -233,6 +234,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
               ]),
               SectionTitle('关于'),
               GroupCard(dividerIndent: 16, children: [
+                ListTile(
+                  leading:
+                      const LeadingIconContainer(Icons.system_update_alt),
+                  title: const Text('检查更新'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.of(context, rootNavigator: true)
+                      .push(MaterialPageRoute(
+                          builder: (_) => const UpdatePage())),
+                ),
                 ListTile(
                   leading: const LeadingIconContainer(Icons.info_outline_rounded),
                   title: const Text('关于慢慢吃'),
