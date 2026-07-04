@@ -40,5 +40,32 @@ void main() {
         reason: '不应再硬编码颜色值',
       );
     });
+
+    test('ic_launcher_foreground.xml 含餐叉+餐刀 path（M15 重设计）', () {
+      final file = File('$androidResDir/drawable/ic_launcher_foreground.xml');
+      final content = file.readAsStringSync();
+      // 餐叉+餐刀几何图形的 path（M15 重设计后应有）
+      expect(
+        content,
+        contains('android:pathData="M38,24'),
+        reason: '餐叉 path 应从 x=38 开始（M15 几何布局）',
+      );
+      expect(
+        content,
+        contains('android:pathData="M62,24'),
+        reason: '餐刀 path 应从 x=62 开始（M15 几何布局）',
+      );
+      expect(
+        content,
+        contains('android:fillColor="@color/ic_launcher_foreground"'),
+        reason: '前景应引用 @color/ic_launcher_foreground',
+      );
+      // 旧的"碗+蒸汽"应被移除（注释里 'steam' 也不应有）
+      expect(
+        content,
+        isNot(contains('steam')),
+        reason: '旧的蒸汽注释应被移除',
+      );
+    });
   });
 }

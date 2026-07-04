@@ -1,26 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  自适应图标前景：白色「碗 + 蒸汽」几何图形。
-  语义：热气腾腾的碗 → 慢慢吃 → 温馨大方。
+  自适应图标前景：白色「餐叉 + 餐刀」并排几何符号（M15 重设计）。
+  语义：餐具 → 食物 / 用餐 → 慢慢吃。
 
-  设计要点（Google Material Symbols 风格）：
-  - 前景纯白 #FFFFFF，与暖橙背景高对比度
-  - 几何极简：碗身梯形 + 碗口直线 + 2 道 S 形蒸汽（stroke 风格）
-  - 全部圆角（Material Symbols 特征：rounded corners / linecaps）
-  - 缩放到 48dp 仍清晰（stroke 宽度 4dp，碗身大块 fill）
+  设计风格（Google Material Symbols）：
+  - 前景纯白，引用 @color/ic_launcher_foreground，与暖橙背景高对比度
+  - 几何极简：纯 fill（无 stroke），圆角，对称布局
+  - 餐具是食物通用符号（不局限菜系），Material Symbols 标准符号化思路
+  - 缩放到 48dp 仍清晰（最小可识别宽度 ≥4dp）
 
   画布 108x108dp，安全区 66x66（中心 54,54，半径 33）。
-  实际图形范围：x=30-78（宽 48），y=24-80（高 56），整体水平居中、垂直微偏上。
-  蒸汽顶 y=24，碗底 y=80，碗口 y=52，均在安全区 21-87 内。
+  实际图形范围：x=38-74（宽 36，整体水平居中偏差 ≤4dp），y=24-70（高 46）。
+  餐叉（左 x=38-54）：3 齿 + 连接条 + 柄
+  餐刀（右 x=62-74）：梯形刀身 + 柄
 
-  几何构成：
-  - 蒸汽（2 道 S 形上升波浪，stroke 圆角）：
-      · 左：x≈44，y=24-50，S 形曲线
-      · 右：x≈64，y=24-50，S 形曲线（与左镜像）
-  - 碗口：横直线 y=52，x=30-78
-  - 碗身：梯形（上宽 48、下宽 34、高 26）+ 碗底椭圆弧圆角
-      · 上端 (30,52)-(78,52)
-      · 下端 (37,78)-(71,78)，两端用 A 17,4 椭圆弧连接成圆角底
+  替代旧版「碗+蒸汽」设计（用户反馈"非常难看"，要"更像谷歌公司会发布的"）。
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -28,25 +22,18 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 蒸汽：2 道 S 形上升波浪，stroke 风格（Material Symbols outlined） -->
+    <!-- 餐叉 3 齿：3 个圆角矩形（每齿宽 3、高 12、圆角 1.5，间隔 2） -->
     <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:fillColor="#00000000"
-        android:pathData="M 44,50 C 40,44 48,40 44,34 C 42,30 46,26 44,24" />
+        android:fillColor="@color/ic_launcher_foreground"
+        android:pathData="M38,24 h3 a1.5,1.5 0 0 1 1.5,1.5 v10 a1.5,1.5 0 0 1 -3,0 v-10 a1.5,1.5 0 0 1 1.5,-1.5 z M43,24 h3 a1.5,1.5 0 0 1 1.5,1.5 v10 a1.5,1.5 0 0 1 -3,0 v-10 a1.5,1.5 0 0 1 1.5,-1.5 z M48,24 h3 a1.5,1.5 0 0 1 1.5,1.5 v10 a1.5,1.5 0 0 1 -3,0 v-10 a1.5,1.5 0 0 1 1.5,-1.5 z" />
 
+    <!-- 餐叉连接条 + 柄：水平连接条（38-54，y=36-40）+ 垂直柄（44-48，y=40-68，圆角底） -->
     <path
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="4"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:fillColor="#00000000"
-        android:pathData="M 64,50 C 60,44 68,40 64,34 C 62,30 66,26 64,24" />
+        android:fillColor="@color/ic_launcher_foreground"
+        android:pathData="M38,36 h14 a2,2 0 0 1 2,2 v2 h-4 a2,2 0 0 0 -2,2 v26 a2,2 0 0 1 -4,0 v-26 a2,2 0 0 0 -2,-2 h-4 v-2 a2,2 0 0 1 2,-2 z" />
 
-    <!-- 碗：碗口（横直线）+ 碗身（梯形）+ 碗底（椭圆弧圆角），单 path fill -->
+    <!-- 餐刀刀身 + 柄：梯形刀身（62-74，y=24-52）+ 短颈 + 柄（66-70，y=54-70） -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M 30,52 L 78,52 L 71,78 A 17,4 0 0,1 37,78 Z" />
+        android:fillColor="@color/ic_launcher_foreground"
+        android:pathData="M62,24 h12 a2,2 0 0 1 2,2 v22 a2,2 0 0 1 -2,2 h-2 v4 a2,2 0 0 1 -2,2 h-4 a2,2 0 0 1 -2,-2 v-4 h-2 a2,2 0 0 1 -2,-2 v-22 a2,2 0 0 1 2,-2 z M66,54 h4 a2,2 0 0 1 2,2 v12 a2,2 0 0 1 -4,0 v-12 a2,2 0 0 1 2,-2 z" />
 </vector>
