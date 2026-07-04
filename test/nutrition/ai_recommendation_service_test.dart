@@ -309,6 +309,72 @@ void main() {
       expect(r.fromCache, false);
     });
   });
+
+  group('L1 _friendlyError 5xx/403 错误文案', () {
+    test('L1: 403 Forbidden → 权限不足文案', () async {
+      final service = AiRecommendationService(
+        _ThrowingGlmProviderWithMessage('403 Forbidden'),
+        profileRepo,
+        mealRepo,
+        foodRepo,
+        feedbackRepo,
+      );
+      final r = await service.recommend(
+        const AiRecommendationRequest(todayDate: '2026-07-04', mealType: 'lunch'),
+        forceRefresh: true,
+      );
+      expect(r.error, contains('权限不足'),
+          reason: '403 应映射为"权限不足"文案');
+    });
+
+    test('L1: 500 Internal Server Error → 服务暂时不可用文案', () async {
+      final service = AiRecommendationService(
+        _ThrowingGlmProviderWithMessage('500 Internal Server Error'),
+        profileRepo,
+        mealRepo,
+        foodRepo,
+        feedbackRepo,
+      );
+      final r = await service.recommend(
+        const AiRecommendationRequest(todayDate: '2026-07-04', mealType: 'lunch'),
+        forceRefresh: true,
+      );
+      expect(r.error, contains('服务暂时不可用'),
+          reason: '5xx 应映射为"服务暂时不可用"文案');
+    });
+
+    test('L1: 503 Service Unavailable → 服务暂时不可用文案', () async {
+      final service = AiRecommendationService(
+        _ThrowingGlmProviderWithMessage('Exception: 503 Service Unavailable'),
+        profileRepo,
+        mealRepo,
+        foodRepo,
+        feedbackRepo,
+      );
+      final r = await service.recommend(
+        const AiRecommendationRequest(todayDate: '2026-07-04', mealType: 'lunch'),
+        forceRefresh: true,
+      );
+      expect(r.error, contains('服务暂时不可用'),
+          reason: '503 应映射为"服务暂时不可用"文案');
+    });
+
+    test('L1: 已有 401 文案保持不变（回归测试）', () async {
+      final service = AiRecommendationService(
+        _ThrowingGlmProviderWithMessage('401 Unauthorized'),
+        profileRepo,
+        mealRepo,
+        foodRepo,
+        feedbackRepo,
+      );
+      final r = await service.recommend(
+        const AiRecommendationRequest(todayDate: '2026-07-04', mealType: 'lunch'),
+        forceRefresh: true,
+      );
+      expect(r.error, contains('API Key 无效'),
+          reason: '401 应保持原有"API Key 无效"文案');
+    });
+  });
 }
 
 /// 假 GlmFlashProvider：返回固定响应（不实际调 API）
@@ -323,6 +389,7 @@ class _FakeGlmProvider extends GlmFlashProvider {
     String model = 'glm-4-flash',
     int maxCompletionTokens = 1000,
     double temperature = 0.7,
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     return _response;
   }
@@ -339,8 +406,28 @@ class _ThrowingGlmProvider extends GlmFlashProvider {
     String model = 'glm-4-flash',
     int maxCompletionTokens = 1000,
     double temperature = 0.7,
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     throw Exception('AI 服务不可用');
+  }
+}
+
+/// 抛带特定 message 异常的 GlmFlashProvider（L1 测试用，模拟 5xx/403 等）
+class _ThrowingGlmProviderWithMessage extends GlmFlashProvider {
+  final String _message;
+  _ThrowingGlmProviderWithMessage(this._message)
+      : super(apiKey: 'fake', baseUrl: 'http://fake');
+
+  @override
+  Future<String> createChatCompletion({
+    required String systemPrompt,
+    required String userPrompt,
+    String model = 'glm-4-flash',
+    int maxCompletionTokens = 1000,
+    double temperature = 0.7,
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    throw Exception(_message);
   }
 }
 
@@ -355,6 +442,7 @@ class _SlowGlmProvider extends GlmFlashProvider {
     String model = 'glm-4-flash',
     int maxCompletionTokens = 1000,
     double temperature = 0.7,
+    Duration timeout = const Duration(seconds: 30),
   }) async {
     await Future.delayed(const Duration(minutes: 1));
     return '';

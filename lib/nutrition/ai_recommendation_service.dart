@@ -142,8 +142,18 @@ class AiRecommendationService {
     if (s.contains('401') || s.contains('Unauthorized')) {
       return 'GLM API Key 无效，已切换本地推荐';
     }
+    // L1：403 权限不足（key 有效但无 GLM-4-Flash 调用权限）
+    if (s.contains('403') || s.contains('Forbidden')) {
+      return 'GLM API Key 权限不足，已切换本地推荐';
+    }
     if (s.contains('429') || s.contains('rate limit')) {
       return 'AI 调用太频繁，请稍后重试';
+    }
+    // L1：5xx 服务器错误（500/502/503/504 等）
+    if (RegExp(r'5\d{2}').hasMatch(s) ||
+        s.contains('Internal Server Error') ||
+        s.contains('server error')) {
+      return 'AI 服务暂时不可用，已切换本地推荐';
     }
     if (s.contains('SocketException') || s.contains('network')) {
       return '网络连接失败，已切换本地推荐';
