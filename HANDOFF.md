@@ -24,7 +24,7 @@
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
 - **当前版本**：0.15.0+16（pubspec.yaml）
-- **当前分支**：trae/agent-wX1X6Q（HEAD = 4b35dcb v0.15.0 release；v0.15.0 tag 指向 4b35dcb）
+- **当前分支**：trae/agent-wX1X6Q（HEAD = c13143b v0.15.0 审计修复；v0.15.0 tag 指向 4b35dcb）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
   - `android/app/build.gradle.kts` 必须保持 `isMinifyEnabled=false` + `isShrinkResources=false`（否则 R8 剥掉 sentry/workmanager 反射类致启动崩溃）
@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-04
 
-**工作区状态**：v0.15.0 release 已 push 远程（commit 4b35dcb + tag v0.15.0）；v1.10 深度审查已 commit 7b649f2
-**当前分支**：trae/agent-wX1X6Q（HEAD = 4b35dcb；v0.15.0 tag 指向 4b35dcb；v0.14.0 tag 指向 8bccee4）
+**工作区状态**：v0.15.0 release 已 push 远程（commit 4b35dcb + tag v0.15.0）；v0.15.0 审计修复已 push（commit c13143b）；v1.10 深度审查已 commit 7b649f2
+**当前分支**：trae/agent-wX1X6Q（HEAD = c13143b；v0.15.0 tag 指向 4b35dcb；v0.14.0 tag 指向 8bccee4）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
@@ -310,7 +310,7 @@
 - 图标：`android/app/src/main/res/drawable/ic_launcher_background.xml` / `android/app/src/main/res/drawable/ic_launcher_foreground.xml`
 - 版本号：`pubspec.yaml` / `lib/core/error/sentry_init.dart`（release 默认值 0.14.0 → 0.15.0）
 
-**Phase 2.10 v0.15.0 release 后大规模审计修复（2026-07-04，待 commit）**：
+**Phase 2.10 v0.15.0 release 后大规模审计修复（2026-07-04，commit c13143b）**：
 
 用户要求"发布完成后再进行一轮大规模的问题检查，势必找出所有的问题并且修复，所有环节所有项目都要检查测试"。通过 3 个并行 Task agent 深度审计（UI 改动完整性 + v1.10 测试完整性 + release 完整性）发现 ~24 个问题，全部修复或降级记录。
 
@@ -394,6 +394,7 @@
 - `image_cleanup_startup_test.dart T48` 日期敏感测试：测试硬编码日期但代码用 `DateTime.now()`，每过一段时间会失败。建议后续改成相对日期（`DateTime.now().subtract(Duration(days: 8))` 动态生成测试日期）
 
 **最近 commit**：
+- `c13143b` fix: v0.15.0 release 后大规模审计修复 24 个问题（UI 审计 8 个 + sentry_init 版本号同步 + HANDOFF 9 个文档问题 + 测试缺口评估降级）
 - `4b35dcb` release: v0.15.0 UI 优化 + 图标重设计（M3 Expressive 主题层 +6 组件主题 + 公共组件 +6 + 各页面优化 + 图标 Material 风格重设计）
 - `7b649f2` fix: v1.10 深度审查 BUG-2/BUG-5 High 级修复 + 124 个新测试覆盖（didFill 守卫跳过 cal 自洽修正 + _aiFallbackNutrition packageMacrosAllZero 守卫 + prompts schema 一致性 + OCR "糖"负向回视 + food_density 新品类）
 - `8058012` feat: multi_dish_page 复合菜路径 packageMacrosAllZero 守卫 + OCR "糖"模式负向回视防误匹配
