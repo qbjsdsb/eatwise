@@ -67,5 +67,27 @@ void main() {
         reason: '旧的蒸汽注释应被移除',
       );
     });
+
+    test('mipmap-anydpi-v26/ic_launcher_round.xml 存在且引用正确', () {
+      final file = File('$androidResDir/mipmap-anydpi-v26/ic_launcher_round.xml');
+      expect(file.existsSync(), true, reason: '圆角 adaptive-icon 应存在');
+      final content = file.readAsStringSync();
+      expect(content,
+          contains('<background android:drawable="@drawable/ic_launcher_background" />'));
+      expect(content,
+          contains('<foreground android:drawable="@drawable/ic_launcher_foreground" />'));
+      expect(content,
+          contains('<monochrome android:drawable="@drawable/ic_launcher_foreground" />'));
+    });
+
+    test('AndroidManifest.xml 含 android:roundIcon 声明', () {
+      final file = File('android/app/src/main/AndroidManifest.xml');
+      final content = file.readAsStringSync();
+      expect(
+        content,
+        contains('android:roundIcon="@mipmap/ic_launcher_round"'),
+        reason: 'AndroidManifest 应声明 android:roundIcon（部分启动器需要）',
+      );
+    });
   });
 }

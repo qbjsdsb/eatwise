@@ -12,6 +12,7 @@
         android:label="慢慢吃"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:allowBackup="false">  <!-- 关闭备份防 ADB 泄露（设计文档 8.2） -->
         <activity
             android:name=".MainActivity"
