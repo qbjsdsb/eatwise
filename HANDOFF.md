@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-04
 
-**工作区状态**：v0.15.0 release 已 push 远程（commit 4b35dcb + tag v0.15.0）；v0.15.0 审计修复已 push（commit c13143b）；Phase 2.11 图标重设计 + 拍照识别页改造 + 推荐算法 v4 用户偏好学习已 push（commit 1dd3087）；Phase 2.12 AI 个性化推荐 v5（渐进增强 + 满意度反馈学习，待 commit）
-**当前分支**：trae/agent-wX1X6Q（HEAD = 1dd3087；v0.15.0 tag 指向 4b35dcb；v0.14.0 tag 指向 8bccee4）
+**工作区状态**：v0.15.0 release 已 push 远程（commit 4b35dcb + tag v0.15.0）；v0.15.0 审计修复已 push（commit c13143b）；Phase 2.11 图标重设计 + 拍照识别页改造 + 推荐算法 v4 用户偏好学习已 push（commit 1dd3087）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）
+**当前分支**：trae/agent-wX1X6Q（HEAD = 27b6a85；v0.15.0 tag 指向 4b35dcb；v0.14.0 tag 指向 8bccee4）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
@@ -397,7 +397,7 @@
 - ✅ `flutter analyze` → No issues found
 - ✅ `flutter test` → 661 passed / 3 skipped / 0 failed（含 v4 新增 52 测试 + T48 日期漂移修复）
 
-**Phase 2.12 AI 个性化推荐 v5（渐进增强 + 满意度反馈学习，2026-07-04，待 commit）**：
+**Phase 2.12 AI 个性化推荐 v5（渐进增强 + 满意度反馈学习，2026-07-04，commit 27b6a85）**：
 
 用户反馈"智能推荐完全不智能，根据每个人的饮食习惯自己学习，多维度（材质/价格/口味/风格），可接入 ai"。v4 是纯本地关键词匹配，v5 接入 GLM-4-Flash 让 AI 综合用户完整画像（身高/体重/体脂/年龄/性别/活动量/目标/健康状况/饮食偏好/特殊人群）+ 历史饮食（近14天 top 20 食物）+ 满意度反馈（近30条）做真正个性化推荐。
 
