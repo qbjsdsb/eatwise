@@ -10,7 +10,7 @@
 //   a) 新增 weight_source 字段——包装食品优先读取包装标注净含量（package_label），散装/无包装用 ai_estimate
 //   b) 包装容量优先规则——瓶装/罐装/盒装/袋装食品必须读取包装标签上的净含量（如"净含量 330ml/500ml"），
 //      不能靠视觉估算重量（瓶身形状不规则致视觉估算误差大）
-//   c) 营养素自洽约束——estimated_calories 必须满足 4*protein + 9*fat + 4*carb ≈ calories（误差±5%），
+//   c) 营养素自洽约束——estimated_calories 必须满足 4*protein + 9*fat + 4*carb ≈ calories（误差±10%，与下游校验器一致），
 //      避免 AI 瞎算 calories（下游有校验器会强制修正，但 AI 自洽可减少修正偏差）
 // v1.7（建议 3 密度换算）：
 //   新增 food_category 字段——标识食物类别（water/carbonated/juice/milk/cream/oil/honey/sauce/
@@ -57,7 +57,7 @@ class Prompts {
 3. 估算份量——优先读包装标注净含量；散装食物用可见餐具作尺度参照（餐盘直径约 25cm、饭碗约 200ml、水杯约 250ml）
 4. 估算营养——优先读包装"营养成分表"做精确换算；无包装才按密度/经验估算
 5. 隐藏热量——红油/糖色/勾芡/腌料/酱汁等视觉不可见的热量必须显式估算并计入 estimated_calories
-6. 自洽校验——4*protein + 9*fat + 4*carbs ≈ calories（误差<5%），不满足则反推修正
+6. 自洽校验——4*protein + 9*fat + 4*carbs ≈ calories（误差<10%，与下游校验器 _calorieTolerance=0.10 一致），不满足则反推修正。酒精饮料（啤酒/葡萄酒/白酒/烈酒）例外：酒精 7kcal/g 不在 Atwater 4/9/4 系数内，calories 按酒精含量估算，不受自洽约束
 
 JSON schema：
 {
@@ -148,7 +148,7 @@ JSON schema：
    - 复合菜按各组分重量加总 + 烹饪用油热量
    - ⚠️ 营养素自洽约束（v1.6 必须满足）：estimated_calories ≈ 4*estimated_protein_g + 9*estimated_fat_g + 4*estimated_carbs_g
      · Atwater 系数：蛋白质 4 kcal/g、脂肪 9 kcal/g、碳水 4 kcal/g
-     · 估算完三个宏量营养素后，用公式反算 calories，确保偏差<5%
+     · 估算完三个宏量营养素后，用公式反算 calories，确保偏差<10%
      · 例：protein=18g, fat=25g, carbs=12g → calories = 4*18+9*25+4*12 = 72+225+48 = 345 kcal
      · 不要凭感觉给 calories，必须用公式算！
 7. additional_dishes（一桌多菜批量识别，v1.5 强化多物识别）：
@@ -214,7 +214,7 @@ JSON schema：
 
 示例4（500ml 食用油-液体密度换算 v1.7）：
 {"reasoning":"500ml 金龙鱼食用油，读包装标签净含量 500ml，weight_source=package_label，food_category=oil；油密度 0.92 真实约 460g，热量 889*460/100≈4089kcal。","dish_name":"食用油","brand":"金龙鱼","quantity":1,"unit":"瓶","per_unit_g":500,"estimated_weight_g_low":485,"estimated_weight_g_mid":500,"estimated_weight_g_high":515,"weight_source":"package_label","food_category":"oil","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.9,"estimated_calories":4094,"estimated_protein_g":0,"estimated_fat_g":460,"estimated_carbs_g":0,"package_nutrition_table_ocr":"","package_serving_g":0,"package_serving_kj":0,"package_serving_kcal":0,"package_serving_protein_g":0,"package_serving_fat_g":0,"package_serving_carbs_g":0,"package_total_g":500,"package_servings_per_pack":1,"additional_dishes":[]}
-注：500ml 油密度 0.92 → 真实 460g，热量 889*460/100=4089≈4094；4*0+9*460+4*0=4140（偏差<5%自洽）
+注：500ml 油密度 0.92 → 真实 460g，热量 889*460/100=4089≈4094；4*0+9*460+4*0=4140（偏差<10%自洽）
 
 示例5（500ml 雪花啤酒-啤酒剥离 v1.8，不要识别成雪碧！）：
 {"reasoning":"看到绿色瓶身第一反应可能是雪碧，但仔细读瓶身文字是'雪花'两个字（不是'雪碧'），是雪花啤酒不是雪碧；读包装净含量 500ml，weight_source=package_label，food_category=beer；500ml 啤酒按 43kcal/100g 估算约 215kcal。","dish_name":"啤酒","brand":"雪花","quantity":1,"unit":"瓶","per_unit_g":500,"estimated_weight_g_low":490,"estimated_weight_g_mid":500,"estimated_weight_g_high":510,"weight_source":"package_label","food_category":"beer","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.9,"estimated_calories":215,"estimated_protein_g":2.5,"estimated_fat_g":0,"estimated_carbs_g":15.5,"package_nutrition_table_ocr":"","package_serving_g":0,"package_serving_kj":0,"package_serving_kcal":0,"package_serving_protein_g":0,"package_serving_fat_g":0,"package_serving_carbs_g":0,"package_total_g":0,"package_servings_per_pack":0,"additional_dishes":[]}
