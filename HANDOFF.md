@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-04
 
-**工作区状态**：v0.16.0 release 已 push 远程（commit e6ae182 + tag v0.16.0，含 v5 AI 推荐审计修复 + 满意度反馈按钮改为点开才显示 + 测试 mock 修复 + 版本号 bump）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）
-**当前分支**：trae/agent-wX1X6Q（HEAD = e6ae182；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
+**工作区状态**：v0.16.0 release 已 push 远程（commit e6ae182 + tag v0.16.0，含 v5 AI 推荐审计修复 + 满意度反馈按钮改为点开才显示 + 测试 mock 修复 + 版本号 bump）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push（AI 推荐失败修复 + 改菜名 mixin 三入口 + 周月总结滚动窗口+宏量+偏好+覆盖率+数据守卫）
+**当前分支**：trae/agent-wX1X6Q（HEAD = 7017ee3 待 push；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
@@ -478,6 +478,89 @@
 - ✅ `flutter analyze` → No issues found
 - ✅ `flutter test` → 710 passed / 3 skipped / 0 failed（含新增"解析失败不缓存"测试）
 
+**Phase 4 用户反馈 5 问题改进批次（2026-07-04）**：
+
+用户反馈 5 个新问题："智能推荐不够完善，有时不出现智能推荐，重新生成也失败 / 食物识别错误可否手动输入食物名重新计算 / 今日明细里食物名称可否修改 / 每周每月总结可否更智能结合所有信息 / 不足一周或一月可否按一周或一月算"。用户确认 4 个设计决策（AskUserQuestion）：AI 失败保留按钮+错误提示+重试 / 改菜名入口三处全做（校准页+复合菜页+今日明细 dialog）/ 周期算法滚动窗口（最近 7/30 天）/ 智能信息加宏量达成率+偏好画像+记录天数+覆盖率。
+
+**4.1 AI 推荐失败修复（v5 服务层 + dashboard UI 层）**：
+- **根因 1：空结果被缓存致当日永久失效**——`recommend()` 把空列表（AI 抽风返回 0 条或解析失败）也缓存，当日同一 mealType 永远命中空缓存，用户重新生成也命中空缓存失败。修复：空结果不缓存（`if (result.isEmpty) _cache.remove(cacheKey)`），下次进看板允许重试
+- **根因 2：重新生成失败时按钮消失无法重试**——dashboard UI 在 AI 失败后只显示 v4 推荐，没有错误提示和重试入口，用户无法知道"AI 失败了"也无法重试。修复：新增 `AiRecommendationResult.error` 字段，UI 据此显示错误提示行 + 保留"换一批"按钮可重试
+- **根因 3：GLM API 无重试机制**——单次网络抖动/429 限流就失败。修复：`_callGlm` 加 1 次重试，429/5xx/网络抖动退避 1s 重试 1 次，401/400 不可恢复错误快速失败（不重试）
+- **`_friendlyError` 错误文案映射**：TimeoutException → "AI 响应超时"；401 → "GLM API Key 无效"；429 → "AI 调用太频繁"；SocketException → "网络连接失败"；兜底 → "AI 推荐暂不可用"
+- **Future 缓存互斥**：缓存值用 `Future<List<AiRecommendation>>` 而非 `List`，并发调用（用户连点换一批）共享同一 Future，结果只算一次
+- **dashboard UI 改造**：保留"换一批"按钮（即使 AI 失败也能点）；错误态显示小字提示"AI 推荐暂不可用，已切换本地推荐 [换一批]"；加载态改为顶部小尺寸 CircularProgressIndicator + 文案"AI 正在生成个性化推荐…"（替代原骨架屏，避免与 v4 重复占位）
+
+**4.2 改菜名共享 mixin + 三入口接入**：
+- 新建 `lib/features/recognize/dish_name_editor.dart`——`DishNameEditor` mixin，封装"弹输入框→搜库→候选选择→5 级模糊兜底→返回 NutritionResult"完整流程
+  - `editDishNameAndLookup(originalName, servingG, foodRepo, lookup)`：返回 `({String? newName, NutritionResult? nutrition})`，newName=null=用户取消，nutrition=null=未命中
+  - `nutritionFromFoodItem(food, servingG)`：FoodItem + 份量构造 NutritionResult，含可食部分系数（ediblePercent），符合硬约束 #4（per100g 反算基于 estimatedWeightGMid）
+  - `showFoodSelectionDialog(candidates)`：多候选列表选择对话框
+  - `showNotFoundToast()`：未命中提示
+- **calibration_page 接入**：AppBar 加"修改菜名"IconButton，`_handleRename` 调 mixin.editDishNameAndLookup → setState 替换 `_currentDishName` + `_currentNutrition` + `_currentSingles`（引入可变 state 字段替代 widget 字段，rename 后 UI 实时刷新）
+- **multi_dish_page 接入**：每个菜 ListTile 加"修改菜名"PopupMenuButton item，`_handleRename(index)` 调 mixin → setState 替换对应菜的 state（`_dishes` 列表中对应 index 的 dishName + composite 营养 + singles）
+- **recognize_page 接入**：注入 NutritionLookup（之前未注入），供 calibration_page 跳转后使用
+
+**4.3 今日明细编辑 dialog helperText**：
+- `lib/features/dashboard/meal_edit_dialog.dart`：4 个营养 TextField 加 helperText 提示"如改了份量请同步改营养值，或直接改份量后点保存自动按比例重算"
+- 提示用户"改份量需同步改营养"的隐含规则，避免用户改份量后营养值不匹配
+
+**4.4 周/月总结改滚动窗口（最近 7/30 天）**：
+- 用户要求"如果没有满一个月或者一周，可以按一个月或者一周计算"
+- `insight_page.dart _calcPeriod()` 改滚动窗口策略：
+  - weekly：today-6 ~ today（含今天，共 7 天）
+  - monthly：today-29 ~ today（含今天，共 30 天）
+- 优势：①不足一周/月时仍按完整周期算（用户用 3 天也能生成周报，0 填充缺失日）②始终覆盖最近数据，比"自然周前 6 天 + 今天 0 条"更准 ③跨周/跨月自然过渡，避免月末切换 chart 突变
+- 文案调整：按钮"生成本周汇总" → "生成近 7 天汇总"；AppBar title 显示日期范围；SegmentedButton 文案"周/月"不变（用户认知）
+- 缓存策略副作用：_periodStart/_periodEnd 每天变化，InsightRepository.find 找不到昨天的汇总（key 不同），用户每天需重新生成。这是预期行为（滚动窗口本就该每天刷新）
+
+**4.5 周/月总结 prompt 增强（宏量达成率+偏好画像+覆盖率）**：
+- 用户要求"每周每月的总结可不可以更加智能一点，结合所有的信息"
+- `insight_page.dart _aggregatePeriod()` 返回类型从 4 字段扩展到 15 字段：
+  - 原 4 字段：dailyCal / dailyWeight / targetCal / goal
+  - 新增 11 字段：dailyProtein / dailyFat / dailyCarbs（每日宏量序列）+ proteinGoal / fatGoal / carbGoal（宏量目标）+ recordedDays / totalDays / coverageRate（覆盖率）+ preferenceFoods（top 5 高频食物名）
+  - 宏量目标计算与 dashboard_page L245-250 一致：carbGPerKg 为 null 时由热量残差反算 `(dailyCalorieTarget - proteinGoal×4 - fatGoal×9) / 4`
+  - 饮食偏好画像：统计 meal_log 的 foodItemId 频次，取 top 5，调 `foodRepo.getByIds` 批量查食物名
+- `glm_flash_provider.dart`：
+  - `_buildPrompt`（weekly）/ `_buildMonthlyPrompt`（monthly）改用 StringBuffer + 调用 `_appendMacroAndPreference` 共享方法
+  - 新增 `_appendMacroAndPreference(buf, data, periodLabel)`：宏量均值（只统计 calories>0 的记录日，避免 0 填充日拉低均值）+ 覆盖率 + 偏好食物
+  - system prompt 增强：要求 AI 结合宏量达成率分析饮食结构 + 结合常吃食物给针对性建议（如"你常吃米饭，可尝试用糙米替代"）
+
+**4.6 数据不足守卫 + UI 提示**：
+- `insight_page.dart _generate()` 加 0 天记录守卫：`if (agg.recordedDays == 0)` 提示"近 N 天无饮食记录，请先记录至少 1 天再生成汇总"，不调 AI（全 0 数据生成的建议无意义，浪费 API 调用）
+- **守卫顺序**：置于 apiKey + 网络检查**之后**——config/网络问题更基础，应优先提示。否则 key 未配置时会先提示"无饮食记录"误导用户
+- UI 加覆盖率提示行：`if (_totalDays > 0 && _recordedDays < _totalDays)` 显示"已记录 X/Y 天（Z%），数据不完整时建议仅供参考"，让用户知道数据完整度
+- SegmentedButton 切换重置新 state（_recordedDays=0 / _totalDays=7 或 30）
+
+**4.7 测试修复**：
+- `insight_key_test.dart` + `insight_offline_guard_test.dart`：按钮文案"生成本周汇总" → "生成近 7 天汇总"；新增覆盖率提示把按钮推到 600px 测试视口外，加 `scrollUntilVisible` 后再 tap
+- `insight_regenerate_confirm_test.dart`：测试数据从自然周（monday~sunday）改为滚动窗口（today-6 ~ today，否则 `_loadExisting` 找不到）；`scrollUntilVisible` 抛 "Too many elements"（pump 时 setState 产生重复"重新生成"widget 匹配），改用 `tester.drag(find.byType(ListView), const Offset(0, -300))` 手动滚动
+
+**Phase 4 文件清单（1 lib 新增 + 8 lib 修改 + 3 test 修改）**：
+- 新增：`lib/features/recognize/dish_name_editor.dart`（DishNameEditor mixin）
+- 修改 service：`lib/nutrition/ai_recommendation_service.dart`（空结果不缓存 + GLM 重试 + error 字段 + _friendlyError + Future 缓存互斥）
+- 修改 dashboard：`lib/features/dashboard/dashboard_page.dart`（错误提示行 + 保留换一批按钮 + 加载态改小尺寸提示）
+- 修改 meal_edit_dialog：`lib/features/dashboard/meal_edit_dialog.dart`（4 营养 TextField helperText）
+- 修改 insight：`lib/features/insight/insight_page.dart`（_aggregatePeriod 15 字段 + 0 天守卫 + 覆盖率 UI + 滚动窗口 _calcPeriod + SegmentedButton 重置 state）
+- 修改 GLM provider：`lib/ai/glm_flash_provider.dart`（_buildPrompt/_buildMonthlyPrompt StringBuffer + _appendMacroAndPreference 共享方法 + system prompt 增强）
+- 修改 calibration_page：`lib/features/recognize/calibration_page.dart`（AppBar 修改菜名按钮 + _handleRename + state 字段替代 widget 字段）
+- 修改 multi_dish_page：`lib/features/recognize/multi_dish_page.dart`（每菜修改菜名 PopupMenuButton + _handleRename(index) + state 字段）
+- 修改 recognize_page：`lib/features/recognize/recognize_page.dart`（注入 NutritionLookup）
+- 修改测试：`test/features/insight_key_test.dart` + `test/features/insight_offline_guard_test.dart`（按钮文案 + scrollUntilVisible）+ `test/features/insight_regenerate_confirm_test.dart`（滚动窗口日期 + drag 替代 scrollUntilVisible）
+
+**关键设计决策**：
+1. **空结果不缓存**：与 v0.16.0 的"解析失败不缓存"对齐，AI 抽风返回 0 条也不缓存，下次进看板允许重试。当日有效缓存只缓存"真有结果"的请求
+2. **Future 缓存互斥**：缓存值用 `Future<List<AiRecommendation>>` 而非 `List`，并发调用共享同一 Future，避免连点换一批时多次调 AI
+3. **改菜名 mixin 而非继承**：DishNameEditor 是 mixin on State<T>，三处页面 State 各自 `with DishNameEditor` 复用逻辑，命中后由调用方决定如何更新 UI（recognize_page 跳新页 / calibration_page setState 替换 / multi_dish_page 替换对应 index）
+4. **滚动窗口 vs 自然周/月**：用户选滚动窗口（最近 7/30 天），AI 用真实数据更准，图表 X 轴标签用 M/D 格式。代价是缓存 key 每天变化，用户每天需重新生成（预期行为）
+5. **宏量均值只统计记录日**：`_appendMacroAndPreference` 中只对 calories>0 的日子累加蛋白/脂肪/碳水，避免 0 填充日拉低均值误导 AI
+6. **数据不足守卫顺序**：0 天守卫必须在 apiKey + 网络检查**之后**（config/网络问题更基础，应优先提示）。否则 key 未配置时会先提示"无饮食记录"误导用户
+
+**验证（2026-07-04 沙箱实测）**：
+- ✅ `flutter analyze` → No issues found! (ran in 16.3s)
+- ✅ `flutter test` → +710 ~3: All tests passed!（710 通过，3 跳过，0 失败）
+
+
+
 **Phase 3 调研结论（2026-07-04，决策：不推荐实施）**：
 
 经沙箱严谨调研，Phase 3 thinking 模式存在 5 重障碍，ROI 不足以支撑实施成本：
@@ -522,6 +605,7 @@
 - `image_cleanup_startup_test.dart T48` 日期敏感测试：测试硬编码日期但代码用 `DateTime.now()`，每过一段时间会失败。建议后续改成相对日期（`DateTime.now().subtract(Duration(days: 8))` 动态生成测试日期）
 
 **最近 commit**：
+- `7017ee3` feat: Phase 4 用户反馈 5 问题改进（AI 推荐失败修复 + 改菜名 mixin 三入口 + 周月总结滚动窗口+宏量+偏好+覆盖率+数据守卫 + 测试修复）
 - `e6ae182` release: v0.16.0 v5 AI 推荐审计修复（5 high + 5 medium）+ 满意度反馈按钮改 PopupMenuButton + 测试 mock 修复 + 版本号 bump
 - `e09b233` docs: HANDOFF 回填 Phase 2.12 commit hash 27b6a85
 - `27b6a85` feat: AI 个性化推荐 v5（渐进增强 + 满意度反馈学习）
