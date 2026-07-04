@@ -62,7 +62,7 @@ class RecognitionValidator {
     // 5. 营养素自洽性校验（仅当 AI 提供了 estimated_calories 时检查）
     //    旧 prompt（v1.0-v1.3）无此字段 → 跳过，向后兼容
     double? correctedCalories;
-    // v1.10：宏量营养素反推修正（cal>0 但三宏量全 0 → 按品类默认比例反推）
+    // v1.10：宏量营养素反推修正（cal>0 但宏量缺失 → 按品类默认比例反推/填充）
     // 解决"盒装菊花茶有 cal 但碳水=0"问题：含糖饮料碳水必标，AI 漏填时按品类反推
     double? correctedProteinG;
     double? correctedFatG;
@@ -72,46 +72,61 @@ class RecognitionValidator {
       final protein = result.estimatedProteinG ?? 0;
       final fat = result.estimatedFatG ?? 0;
       final carbs = result.estimatedCarbsG ?? 0;
-      final expected = 4 * protein + 9 * fat + 4 * carbs;
-      // calories 为 0 但有宏量营养素 → 瞎算，修正
-      // calories > 0 但偏差超 ±10% → 修正（仅当 expected > 0 才修正，
-      //   expected=0 时可能是酒精饮料/纤维等非 Atwater 来源，强制清零会丢热量）
-      if (cal <= 0 && expected > 0) {
-        reasons.add('calories=0 但宏量营养素之和=$expected，修正为 $expected');
-        correctedCalories = expected;
-      } else if (cal > 0 && expected > 0) {
-        final diff = (expected - cal).abs();
-        final ratio = diff / cal;
-        if (ratio > _calorieTolerance) {
-          reasons.add('营养素不自洽: calories=$cal, 期望=$expected (4p+9f+4c), '
-              '偏差 ${(ratio * 100).toStringAsFixed(1)}%，修正为 $expected');
-          correctedCalories = expected;
-        }
-      }
-      // expected == 0 且 cal > 0：可能是酒精饮料（7 kcal/g 不在 Atwater 系数内）、
-      // 糖醇、膳食纤维等，无法用宏量校验，保留 AI 的 calories 不修正
 
-      // v1.10：cal>0 但三宏量全 0 时，按品类默认比例反推宏量
-      // 典型场景：含糖饮料（菊花茶/冰红茶）AI 漏填 estimated_carbs_g
-      // 反推规则：按品类默认 (cal, p, f, c) 比例缩放到当前 cal
-      // 例：tea 默认 (43, 0.1, 0, 10.6)，AI cal=43 → p=0.1, f=0, c=10.6
-      //     juice 默认 (46, 0.5, 0.1, 11.2)，AI cal=92（2 倍） → p=1.0, f=0.2, c=22.4
-      if (cal > 0 && protein == 0 && fat == 0 && carbs == 0) {
+      // v1.10：宏量营养素缺失/为 0 时，先用品类默认比例填充缺失项
+      // 典型场景：
+      //   a) 三宏量全 0（含糖茶饮 AI 漏填全部）→ 全量反推
+      //   b) 部分宏量非 0（蛋白饮料 protein=3 但 carbs=0 漏填）→ 仅填充缺失项
+      // 这样避免部分宏量漏填时自洽校验错误修正 cal（BUG-2 修复）
+      if (cal > 0 && (protein == 0 || fat == 0 || carbs == 0)) {
         final def = FoodCategoryDefaults.defaults[result.foodCategory];
         if (def != null && def.$1 > 0) {
           final scale = cal / def.$1;
-          final p = def.$2 * scale;
-          final f = def.$3 * scale;
-          final c = def.$4 * scale;
-          correctedProteinG = p;
-          correctedFatG = f;
-          correctedCarbsG = c;
-          reasons.add('宏量营养素全 0 但 calories=$cal，按品类 '
-              '${result.foodCategory} 默认比例反推: '
-              'p=${p.toStringAsFixed(1)}, '
-              'f=${f.toStringAsFixed(1)}, '
-              'c=${c.toStringAsFixed(1)}');
+          // 仅填充为 0 的项（非 0 项保留 AI 值，避免覆盖正确数据）
+          final p = protein == 0 ? def.$2 * scale : protein;
+          final f = fat == 0 ? def.$3 * scale : fat;
+          final c = carbs == 0 ? def.$4 * scale : carbs;
+          // 仅当至少有一项被填充（非 0）才回写，避免无意义覆盖
+          if (p != protein || f != fat || c != carbs) {
+            correctedProteinG = p;
+            correctedFatG = f;
+            correctedCarbsG = c;
+            reasons.add('宏量营养素缺失但 calories=$cal，按品类 '
+                '${result.foodCategory} 默认比例填充缺失项: '
+                'p=${p.toStringAsFixed(1)}, '
+                'f=${f.toStringAsFixed(1)}, '
+                'c=${c.toStringAsFixed(1)}');
+          }
         }
+      }
+
+      // 自洽校验：仅在未触发填充时执行
+      // 触发填充意味着 AI 宏量数据不完整（部分漏填），品类填充值仅是"猜测"，
+      // 用猜测值 + AI 部分值重算 expected 来覆盖 cal 不可靠（BUG-2 修复核心）。
+      // 且填充前提是 cal>0，AI 已给出整菜 cal 估算，应信任 AI 的 cal。
+      // 注意：cal<=0 但有宏量的修正分支不受影响（填充要求 cal>0，不会进入此场景）。
+      final didFill = correctedProteinG != null ||
+          correctedFatG != null ||
+          correctedCarbsG != null;
+      if (!didFill) {
+        final expected = 4 * protein + 9 * fat + 4 * carbs;
+        // calories 为 0 但有宏量营养素 → 瞎算，修正
+        // calories > 0 但偏差超 ±10% → 修正（仅当 expected>0 才修正，
+        //   expected=0 时可能是酒精饮料/纤维等非 Atwater 来源，强制清零会丢热量）
+        if (cal <= 0 && expected > 0) {
+          reasons.add('calories=0 但宏量营养素之和=$expected，修正为 $expected');
+          correctedCalories = expected;
+        } else if (cal > 0 && expected > 0) {
+          final diff = (expected - cal).abs();
+          final ratio = diff / cal;
+          if (ratio > _calorieTolerance) {
+            reasons.add('营养素不自洽: calories=$cal, 期望=$expected (4p+9f+4c), '
+                '偏差 ${(ratio * 100).toStringAsFixed(1)}%，修正为 $expected');
+            correctedCalories = expected;
+          }
+        }
+        // expected == 0 且 cal > 0：可能是酒精饮料（7 kcal/g 不在 Atwater 系数内）、
+        // 糖醇、膳食纤维等，无法用宏量校验，保留 AI 的 calories 不修正
       }
     }
 

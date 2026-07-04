@@ -481,12 +481,20 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   ///
   /// v1.9：有包装营养表数据时，calories 用包装换算的整菜热量替代 AI 估算
   /// （包装换算整菜热量 = per100Calories × mid / 100，与 computePackageNutritionPer100g 一致）。
-  /// 蛋白/脂肪/碳水包装通常不标，仍用 AI 估算原值（下游 CalibrationPage 按 ratio 缩放自然正确）。
-  /// 这样 meal_log.actualCalories = 包装换算值 × ratio = per100g × serving / 100，达到豆包级精度。
+  /// v1.10：包装换算宏量非全 0 时，蛋白/脂肪/碳水也用包装换算值（与 calories 保持一致，
+  ///   避免 meal_log.actualMacros 与 actualCalories 数据脱节）。
+  ///   包装换算宏量全 0（含糖饮料 AI 漏填宏量）→ 宏量用 AI 估算原值（PostProcessor 已反推填充）
+  @visibleForTesting
+  NutritionResult? aiFallbackNutritionForTest(VisionRecognitionResult r) =>
+      _aiFallbackNutrition(r);
+
   NutritionResult? _aiFallbackNutrition(VisionRecognitionResult r) {
     final cal = r.estimatedCalories;
     if (cal == null) return null;
     double actualCal = cal;
+    double actualProtein = r.estimatedProteinG ?? 0;
+    double actualFat = r.estimatedFatG ?? 0;
+    double actualCarbs = r.estimatedCarbsG ?? 0;
     if (r.hasPackageNutrition) {
       final per100 = r.computePackageNutritionPer100g(
         estimatedProteinG: r.estimatedProteinG,
@@ -495,15 +503,26 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
       );
       // v1.9 修复：mid>0 守卫，防 mid=0 时 actualCal 被误清零（丢失 AI 估算）
       if (per100 != null && r.estimatedWeightGMid > 0) {
-        actualCal = per100.$1 * r.estimatedWeightGMid / 100;
+        // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
+        final packageMacrosAllZero =
+            per100.$2 == 0 && per100.$3 == 0 && per100.$4 == 0;
+        final mid = r.estimatedWeightGMid;
+        // calories 始终用包装换算值（包装能量是精确值，即使宏量漏填能量仍可信）
+        actualCal = per100.$1 * mid / 100;
+        // 宏量：仅当包装换算非全 0 时用包装值，否则保留 AI 估算（PostProcessor 已反推填充）
+        if (!packageMacrosAllZero) {
+          actualProtein = per100.$2 * mid / 100;
+          actualFat = per100.$3 * mid / 100;
+          actualCarbs = per100.$4 * mid / 100;
+        }
       }
     }
     return NutritionResult(
       foodItemId: 0,
       calories: actualCal,
-      proteinG: r.estimatedProteinG ?? 0,
-      fatG: r.estimatedFatG ?? 0,
-      carbsG: r.estimatedCarbsG ?? 0,
+      proteinG: actualProtein,
+      fatG: actualFat,
+      carbsG: actualCarbs,
       oilG: 0,
       source: NutritionSource.aiEstimate,
     );

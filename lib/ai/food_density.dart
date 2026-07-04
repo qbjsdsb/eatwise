@@ -26,6 +26,10 @@ const Map<String, double> foodDensityTable = <String, double>{
   'wine': 0.99, // 葡萄酒
   'yogurt': 1.05, // 酸奶
   'soup': 1.00, // 汤
+  // v1.10 新增含糖饮料品类（密度≈水，与 carbonated 一致）
+  'tea': 1.00, // 含糖茶饮（菊花茶/冰红茶等，水基密度≈水）
+  'protein_drink': 1.03, // 蛋白饮料（豆奶/杏仁奶，含蛋白质略重于水，与 milk 一致）
+  'energy_drink': 1.00, // 功能饮料（红牛/魔爪等，水基密度≈水）
   'solid': 1.00, // 固体（不换算）
 };
 

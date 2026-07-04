@@ -221,4 +221,111 @@ void main() {
       expect(r.carbsG, 10.6);
     });
   });
+
+  // v1.10 新增"糖"模式作为碳水兜底（部分包装只标"糖"不标"碳水"）
+  // 用负向回视断言防误匹配"低糖/无糖/加糖/含糖/少糖/减糖/高糖"等修饰词
+  group('v1.10 "糖"模式（碳水兜底 + 负向回视防误匹配）', () {
+    test('正向匹配：糖11g → carbsG=11（部分包装只标"糖"）', () {
+      final r = PackageNutritionOcrParser.parse('每份250ml 能量180kJ 糖11g');
+      expect(r.carbsG, 11);
+      expect(r.proteinG, isNull);
+      expect(r.fatG, isNull);
+    });
+
+    test('正向匹配：糖：11g（全角冒号）', () {
+      final r = PackageNutritionOcrParser.parse('糖：11g');
+      expect(r.carbsG, 11);
+    });
+
+    test('正向匹配：糖 11g（空格分隔）', () {
+      final r = PackageNutritionOcrParser.parse('糖 11g');
+      expect(r.carbsG, 11);
+    });
+
+    test('正向匹配：糖0g（无糖饮料标"糖 0g"）', () {
+      final r = PackageNutritionOcrParser.parse('糖0g');
+      expect(r.carbsG, 0);
+    });
+
+    test('正向匹配：糖10.6g（小数）', () {
+      final r = PackageNutritionOcrParser.parse('糖10.6g');
+      expect(r.carbsG, 10.6);
+    });
+
+    test('负向回视防误匹配：低糖11g → 不应匹配（"低糖"是修饰词）', () {
+      // "低糖"是食品声称修饰词，11g 不是碳水总量而是修饰值
+      // 正则 (?<![低无加含少减高])糖 应阻止紧邻"低"字的"糖"匹配
+      final r = PackageNutritionOcrParser.parse('低糖11g');
+      expect(r.carbsG, isNull,
+          reason: '"低糖"是修饰词，不应被"糖"模式匹配');
+    });
+
+    test('负向回视防误匹配：无糖0g → 不应匹配', () {
+      final r = PackageNutritionOcrParser.parse('无糖0g');
+      expect(r.carbsG, isNull,
+          reason: '"无糖"是声称，不应触发碳水提取');
+    });
+
+    test('负向回视防误匹配：加糖5g → 不应匹配', () {
+      final r = PackageNutritionOcrParser.parse('加糖5g');
+      expect(r.carbsG, isNull);
+    });
+
+    test('负向回视防误匹配：含糖8g → 不应匹配', () {
+      final r = PackageNutritionOcrParser.parse('含糖8g');
+      expect(r.carbsG, isNull);
+    });
+
+    test('负向回视防误匹配：少糖3g → 不应匹配', () {
+      final r = PackageNutritionOcrParser.parse('少糖3g');
+      expect(r.carbsG, isNull);
+    });
+
+    test('负向回视防误匹配：减糖5g → 不应匹配', () {
+      final r = PackageNutritionOcrParser.parse('减糖5g');
+      expect(r.carbsG, isNull);
+    });
+
+    test('负向回视防误匹配：高糖12g → 不应匹配', () {
+      final r = PackageNutritionOcrParser.parse('高糖12g');
+      expect(r.carbsG, isNull);
+    });
+
+    test('优先级：碳水16g 优先于 糖11g（"碳水"模式先于"糖"兜底）', () {
+      // 两个模式都能匹配时，应取"碳水"（更明确的营养成分表术语）
+      final r = PackageNutritionOcrParser.parse('碳水16g 糖11g');
+      expect(r.carbsG, 16,
+          reason: '"碳水"优先于"糖"兜底');
+    });
+
+    test('优先级：碳水化合物10.6g 优先于 糖5g', () {
+      final r = PackageNutritionOcrParser.parse('碳水化合物10.6g 糖5g');
+      expect(r.carbsG, 10.6);
+    });
+
+    test('边界：低糖饮料 糖11g → 应匹配最后一个"糖11g"（负向回视只防紧邻前缀）', () {
+      // 第一个"低糖"被负向回视阻止，第二个"糖11g"前是空格，正常匹配
+      final r = PackageNutritionOcrParser.parse('低糖饮料 糖11g');
+      expect(r.carbsG, 11,
+          reason: '负向回视只防紧邻前缀，第二个"糖"前是空格应正常匹配');
+    });
+
+    test('真实场景：无糖可乐包装"糖0g"（虽是无糖饮料但碳水标 0）', () {
+      // 无糖可乐营养成分表标"糖 0g"表示无糖，但"无糖"是声称，"糖 0g"是营养成分表行
+      // 这里的"糖 0g"前是空格，应正常匹配为 0
+      final r = PackageNutritionOcrParser.parse('无糖饮料 营养成分表：糖 0g');
+      expect(r.carbsG, 0);
+    });
+
+    test('已知限制：蔗糖/果糖/乳糖会匹配（语义上合理，单糖也算碳水）', () {
+      // 负向回视字表不含"蔗/果/乳"，"蔗糖5g"会匹配为 carbsG=5
+      // 语义上单糖/双糖都属于碳水，这是合理行为
+      final r1 = PackageNutritionOcrParser.parse('蔗糖5g');
+      expect(r1.carbsG, 5);
+      final r2 = PackageNutritionOcrParser.parse('果糖3g');
+      expect(r2.carbsG, 3);
+      final r3 = PackageNutritionOcrParser.parse('乳糖4g');
+      expect(r3.carbsG, 4);
+    });
+  });
 }

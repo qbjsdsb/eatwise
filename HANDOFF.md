@@ -36,7 +36,7 @@
 
 **最后更新**：2026-07-04
 
-**工作区状态**：1 个未 commit 修改（recognition_validator.dart warning 修复，局部变量替代 `!` 断言）；v1.10 含糖饮料碳水缺失修复已在 3e2c8f8 commit
+**工作区状态**：v1.10 深度审查 + 测试补强已完成（待 commit）；commit 8058012 已含 multi_dish_page 守卫 + OCR "糖"模式修复；commit e9dacaf 已含 HANDOFF v1.10 详情 + validator warning 修复
 **当前分支**：trae/agent-wX1X6Q（与 v0.10.0-m3-merge 同步在 2cc8249；v0.14.0 tag 指向 8bccee4 版本号 bump commit）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
@@ -219,6 +219,46 @@
 - 修改：`lib/ai/vision_provider.dart` / `lib/ai/prompts.dart` / `lib/core/util/recognition_post_processor.dart` / `lib/core/util/recognition_validator.dart` / `lib/data/seed/food_category_defaults.dart` / `lib/features/offline/offline_queue_controller.dart` / `lib/features/recognize/calibration_page.dart` / `lib/features/recognize/multi_dish_page.dart` / `lib/features/recognize/recognize_page.dart`
 - 修改测试：`test/ai/vision_response_parser_test.dart` / `test/core/recognition_post_processor_test.dart` / `test/core/recognition_validator_test.dart` / `test/data/food_category_defaults_test.dart`
 
+**Phase 2.8 v1.10 深度审查 + 测试补强（2026-07-04，待 commit）**：
+
+用户要求"设计更复杂严谨的测试，一定要找出所有问题"。通过手动审查 + Task agent 深度审查发现 10 个 bug（BUG-1~BUG-10），其中 2 个 High 级（BUG-2/BUG-5），修复 7 个 + 补 124 个新测试覆盖。
+
+**High 级 bug 修复**：
+- **BUG-2（recognition_validator 反推条件过严 + 自洽校验错误修正 cal）**：
+  - 原设计：v1.10 反推条件为"三宏量全 0"（`protein==0 && fat==0 && carbs==0`）
+  - 缺陷：部分宏量漏填场景（蛋白饮料 protein=3 但 carbs=0）不触发反推，自洽校验用不完整宏量算 expected=12，与 cal=60 偏差 80% 触发 `correctedCalories=12`（错误覆盖正确的 cal）
+  - 修复分两步：
+    1. 反推条件改为"任一宏量为 0"（`protein==0 || fat==0 || carbs==0`），仅填充缺失项（保留非 0 AI 值）
+    2. **关键**：触发填充时跳过 cal 自洽修正（`didFill` 守卫）——品类填充值仅是"猜测"，用猜测值+AI 部分值重算 expected 覆盖 cal 不可靠；信任 AI 整菜 cal 估算
+- **BUG-5（_aiFallbackNutrition 无 packageMacrosAllZero 守卫）**：
+  - 缺陷：`_aiFallbackNutrition` 只对 calories 做包装换算，宏量直接用 `r.estimatedXxxG ?? 0`，包装宏量全 0 时 actualCalories 用包装换算值（非 0）但 actualCarbsG=0——meal_log 数据脱节
+  - 修复：加 `packageMacrosAllZero` 守卫，非全 0 时宏量也用包装换算值
+  - 测试覆盖：给 `_aiFallbackNutrition` 加 `@visibleForTesting` 公开 `aiFallbackNutritionForTest` 方法（pure 函数可独立单测）
+
+**Low/Medium 级 bug 修复**：
+- Bug 4（multi_dish_page 复合菜路径遗漏守卫）：L504-520（主菜）+ L538-554（附加菜）两处加 `packageMacrosAllZero` 守卫（已 commit 8058012）
+- Bug 3（OCR "糖"模式未实现）：注释承诺支持"糖"但代码未实现，加 `(?<![低无加含少减高])糖` 负向回视防误匹配（已 commit 8058012）
+- BUG-3（prompts.dart 示例 schema 不一致）：所有示例补全 `package_serving_protein_g/fat_g/carbs_g`（全 0，保持 schema 一致）
+- BUG-4（food_density 未同步扩展）：加 tea/protein_drink/energy_drink 密度值
+
+**测试补强（+124 个新测试，610 passed 总计）**：
+- `test/ai/food_density_test.dart`（+8）：tea/protein_drink/energy_drink 密度 + isLiquidCategory + 换算数学验证
+- `test/ai/package_nutrition_ocr_parser_test.dart`（+17）："糖"模式正向匹配 + 7 种负向回视防误匹配（低/无/加/含/少/减/高糖）+ 优先级（碳水>糖）+ 边界 + 已知限制（蔗糖/果糖/乳糖会匹配）
+- `test/core/recognition_validator_test.dart`（+11）：BUG-2 边界——solid+cal 偏差/water+cal>0/protein_drink 多 scale/energy_drink 等于默认值不触发填充/三宏量对称性（仅 protein/fat/carbs 非 0）/cal=null 旧 prompt/cal=0 回归/BUG-2 关键回归（蛋白饮料 cal=60 不被错误修正为 12）
+- `test/features/recognize_controller_test.dart`（+9）：_aiFallbackNutrition 全路径——cal=null/无包装/BUG-5 核心（宏量全 0 保留 AI 值）/宏量非全 0 用包装换算/mid=0 跳过/servingG=0 per100=null/包装 cal 优先覆盖 AI cal/OCR 兜底宏量/kJ 单位换算
+- `test/ai/prompts_schema_test.dart`（新建，+79）：自动正则提取 9 个示例 JSON，验证每个含 v1.10 新字段 + food_category 在枚举内 + reasoning 必填 + dish_name 必填 + additional_dishes 字段 + 示例 8b 菊花茶 food_category=tea + carbs>0
+
+**验证（2026-07-04 沙箱实测）**：
+- ✅ `flutter analyze` → No issues found
+- ✅ `flutter test` → 610 passed / 3 skipped / 1 failed（T48 pre-existing 日期漂移，与 v1.10 无关）
+- 关键回归全过：BUG-2 蛋白饮料 cal=60 不被错误修正 / BUG-5 宏量全 0 时 actualMacros 保留 AI 值不与 actualCalories 脱节
+
+**Phase 2.8 文件清单（6 lib + 5 test）**：
+- 修改：`lib/core/util/recognition_validator.dart`（BUG-2 didFill 守卫）/ `lib/features/recognize/recognize_controller.dart`（BUG-5 守卫 + @visibleForTesting）/ `lib/ai/prompts.dart`（BUG-3 示例补全）/ `lib/ai/food_density.dart`（BUG-4 密度）
+- 已 commit 8058012：`lib/features/recognize/multi_dish_page.dart`（Bug 4 守卫）/ `lib/ai/package_nutrition_ocr_parser.dart`（Bug 3 "糖"模式）
+- 修改测试：`test/core/recognition_validator_test.dart` / `test/features/recognize_controller_test.dart` / `test/ai/food_density_test.dart` / `test/ai/package_nutrition_ocr_parser_test.dart`
+- 新建测试：`test/ai/prompts_schema_test.dart`
+
 **Phase 3 调研结论（2026-07-04，决策：不推荐实施）**：
 
 经沙箱严谨调研，Phase 3 thinking 模式存在 5 重障碍，ROI 不足以支撑实施成本：
@@ -263,6 +303,9 @@
 - `image_cleanup_startup_test.dart T48` 日期敏感测试：测试硬编码日期但代码用 `DateTime.now()`，每过一段时间会失败。建议后续改成相对日期（`DateTime.now().subtract(Duration(days: 8))` 动态生成测试日期）
 
 **最近 commit**：
+- `(待 commit)` fix: v1.10 深度审查 BUG-2/BUG-5 High 级修复 + 124 个新测试覆盖（didFill 守卫跳过 cal 自洽修正 + _aiFallbackNutrition packageMacrosAllZero 守卫 + prompts schema 一致性 + OCR "糖"负向回视 + food_density 新品类）
+- `8058012` feat: multi_dish_page 复合菜路径 packageMacrosAllZero 守卫 + OCR "糖"模式负向回视防误匹配
+- `e9dacaf` docs: HANDOFF 补 v1.10 三层防御架构详情 + 修复 validator warning
 - `3e2c8f8` feat: v1.10 含糖饮料碳水缺失修复——三层防御架构（OCR 正则兜底 + 三层优先级换算 + 自洽反推 + 三路径宏量兜底）+ 174 测试
 - `8bccee4` chore: bump 版本号到 0.14.0+15 准备发布 v0.14.0
 - `e20b65f` fix: 5 维度深度检查修复 + Gap1 集成测试补全

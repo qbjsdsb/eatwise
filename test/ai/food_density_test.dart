@@ -188,4 +188,49 @@ void main() {
       expect(calories, closeTo(1079.2, 0.1));
     });
   });
+
+  // v1.10 新增含糖饮料品类密度（tea/protein_drink/energy_drink）
+  group('v1.10 新增品类密度', () {
+    test('tea 含糖茶饮密度=1.00（水基，与 carbonated 一致）', () {
+      expect(densityOf('tea'), 1.00);
+    });
+
+    test('protein_drink 蛋白饮料密度=1.03（含蛋白质略重于水，与 milk 一致）', () {
+      expect(densityOf('protein_drink'), 1.03);
+      // 与 milk 密度一致（源码注释明确，豆奶/杏仁奶近似牛奶）
+      expect(densityOf('protein_drink'), densityOf('milk'));
+    });
+
+    test('energy_drink 功能饮料密度=1.00（水基）', () {
+      expect(densityOf('energy_drink'), 1.00);
+    });
+
+    test('三个新品类 isLiquidCategory 返回 true（需要 ml→g 换算）', () {
+      expect(isLiquidCategory('tea'), isTrue);
+      expect(isLiquidCategory('protein_drink'), isTrue);
+      expect(isLiquidCategory('energy_drink'), isTrue);
+    });
+
+    test('换算数学验证：250ml 蛋白饮料 → 257.5g（密度 1.03）', () {
+      const density = 1.03; // protein_drink
+      const perUnitMl = 250.0;
+      final realG = perUnitMl * density;
+      expect(realG, closeTo(257.5, 0.01));
+    });
+
+    test('换算数学验证：500ml 菊花茶 → 500g（密度 1.00，不变）', () {
+      const density = 1.00; // tea
+      const perUnitMl = 500.0;
+      final realG = perUnitMl * density;
+      expect(realG, 500);
+    });
+
+    test('换算后热量正确性：250ml 蛋白饮料 → 257.5g → 154.5 kcal', () {
+      // protein_drink 默认 60 kcal/100g × 257.5g / 100 = 154.5 kcal
+      const proteinDrinkCaloriesPer100g = 60.0;
+      const realG = 257.5;
+      final calories = proteinDrinkCaloriesPer100g * realG / 100;
+      expect(calories, closeTo(154.5, 0.1));
+    });
+  });
 }

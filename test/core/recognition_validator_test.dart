@@ -429,8 +429,11 @@ void main() {
       expect(v.correctedCarbsG, isNull);
     });
 
-    test('cal>0 但有部分宏量非 0：不反推（需全部为 0）', () {
-      // 蛋白=5 但脂肪/碳水=0，不触发反推（已有部分宏量数据）
+    test('cal>0 但有部分宏量非 0：v1.10 修复后填充缺失项（不再跳过）', () {
+      // v1.10 修复 BUG-2：部分宏量非 0 时也填充缺失项，避免自洽校验错误修正 cal
+      // 蛋白=5 但脂肪/碳水=0，填充 fat/carbs，保留 protein=5
+      // tea 默认 (43, 0.1, 0, 10.6)，scale = 43/43 = 1
+      // 填充后：p=5（保留 AI 值），f=0*1=0，c=10.6*1=10.6
       final result = VisionRecognitionResult(
         dishName: 'test',
         brand: '',
@@ -444,14 +447,19 @@ void main() {
         promptVersion: 'v1.10',
         foodCategory: 'tea',
         estimatedCalories: 43,
-        estimatedProteinG: 5, // 非 0
-        estimatedFatG: 0,
-        estimatedCarbsG: 0,
+        estimatedProteinG: 5, // 非 0，保留
+        estimatedFatG: 0, // 缺失，填充
+        estimatedCarbsG: 0, // 缺失，填充
       );
       final v = RecognitionValidator.validate(result);
-      expect(v.correctedProteinG, isNull);
-      expect(v.correctedFatG, isNull);
-      expect(v.correctedCarbsG, isNull);
+      // protein 保留 AI 值 5（非 0 不覆盖）
+      expect(v.correctedProteinG, 5);
+      // fat 填充为 0（品类默认 fat=0）
+      expect(v.correctedFatG, 0);
+      // carbs 填充为 10.6（品类默认 carbs=10.6 × scale=1）
+      expect(v.correctedCarbsG, closeTo(10.6, 0.001));
+      // 关键：不再错误修正 cal（v1.10 BUG-2 修复目标）
+      expect(v.correctedCalories, isNull);
     });
 
     test('cal=null（旧 prompt 兼容）：不反推', () {
@@ -491,6 +499,239 @@ void main() {
       expect(v.correctedFatG, 0);
       expect(v.correctedCarbsG, closeTo(16.03, 0.05));
       expect(v.correctedCarbsG! > 0, isTrue); // 关键：碳水不为 0
+    });
+  });
+
+  // v1.10 BUG-2 边界场景：填充缺失项后跳过 cal 自洽修正
+  // 验证"触发填充时信任 AI 整菜 cal 估算"的核心修复逻辑
+  group('v1.10 BUG-2 边界场景（填充后跳过 cal 自洽修正）', () {
+    /// 可指定各宏量的测试结果构造器（macroAllZeroResult 只能全 0，此 helper 更灵活）
+    VisionRecognitionResult macroPartialResult({
+      required String foodCategory,
+      required double cal,
+      double protein = 0,
+      double fat = 0,
+      double carbs = 0,
+      String? promptVersion = 'v1.10',
+    }) {
+      return VisionRecognitionResult(
+        dishName: 'test',
+        brand: '',
+        estimatedWeightGLow: 250,
+        estimatedWeightGMid: 250,
+        estimatedWeightGHigh: 250,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: promptVersion!,
+        foodCategory: foodCategory,
+        estimatedCalories: cal,
+        estimatedProteinG: protein,
+        estimatedFatG: fat,
+        estimatedCarbsG: carbs,
+      );
+    }
+
+    test('solid 品类 + cal=200 + 三宏量全 0：不填充，走 cal 自洽校验（expected=0 不修正）', () {
+      // solid 无默认值 → 不填充 → didFill=false → 进入自洽校验
+      // expected = 0，cal=200，但 expected=0 时可能是酒精/纤维等非 Atwater 来源，保留 cal
+      final v = RecognitionValidator.validate(macroPartialResult(
+        foodCategory: 'solid',
+        cal: 200,
+      ));
+      expect(v.correctedProteinG, isNull);
+      expect(v.correctedFatG, isNull);
+      expect(v.correctedCarbsG, isNull);
+      expect(v.correctedCalories, isNull,
+          reason: 'expected=0 时保留 AI cal（可能是酒精/纤维等非 Atwater 来源）');
+    });
+
+    test('water 品类 + cal=50 + 三宏量全 0：不填充（def.\$1=0），expected=0 不修正', () {
+      // water 默认 (0,0,0,0)，def.$1=0 → 不填充
+      // didFill=false → 进入自洽校验，expected=0，保留 cal=50
+      final v = RecognitionValidator.validate(macroPartialResult(
+        foodCategory: 'water',
+        cal: 50,
+      ));
+      expect(v.correctedProteinG, isNull);
+      expect(v.correctedFatG, isNull);
+      expect(v.correctedCarbsG, isNull);
+      expect(v.correctedCalories, isNull);
+    });
+
+    test('protein_drink + cal=60 + protein=3 + fat=0 + carbs=0：填充 fat/carbs，保留 AI cal', () {
+      // protein_drink 默认 (60, 3, 1.5, 5)
+      // scale = 60/60 = 1
+      // p=3 (保留), f=1.5 (填充), c=5 (填充)
+      // didFill=true → 跳过 cal 自洽修正
+      final v = RecognitionValidator.validate(macroPartialResult(
+        foodCategory: 'protein_drink',
+        cal: 60,
+        protein: 3,
+      ));
+      expect(v.correctedProteinG, 3); // 保留 AI 值
+      expect(v.correctedFatG, closeTo(1.5, 0.001)); // 填充
+      expect(v.correctedCarbsG, closeTo(5, 0.001)); // 填充
+      expect(v.correctedCalories, isNull,
+          reason: 'BUG-2 修复：触发填充时跳过 cal 自洽修正，信任 AI 整菜 cal=60');
+    });
+
+    test('protein_drink + cal=120 + protein=6 + fat=0 + carbs=0：填充按 scale 缩放', () {
+      // scale = 120/60 = 2
+      // p=6 (保留), f=1.5*2=3 (填充), c=5*2=10 (填充)
+      final v = RecognitionValidator.validate(macroPartialResult(
+        foodCategory: 'protein_drink',
+        cal: 120,
+        protein: 6,
+      ));
+      expect(v.correctedProteinG, 6); // 保留
+      expect(v.correctedFatG, closeTo(3, 0.001)); // 1.5 * 2
+      expect(v.correctedCarbsG, closeTo(10, 0.001)); // 5 * 2
+      expect(v.correctedCalories, isNull);
+    });
+
+    test('energy_drink + cal=45 + protein=0 + fat=0 + carbs=11：等于品类默认值，不触发填充', () {
+      // energy_drink 默认 (45, 0, 0, 11)
+      // scale = 45/45 = 1
+      // p=0 (品类默认 0, 与 AI 一致), f=0 (品类默认 0, 一致), c=11 (品类默认 11, 一致)
+      // 三项都与 AI 一致 → 不触发填充（if p!=protein || f!=fat || c!=carbs 全 false）
+      // didFill=false → 进入自洽校验
+      // expected = 4*0 + 9*0 + 4*11 = 44，cal=45，偏差 2.2% < 10% → 不修正
+      final v = RecognitionValidator.validate(macroPartialResult(
+        foodCategory: 'energy_drink',
+        cal: 45,
+        carbs: 11,
+      ));
+      expect(v.correctedProteinG, isNull,
+          reason: 'AI 值与品类默认一致，无需填充');
+      expect(v.correctedFatG, isNull);
+      expect(v.correctedCarbsG, isNull);
+      expect(v.correctedCalories, isNull,
+          reason: '自洽校验偏差 2.2% < 10%，不修正');
+    });
+
+    test('对称性：tea + 仅 protein 非 0 → 填充 fat/carbs', () {
+      // tea 默认 (43, 0.1, 0, 10.6)
+      // scale = 43/43 = 1
+      // p=0.1 (品类默认, 但 AI 给的是 5) → 保留 5
+      // f=0 (品类默认 0), c=10.6 (品类默认 10.6, 填充)
+      final v = RecognitionValidator.validate(macroPartialResult(
+        foodCategory: 'tea',
+        cal: 43,
+        protein: 5,
+      ));
+      expect(v.correctedProteinG, 5); // 保留
+      expect(v.correctedFatG, 0); // 填充（品类默认 0）
+      expect(v.correctedCarbsG, closeTo(10.6, 0.001)); // 填充
+      expect(v.correctedCalories, isNull);
+    });
+
+    test('对称性：tea + 仅 carbs 非 0 → 填充 protein（fat 默认 0 不变）', () {
+      // tea 默认 (43, 0.1, 0, 10.6)
+      // scale = 43/43 = 1
+      // p=0.1 (品类默认, 填充), f=0 (品类默认 0, 不变), c=10.6 (AI 给的, 保留)
+      // 触发填充（p != protein: 0.1 != 0），三个 correctedXxxG 都被赋值
+      final v = RecognitionValidator.validate(macroPartialResult(
+        foodCategory: 'tea',
+        cal: 43,
+        carbs: 10.6,
+      ));
+      expect(v.correctedProteinG, closeTo(0.1, 0.001)); // 填充
+      expect(v.correctedFatG, 0); // 品类默认 0（被赋值，因为 if 块执行了）
+      expect(v.correctedCarbsG, closeTo(10.6, 0.001)); // 保留 AI 值
+      // protein 被填充，didFill=true → 跳过 cal 自洽修正
+      expect(v.correctedCalories, isNull);
+    });
+
+    test('对称性：tea + 仅 fat 非 0（异常）→ 填充 protein/carbs', () {
+      // tea 默认 (43, 0.1, 0, 10.6)
+      // scale = 43/43 = 1
+      // p=0.1 (填充), f=0 (品类默认 0, 但 AI 给 2 → 保留 2), c=10.6 (填充)
+      final v = RecognitionValidator.validate(macroPartialResult(
+        foodCategory: 'tea',
+        cal: 43,
+        fat: 2, // 异常：茶饮通常无脂肪
+      ));
+      expect(v.correctedProteinG, closeTo(0.1, 0.001)); // 填充
+      expect(v.correctedFatG, 2); // 保留 AI 值（即使异常）
+      expect(v.correctedCarbsG, closeTo(10.6, 0.001)); // 填充
+      expect(v.correctedCalories, isNull);
+    });
+
+    test('cal=null + 部分宏量非 0（旧 prompt 兼容）：不填充不修正', () {
+      // 旧 prompt 无 estimated_calories，cal=null
+      // 不进入填充分支（cal != null 条件不满足）
+      // 不进入自洽校验
+      // 注意：copyWith 不能显式置空 nullable 字段（用 ?? 保留原值），需直接构造
+      final result = VisionRecognitionResult(
+        dishName: 'test',
+        brand: '',
+        estimatedWeightGLow: 250,
+        estimatedWeightGMid: 250,
+        estimatedWeightGHigh: 250,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.0',
+        foodCategory: 'tea',
+        estimatedCalories: null, // 旧 prompt 无此字段
+        estimatedProteinG: 5,
+        estimatedFatG: 0,
+        estimatedCarbsG: 0,
+      );
+      final v = RecognitionValidator.validate(result);
+      expect(v.correctedProteinG, isNull);
+      expect(v.correctedFatG, isNull);
+      expect(v.correctedCarbsG, isNull);
+      expect(v.correctedCalories, isNull);
+    });
+
+    test('回归：cal=0 + 三宏量全 0：不填充，不修正（cal<=0 && expected=0 不触发）', () {
+      final v = RecognitionValidator.validate(macroPartialResult(
+        foodCategory: 'tea',
+        cal: 0,
+      ));
+      expect(v.correctedProteinG, isNull);
+      expect(v.correctedFatG, isNull);
+      expect(v.correctedCarbsG, isNull);
+      expect(v.correctedCalories, isNull);
+    });
+
+    test('回归：cal=0 + 有宏量（protein=5）：不填充（cal>0 条件不满足），修正 cal', () {
+      // cal=0, protein=5, fat=0, carbs=0
+      // 不触发填充（cal>0 条件不满足）
+      // didFill=false → 进入自洽校验
+      // expected = 4*5 + 0 + 0 = 20
+      // cal<=0 && expected>0 → 修正 cal=20
+      final v = RecognitionValidator.validate(macroPartialResult(
+        foodCategory: 'tea',
+        cal: 0,
+        protein: 5,
+      ));
+      expect(v.correctedProteinG, isNull,
+          reason: 'cal=0 不触发填充');
+      expect(v.correctedFatG, isNull);
+      expect(v.correctedCarbsG, isNull);
+      expect(v.correctedCalories, 20,
+          reason: 'cal=0 但有宏量，修正为 expected=20');
+    });
+
+    test('关键回归：BUG-2 修复后不再错误修正 cal（蛋白饮料场景）', () {
+      // BUG-2 原始场景：protein_drink protein=3 但 carbs=0 漏填，cal=60
+      // 修复前：不反推，自洽校验 expected=4*3+0+0=12，偏差 80% → 错误修正 cal=12
+      // 修复后：填充 fat/carbs，didFill=true → 跳过自洽修正，保留 cal=60
+      final v = RecognitionValidator.validate(macroPartialResult(
+        foodCategory: 'protein_drink',
+        cal: 60,
+        protein: 3,
+      ));
+      expect(v.correctedCalories, isNull,
+          reason: 'BUG-2 修复核心：不再错误修正 cal=60 为 12');
+      expect(v.correctedProteinG, 3); // 保留
+      expect(v.correctedFatG, closeTo(1.5, 0.001)); // 填充
+      expect(v.correctedCarbsG, closeTo(5, 0.001)); // 填充
     });
   });
 }
