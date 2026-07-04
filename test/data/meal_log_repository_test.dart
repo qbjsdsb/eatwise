@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
+import 'package:eatwise/core/util/date_format.dart';
 import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/data/repositories/meal_log_repository.dart';
 import 'package:eatwise/data/repositories/recognition_feedback_repository.dart';
@@ -479,6 +480,100 @@ void main() {
       final meals = await repo.getMealsByDate('2026-07-02');
       expect(meals.length, 1);
       expect(meals.first.foodItemId, foodId);
+    });
+  });
+
+  // H4 修复：getRecentMeals/getRecentFoodCounts/getMealTypeDistribution 无 endDate 上界
+  // 用户预录未来餐次会污染推荐统计，应只统计 startDate..today 区间
+  group('H4 recent 方法加 endDate 上界', () {
+    test('getRecentMeals 不返回未来日期记录', () async {
+      final today = formatYmd(DateTime.now());
+      final tomorrow = formatYmd(DateTime.now().add(const Duration(days: 1)));
+      // 今天记录
+      final todayFoodId = await db.into(db.foodItems).insert(
+            FoodItemsCompanion.insert(
+              name: '今天食物',
+              defaultServingG: 100,
+              caloriesPer100g: 50,
+              proteinPer100g: 1,
+              fatPer100g: 0.2,
+              carbsPer100g: 13.5,
+              source: 'test',
+              sourceVersion: 'test_v1',
+              createdAt: 0,
+            ),
+          );
+      await repo.insertMealLog(
+        date: today,
+        mealType: 'breakfast',
+        foodItemId: todayFoodId,
+        actualServingG: 100,
+        actualCalories: 50,
+        actualProteinG: 1,
+        actualFatG: 0.2,
+        actualCarbsG: 13.5,
+      );
+      // 明天（未来）记录
+      final futureFoodId = await db.into(db.foodItems).insert(
+            FoodItemsCompanion.insert(
+              name: '未来食物',
+              defaultServingG: 100,
+              caloriesPer100g: 999,
+              proteinPer100g: 99,
+              fatPer100g: 99,
+              carbsPer100g: 99,
+              source: 'test',
+              sourceVersion: 'test_v1',
+              createdAt: 0,
+            ),
+          );
+      await repo.insertMealLog(
+        date: tomorrow,
+        mealType: 'breakfast',
+        foodItemId: futureFoodId,
+        actualServingG: 100,
+        actualCalories: 999,
+        actualProteinG: 99,
+        actualFatG: 99,
+        actualCarbsG: 99,
+      );
+
+      final recent = await repo.getRecentMeals(days: 7);
+      // 未来日期不应出现
+      expect(recent.any((m) => m.date == tomorrow), false,
+          reason: '未来日期不应计入 recent 统计');
+      expect(recent.any((m) => m.date == today), true,
+          reason: '今天记录应出现');
+    });
+
+    test('getRecentFoodCounts 不统计未来日期', () async {
+      final tomorrow = formatYmd(DateTime.now().add(const Duration(days: 1)));
+      final futureFoodId = await db.into(db.foodItems).insert(
+            FoodItemsCompanion.insert(
+              name: '未来食物2',
+              defaultServingG: 100,
+              caloriesPer100g: 100,
+              proteinPer100g: 1,
+              fatPer100g: 1,
+              carbsPer100g: 1,
+              source: 'test',
+              sourceVersion: 'test_v1',
+              createdAt: 0,
+            ),
+          );
+      await repo.insertMealLog(
+        date: tomorrow,
+        mealType: 'breakfast',
+        foodItemId: futureFoodId,
+        actualServingG: 100,
+        actualCalories: 100,
+        actualProteinG: 1,
+        actualFatG: 1,
+        actualCarbsG: 1,
+      );
+      final counts = await repo.getRecentFoodCounts(days: 7);
+      expect(counts[futureFoodId], isNull,
+          reason: '未来日期的 foodItemCount 不应被统计');
     });
   });
 }

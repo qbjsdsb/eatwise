@@ -170,12 +170,15 @@ class MealLogRepository {
   /// 查询最近 N 天的全部 meal_log（v4 推荐算法用户偏好学习用）。
   /// 返回 `List<MealLog>`，调用方自行聚合。
   /// N 默认 30 天：与 getRecentFoodCounts 窗口一致，覆盖一个月饮食习惯。
+  ///
+  /// H4 修复：加 endDate 上界（today），避免用户预录未来餐次污染推荐统计。
   Future<List<MealLog>> getRecentMeals({int days = 30}) async {
     final now = DateTime.now();
     final start = now.subtract(Duration(days: days));
     final startDate = formatYmd(start);
+    final endDate = formatYmd(now);
     return (_db.mealLogs.select()
-          ..where((m) => m.date.isBiggerOrEqualValue(startDate))
+          ..where((m) => m.date.isBetweenValues(startDate, endDate))
           ..orderBy([(m) => OrderingTerm.desc(m.loggedAt)]))
         .get();
   }
@@ -183,16 +186,19 @@ class MealLogRepository {
   /// 查询最近 N 天各食物的引用次数（智能推荐加权用）。
   /// 返回 foodItemId → 引用次数。常吃的食物频次高，推荐时加分。
   /// N 默认 30 天：覆盖一个月饮食习惯，太短样本少，太长不反映近期偏好变化。
+  ///
+  /// H4 修复：加 endDate 上界（today），避免未来日期污染频次统计。
   Future<Map<int, int>> getRecentFoodCounts({int days = 30}) async {
     final now = DateTime.now();
     final start = now.subtract(Duration(days: days));
     final startDate = formatYmd(start);
+    final endDate = formatYmd(now);
     final countRows = await _db.customSelect(
       'SELECT food_item_id, COUNT(id) AS cnt '
       'FROM meal_logs '
-      'WHERE date >= ? '
+      'WHERE date >= ? AND date <= ? '
       'GROUP BY food_item_id',
-      variables: [Variable.withString(startDate)],
+      variables: [Variable.withString(startDate), Variable.withString(endDate)],
       readsFrom: {_db.mealLogs},
     ).get();
     final result = <int, int>{};
@@ -208,17 +214,20 @@ class MealLogRepository {
   /// 返回 `Map<foodItemId, Map<mealType, ratio>>`，ratio = 该 mealType 次数 / 该食物总次数。
   /// N 默认 60 天：比频次窗口长，时段分布需更多样本才稳定。
   /// 样本不足（总次数 < 2）的食物不返回，避免单次记录误判分布。
+  ///
+  /// H4 修复：加 endDate 上界（today），避免未来日期污染时段分布。
   Future<Map<int, Map<String, double>>> getMealTypeDistribution(
       {int days = 60}) async {
     final now = DateTime.now();
     final start = now.subtract(Duration(days: days));
     final startDate = formatYmd(start);
+    final endDate = formatYmd(now);
     final rows = await _db.customSelect(
       'SELECT food_item_id, meal_type, COUNT(id) AS cnt '
       'FROM meal_logs '
-      'WHERE date >= ? '
+      'WHERE date >= ? AND date <= ? '
       'GROUP BY food_item_id, meal_type',
-      variables: [Variable.withString(startDate)],
+      variables: [Variable.withString(startDate), Variable.withString(endDate)],
       readsFrom: {_db.mealLogs},
     ).get();
     // 先聚合每个食物各 mealType 的次数
