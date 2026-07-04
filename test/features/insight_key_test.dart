@@ -30,8 +30,13 @@ void main() {
     );
     await tester.pumpAndSettle(const Duration(seconds: 1));
 
-    // 点击"生成本周汇总"按钮触发 _generate
-    await tester.tap(find.text('生成本周汇总'));
+    // 点击"生成近 7 天汇总"按钮触发 _generate
+    // v1.11：滚动窗口后按钮文案从"生成本周汇总"改为"生成近 7 天汇总"
+    // v1.11：覆盖率提示把按钮推到 600px 视口外，需 scrollUntilVisible 后再 tap
+    final btnFinder = find.text('生成近 7 天汇总');
+    await tester.scrollUntilVisible(btnFinder, 200);
+    await tester.pumpAndSettle();
+    await tester.tap(btnFinder);
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
     // 验证显示设置页引导（而非 --dart-define 提示）

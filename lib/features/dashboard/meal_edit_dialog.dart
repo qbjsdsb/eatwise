@@ -267,6 +267,7 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // 食物名（只读 + "换食物"按钮）
+              // helperText 提示用户"识别错了可点此换食物"——原 UX 不明显，用户不知道可换
               InkWell(
                 onTap: _pickFood,
                 borderRadius: BorderRadius.circular(8),
@@ -274,6 +275,7 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
                   decoration: const InputDecoration(
                     labelText: '食物',
                     suffixIcon: Icon(Icons.swap_horiz),
+                    helperText: '识别错了？点此换食物并自动重算营养',
                   ),
                   child: Text(
                     _foodName,

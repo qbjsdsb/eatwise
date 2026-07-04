@@ -100,49 +100,63 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   }
 
   /// v5 AI 推荐：渐进增强，失败静默返回空列表（v4 兜底）
+  /// 任何异常（config/网络/AI）都包内兜底返回带 error 的 result，不向上抛
   Future<AiRecommendationResult> _loadAiRecommendations(
       {bool forceRefresh = false}) async {
-    // await config future 避免冷启动竞态（config 异步从 SecureConfigStore 加载）
-    final c = await ref.read(appConfigProvider.future);
-    // GLM key 未配置 → 静默返回空（v4 兜底，不报错）
-    if (c.glmApiKey.isEmpty) {
-      return const AiRecommendationResult(
-          recommendations: [], fromCache: false);
-    }
-    // 离线守卫：无网络不调 AI
-    final online = await ref.read(recognize.networkAvailableProvider.future);
-    if (!online) {
-      return const AiRecommendationResult(
-          recommendations: [], fromCache: false);
-    }
-    final db = await ref.read(recognize.databaseProvider.future);
-    final baseUrl = c.glmBaseUrl.isEmpty
-        ? 'https://open.bigmodel.cn/api/paas/v4'
-        : c.glmBaseUrl;
-    final provider = GlmFlashProvider(apiKey: c.glmApiKey, baseUrl: baseUrl);
-    final service = AiRecommendationService(
-      provider,
-      ProfileRepository(db),
-      MealLogRepository(db),
-      FoodItemRepository(db),
-      RecommendationFeedbackRepository(db),
-    );
     try {
-      final now = DateTime.now();
-      return await service.recommend(
-        AiRecommendationRequest(
-          todayDate: todayYmd(),
-          mealType: _currentMealType(now.hour),
-        ),
-        forceRefresh: forceRefresh,
+      // await config future 避免冷启动竞态（config 异步从 SecureConfigStore 加载）
+      final c = await ref.read(appConfigProvider.future);
+      // GLM key 未配置 → 静默返回空（v4 兜底，不报错，不显示重试按钮）
+      if (c.glmApiKey.isEmpty) {
+        return const AiRecommendationResult(
+            recommendations: [], fromCache: false);
+      }
+      // 离线守卫：无网络不调 AI
+      final online = await ref.read(recognize.networkAvailableProvider.future);
+      if (!online) {
+        return const AiRecommendationResult(
+            recommendations: [],
+            fromCache: false,
+            error: '当前无网络，已切换本地推荐');
+      }
+      final db = await ref.read(recognize.databaseProvider.future);
+      final baseUrl = c.glmBaseUrl.isEmpty
+          ? 'https://open.bigmodel.cn/api/paas/v4'
+          : c.glmBaseUrl;
+      final provider = GlmFlashProvider(apiKey: c.glmApiKey, baseUrl: baseUrl);
+      final service = AiRecommendationService(
+        provider,
+        ProfileRepository(db),
+        MealLogRepository(db),
+        FoodItemRepository(db),
+        RecommendationFeedbackRepository(db),
       );
-    } finally {
-      // 用完即关，避免 OpenAIClient 连接泄漏（每次进看板都新建 provider）
-      provider.close();
+      try {
+        final now = DateTime.now();
+        return await service.recommend(
+          AiRecommendationRequest(
+            todayDate: todayYmd(),
+            mealType: _currentMealType(now.hour),
+          ),
+          forceRefresh: forceRefresh,
+        );
+      } finally {
+        // 用完即关，避免 OpenAIClient 连接泄漏（每次进看板都新建 provider）
+        provider.close();
+      }
+    } catch (e) {
+      // config/网络/DB 异常兜底（不向上抛，避免 FutureBuilder hasError）
+      debugPrint('AI 推荐加载异常（v4 兜底）：$e');
+      return const AiRecommendationResult(
+        recommendations: [],
+        fromCache: false,
+        error: 'AI 推荐加载失败，已切换本地推荐',
+      );
     }
   }
 
   /// 用户点"重新生成"按钮：强制刷新 AI 推荐
+  /// 失败时显示 toast + 保留按钮（让用户可重试）
   Future<void> _regenerateAiRecommendations() async {
     if (_aiRegenerating) return; // 防重入
     setState(() => _aiRegenerating = true);
@@ -153,6 +167,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
         // 用新 Future 承载结果，触发 FutureBuilder 重建
         _aiRecFuture = Future.value(result);
       });
+      // 失败时 toast 提示（成功时不打扰）
+      if (result.hasError && mounted) {
+        showAppToast(context, result.error!);
+      }
+    } catch (e) {
+      // _loadAiRecommendations 内部已 try-catch，理论不会冒泡；防御性兜底
+      if (mounted) showAppToast(context, '重新生成失败，请稍后重试');
     } finally {
       if (mounted) setState(() => _aiRegenerating = false);
     }
@@ -394,23 +415,35 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                           ),
                         ),
                       ),
-                      // 重新生成按钮：仅 AI 推荐可用时显示
+                      // 重新生成按钮：AI 推荐成功或曾失败时都显示（失败时文案改"重试"）
                       FutureBuilder<AiRecommendationResult>(
                         future: _aiRecFuture,
                         builder: (context, aiSnap) {
-                          // AI 还在加载或无结果时不显示按钮
-                          if (!aiSnap.hasData ||
-                              aiSnap.data!.recommendations.isEmpty) {
+                          // 加载中或未配置（无 error 且无数据）时不显示
+                          if (aiSnap.connectionState !=
+                              ConnectionState.done) {
                             return const SizedBox.shrink();
                           }
-                          return _regenerateButton(cs);
+                          // key 未配置：无数据无 error，不显示按钮
+                          if (!aiSnap.hasData) {
+                            return const SizedBox.shrink();
+                          }
+                          final data = aiSnap.data!;
+                          // key 未配置的静默回退（无 error）：不显示
+                          if (data.recommendations.isEmpty &&
+                              data.error == null) {
+                            return const SizedBox.shrink();
+                          }
+                          // 成功或失败（带 error）都显示按钮，失败时文案改"重试"
+                          return _regenerateButton(cs,
+                              isRetry: data.hasError);
                         },
                       ),
                     ],
                   ),
                 ),
                 // AI 推荐区（渐进增强：AI loading 时先显示 v4 + 加载提示，
-                // AI 返回后替换为 AI 推荐；AI 失败/空时保持 v4）
+                // AI 返回后替换为 AI 推荐；AI 失败/空时保持 v4 + 错误提示）
                 FutureBuilder<AiRecommendationResult>(
                   future: _aiRecFuture,
                   builder: (context, aiSnap) {
@@ -428,7 +461,15 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                     if (aiSnap.hasError ||
                         !aiSnap.hasData ||
                         aiSnap.data!.recommendations.isEmpty) {
-                      return _v4Recommendations(d, textTheme, cs);
+                      final err = aiSnap.hasData
+                          ? aiSnap.data!.error
+                          : (aiSnap.hasError ? 'AI 推荐失败' : null);
+                      return Column(
+                        children: [
+                          if (err != null) _aiErrorHint(cs, err),
+                          _v4Recommendations(d, textTheme, cs),
+                        ],
+                      );
                     }
                     // AI 成功：显示 AI 推荐 + 满意度反馈
                     final aiRecs = aiSnap.data!.recommendations;
@@ -444,8 +485,8 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     );
   }
 
-  /// 重新生成按钮
-  Widget _regenerateButton(ColorScheme cs) {
+  /// 重新生成按钮（isRetry=true 时文案改"重试"）
+  Widget _regenerateButton(ColorScheme cs, {bool isRetry = false}) {
     return TextButton.icon(
       onPressed: _aiRegenerating ? null : _regenerateAiRecommendations,
       icon: _aiRegenerating
@@ -458,7 +499,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               ),
             )
           : const Icon(Icons.refresh_rounded, size: 18),
-      label: Text(_aiRegenerating ? '生成中' : '换一批'),
+      label: Text(_aiRegenerating
+          ? '生成中'
+          : isRetry
+              ? '重试'
+              : '换一批'),
       style: TextButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         minimumSize: const Size(0, 32),
@@ -488,6 +533,27 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           Expanded(
             child: Text(
               'AI 正在生成个性化推荐…',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: cs.onSurfaceVariant,
+                  ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// AI 失败提示（小尺寸 errorContainer 行，告诉用户已切本地推荐）
+  Widget _aiErrorHint(ColorScheme cs, String message) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline_rounded, size: 14, color: cs.error),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              message,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: cs.onSurfaceVariant,
                   ),

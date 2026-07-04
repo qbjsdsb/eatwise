@@ -6,6 +6,7 @@ import '../../ai/glm_flash_provider.dart';
 import '../../core/util/date_format.dart';
 import '../../core/util/refresh_bus.dart';
 import '../../core/widgets/m3_widgets.dart';
+import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/insight_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/profile_repository.dart';
@@ -32,6 +33,9 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   List<double> _dailyCal = []; // 每日热量（_periodStart ~ _periodEnd）
   List<double> _dailyWeight = []; // 每日体重（按 weight_log 记录顺序）
   int _targetCal = 2000; // 目标热量（读自 profile.dailyCalorieTarget）
+  // v1.11：覆盖率（供 UI 提示数据完整度 + 生成守卫）
+  int _recordedDays = 0; // 有 meal_log 记录的天数
+  int _totalDays = 7; // 窗口总天数（周 7 / 月 30）
 
   @override
   void initState() {
@@ -55,57 +59,128 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   }
 
   /// 根据 _periodType 计算 _periodStart/_periodEnd
+  ///
+  /// 滚动窗口策略（v1.11）：不再用自然周/月，改用"最近 N 天"。
+  /// - weekly：最近 7 天（today-6 ~ today）
+  /// - monthly：最近 30 天（today-29 ~ today）
+  ///
+  /// 优势：
+  /// 1. 不足一周/月时仍按完整周期算（用户用 3 天也能生成周报，0 填充缺失日）
+  /// 2. 始终覆盖最近数据，比"自然周前 6 天 + 今天 0 条"更准
+  /// 3. 跨周/跨月自然过渡，避免月末切换 chart 突变
+  ///
+  /// 缓存策略：_periodStart/_periodEnd 每天变化，InsightRepository.find 找不到
+  /// 昨天的汇总（key 不同），用户每天需重新生成。这是预期行为（滚动窗口本就该每天刷新）。
   void _calcPeriod() {
     final now = DateTime.now();
     if (_periodType == 'weekly') {
-      // 本周周一到周日
-      final weekday = now.weekday;
-      final monday = now.subtract(Duration(days: weekday - 1));
-      final sunday = monday.add(const Duration(days: 6));
-      _periodStart = formatYmd(monday);
-      _periodEnd = formatYmd(sunday);
+      // 最近 7 天：today-6 ~ today（含今天）
+      final start = now.subtract(const Duration(days: 6));
+      _periodStart = formatYmd(start);
+      _periodEnd = formatYmd(now);
     } else {
-      // 本月 1 到月末
-      final first = DateTime(now.year, now.month, 1);
-      final last = DateTime(now.year, now.month + 1, 0);
-      _periodStart = formatYmd(first);
-      _periodEnd = formatYmd(last);
+      // 最近 30 天：today-29 ~ today（含今天）
+      final start = now.subtract(const Duration(days: 29));
+      _periodStart = formatYmd(start);
+      _periodEnd = formatYmd(now);
     }
   }
 
-  /// 聚合当前周期数据（热量按日 + 体重序列 + 目标热量），供图表与 AI 生成共用。
-  /// 结果同时写入 state 字段 _dailyCal/_dailyWeight/_targetCal，避免重复查询。
-  Future<({List<double> dailyCal, List<double> dailyWeight, int targetCal, String goal})>
-      _aggregatePeriod() async {
+  /// 聚合当前周期数据（热量/体重/宏量/偏好/覆盖率），供图表与 AI 生成共用。
+  ///
+  /// v1.11 增强：在原热量+体重基础上，新增三大宏量每日序列 + 目标值、记录覆盖率、
+  /// 高频食物画像，让 AI 汇总能结合宏量达成率、饮食偏好、数据完整度给出更智能的建议。
+  ///
+  /// 结果同时写入 state 字段 _dailyCal/_dailyWeight/_targetCal（图表渲染用），
+  /// 新增字段仅随返回值传递给 _generate 用于 AI prompt，不写 state（图表不展示）。
+  Future<({
+    List<double> dailyCal,
+    List<double> dailyWeight,
+    int targetCal,
+    String goal,
+    // v1.11：宏量营养素每日序列 + 目标值（供 AI 分析达成率）
+    List<double> dailyProtein,
+    List<double> dailyFat,
+    List<double> dailyCarbs,
+    double proteinGoal,
+    double fatGoal,
+    double carbGoal,
+    // v1.11：覆盖率 + 饮食偏好画像（供 AI 分析数据完整度 + 偏好）
+    int recordedDays,
+    int totalDays,
+    double coverageRate,
+    List<String> preferenceFoods,
+  })> _aggregatePeriod() async {
     final db = await ref.read(recognize.databaseProvider.future);
     final mealRepo = MealLogRepository(db);
     final weightRepo = WeightLogRepository(db);
     final profileRepo = ProfileRepository(db);
+    final foodRepo = FoodItemRepository(db);
 
     final meals = await mealRepo.getRange(_periodStart, _periodEnd);
     final weights = await weightRepo.getRange(_periodStart, _periodEnd);
     final profile = await profileRepo.get();
 
-    // 按日聚合热量（_periodStart ~ _periodEnd，周 7 天 / 月 28~31 天）
+    // 按日聚合热量 + 三大宏量（_periodStart ~ _periodEnd，周 7 天 / 月 28~31 天）
     final start = parseYmd(_periodStart);
     final end = parseYmd(_periodEnd);
     final days = end.difference(start).inDays + 1;
     final dailyCal = <double>[];
+    final dailyProtein = <double>[];
+    final dailyFat = <double>[];
+    final dailyCarbs = <double>[];
+    var recordedDays = 0;
     for (var i = 0; i < days; i++) {
       final date = formatYmd(start.add(Duration(days: i)));
-      final cal = meals
-          .where((m) => m.date == date)
-          .fold<double>(0, (s, m) => s + m.actualCalories);
-      dailyCal.add(cal);
+      final dayMeals = meals.where((m) => m.date == date).toList();
+      if (dayMeals.isNotEmpty) recordedDays++;
+      dailyCal.add(
+          dayMeals.fold<double>(0, (s, m) => s + m.actualCalories));
+      dailyProtein.add(
+          dayMeals.fold<double>(0, (s, m) => s + m.actualProteinG));
+      dailyFat.add(dayMeals.fold<double>(0, (s, m) => s + m.actualFatG));
+      dailyCarbs.add(dayMeals.fold<double>(0, (s, m) => s + m.actualCarbsG));
     }
     final dailyWeight = weights.map((w) => w.weightKg).toList();
     final targetCal = profile.dailyCalorieTarget;
+
+    // 宏量目标（与 dashboard_page L245-250 一致：carbGPerKg 为 null 时由热量残差反算）
+    final proteinGoal = profile.proteinGPerKg * profile.weightKg;
+    final fatGoal = profile.fatGPerKg * profile.weightKg;
+    final carbGoalRaw = profile.carbGPerKg != null
+        ? profile.carbGPerKg! * profile.weightKg
+        : (profile.dailyCalorieTarget - proteinGoal * 4 - fatGoal * 9) / 4;
+    final carbGoal = carbGoalRaw < 0 ? 0.0 : carbGoalRaw;
+
+    // 覆盖率：有记录天数 / 窗口总天数（让 AI 知道数据完整度）
+    final coverageRate = days > 0 ? recordedDays / days : 0.0;
+
+    // 饮食偏好画像：统计 foodItemId 频次，取 top 5 食物名
+    // 让 AI 能结合"常吃食物"给出针对性建议（如"你常吃米饭，可尝试用糙米替代"）
+    final foodCounts = <int, int>{};
+    for (final m in meals) {
+      foodCounts[m.foodItemId] = (foodCounts[m.foodItemId] ?? 0) + 1;
+    }
+    List<String> preferenceFoods = const [];
+    if (foodCounts.isNotEmpty) {
+      final sortedIds = foodCounts.keys.toList()
+        ..sort((a, b) => foodCounts[b]!.compareTo(foodCounts[a]!));
+      final topIds = sortedIds.take(5).toList();
+      final foods = await foodRepo.getByIds(topIds);
+      final idToName = {for (final f in foods) f.id: f.name};
+      preferenceFoods = topIds
+          .map((id) => idToName[id])
+          .whereType<String>()
+          .toList();
+    }
 
     if (mounted) {
       setState(() {
         _dailyCal = dailyCal;
         _dailyWeight = dailyWeight;
         _targetCal = targetCal;
+        _recordedDays = recordedDays;
+        _totalDays = days;
       });
     }
     return (
@@ -113,6 +188,16 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       dailyWeight: dailyWeight,
       targetCal: targetCal,
       goal: profile.goal,
+      dailyProtein: dailyProtein,
+      dailyFat: dailyFat,
+      dailyCarbs: dailyCarbs,
+      proteinGoal: proteinGoal,
+      fatGoal: fatGoal,
+      carbGoal: carbGoal,
+      recordedDays: recordedDays,
+      totalDays: days,
+      coverageRate: coverageRate,
+      preferenceFoods: preferenceFoods,
     );
   }
 
@@ -158,6 +243,16 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         });
         return;
       }
+      // v1.11 数据不足守卫：0 天有记录时不调 AI（全 0 数据生成的建议无意义，浪费 API 调用）
+      // 置于 key/网络检查之后：config/网络问题更基础，应优先提示；key+网络 OK 但无数据时才提示记录
+      if (agg.recordedDays == 0) {
+        if (!mounted) return;
+        setState(() {
+          _error = '近 ${agg.totalDays} 天无饮食记录，请先记录至少 1 天再生成汇总';
+          _summary = null;
+        });
+        return;
+      }
       final provider = GlmFlashProvider(
         apiKey: apiKey,
         baseUrl: baseUrl.isEmpty
@@ -169,6 +264,17 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         'daily_weights': agg.dailyWeight,
         'target_calories': agg.targetCal,
         'goal': agg.goal,
+        // v1.11 增强：宏量 + 偏好 + 覆盖率，让 AI 给出更智能的建议
+        'daily_protein': agg.dailyProtein,
+        'daily_fat': agg.dailyFat,
+        'daily_carbs': agg.dailyCarbs,
+        'protein_goal': agg.proteinGoal,
+        'fat_goal': agg.fatGoal,
+        'carb_goal': agg.carbGoal,
+        'recorded_days': agg.recordedDays,
+        'total_days': agg.totalDays,
+        'coverage_rate': agg.coverageRate,
+        'preference_foods': agg.preferenceFoods,
       };
       final text = _periodType == 'weekly'
           ? await provider.generateWeeklySummary(data)
@@ -250,7 +356,8 @@ class _InsightPageState extends ConsumerState<InsightPage> {
 
   @override
   Widget build(BuildContext context) {
-    final periodLabel = _periodType == 'weekly' ? '本周' : '本月';
+    // 滚动窗口文案：不再用"本周/本月"（自然周/月），改"近 7 天/近 30 天"明确窗口长度
+    final periodLabel = _periodType == 'weekly' ? '近 7 天' : '近 30 天';
     return Scaffold(
       appBar: AppBar(
         title: Text('$_periodStart ~ $_periodEnd'),
@@ -277,8 +384,11 @@ class _InsightPageState extends ConsumerState<InsightPage> {
                   _periodType = v.first;
                   _calcPeriod();
                   _summary = null;
+                  _error = null;
                   _dailyCal = [];
                   _dailyWeight = [];
+                  _recordedDays = 0;
+                  _totalDays = v.first == 'weekly' ? 7 : 30;
                   _loadExisting();
                 });
               },
@@ -305,6 +415,30 @@ class _InsightPageState extends ConsumerState<InsightPage> {
             const EmptyChartHint('暂无足够体重数据，至少记录 2 次'),
             const SizedBox(height: 16),
           ],
+          // v1.11：覆盖率提示（让用户知道数据完整度，覆盖率低时建议多记录）
+          // 守卫已保证 recordedDays >= 1 才调 AI，但提示仍展示完整度供用户参考
+          if (_totalDays > 0 && _recordedDays < _totalDays)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline,
+                      size: 16,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '已记录 $_recordedDays/$_totalDays 天'
+                      '（${(_recordedDays * 100 / _totalDays).round()}%），'
+                      '数据不完整时建议仅供参考',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color:
+                              Theme.of(context).colorScheme.onSurfaceVariant),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           if (_error != null)
             // 错误态独立 Card：errorContainer 背景 + error 图标，与 AI 汇总 Card 视觉区分
             // （原实现把错误塞进 _summary 同一 Card 渲染，用户误以为是 AI 输出）
@@ -371,7 +505,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   }
 
   /// 热量折线图：每日摄入 + 目标热量参考线 + 均值参考线
-  /// 周视图 X 轴 '一二三四五六日'，月视图按日期每 5 天一个标签。
+  /// 滚动窗口（v1.11）：周/月都用 M/D 格式 X 轴标签（rolling window 跨自然周/月）。
   ///
   /// 美化要点（解决"数字重叠"和"不够美观"）：
   /// - Y 轴设 interval（按 maxCal/4 取整到 50 的倍数），避免默认刻度挤成一堆
@@ -430,23 +564,26 @@ class _InsightPageState extends ConsumerState<InsightPage> {
               if (idx < 0 || idx >= _dailyCal.length) {
                 return const SizedBox.shrink();
               }
+              // 滚动窗口（v1.11）：周/月都用 M/D 格式，不再用"一二三四五六日"
+              // （rolling window 跨自然周/月，day-of-week 误导）
+              // 周视图：7 天全显示 M/D（标签短，7 个不挤）
+              // 月视图：每 5 天显示一个 M/D（30 个标签太密）
+              final date = start.add(Duration(days: idx));
               if (_periodType == 'weekly') {
-                const days = ['一', '二', '三', '四', '五', '六', '日'];
                 return Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text(days[idx],
+                  child: Text('${date.month}/${date.day}',
                       style: TextStyle(
-                          fontSize: 11, color: cs.onSurfaceVariant)),
+                          fontSize: 10, color: cs.onSurfaceVariant)),
                 );
               }
-              // 月视图：每 5 天一个标签（1/5/10/15/20/25/30）
-              final date = start.add(Duration(days: idx));
-              if (date.day == 1 || date.day % 5 == 0) {
+              // 月视图：每 5 天一个标签（idx 0/5/10/15/20/25）
+              if (idx == 0 || idx % 5 == 0) {
                 return Padding(
                   padding: const EdgeInsets.only(top: 6),
-                  child: Text('${date.day}',
+                  child: Text('${date.month}/${date.day}',
                       style: TextStyle(
-                          fontSize: 11, color: cs.onSurfaceVariant)),
+                          fontSize: 10, color: cs.onSurfaceVariant)),
                 );
               }
               return const SizedBox.shrink();
@@ -510,9 +647,8 @@ class _InsightPageState extends ConsumerState<InsightPage> {
             return touchedSpots.map((spot) {
               final idx = spot.spotIndex;
               final date = start.add(Duration(days: idx));
-              final label = _periodType == 'weekly'
-                  ? '周${['一', '二', '三', '四', '五', '六', '日'][idx % 7]}'
-                  : '${date.month}/${date.day}';
+              // 滚动窗口：周/月都用 M/D 格式（rolling window 跨自然周/月）
+              final label = '${date.month}/${date.day}';
               return LineTooltipItem(
                 '$label\n${spot.y.round()} kcal',
                 TextStyle(

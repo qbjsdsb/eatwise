@@ -39,15 +39,20 @@ class AiRecommendationRequest {
   });
 }
 
-/// AI 推荐结果（含缓存元信息）
+/// AI 推荐结果（含缓存元信息 + 失败原因）
 class AiRecommendationResult {
   final List<AiRecommendation> recommendations;
   final bool fromCache; // 是否来自缓存（UI 决定是否显示"已刷新"提示）
+  final String? error; // 失败原因（null=成功；非 null=AI 失败已 v4 兜底，UI 可 toast 提示）
 
   const AiRecommendationResult({
     required this.recommendations,
     required this.fromCache,
+    this.error,
   });
+
+  /// 是否失败（v4 兜底）
+  bool get hasError => error != null && recommendations.isEmpty;
 }
 
 class AiRecommendationService {
@@ -76,6 +81,8 @@ class AiRecommendationService {
   /// 获取 AI 推荐（渐进增强：失败静默返回空列表，v4 兜底）
   ///
   /// [forceRefresh]：true 时跳过缓存强制刷新（用户点"重新生成"按钮）
+  /// 失败时返回 AiRecommendationResult.error 非 null，UI 可据此显示错误提示。
+  /// 失败/空结果不缓存（下次进看板允许重试），避免当日永久失效。
   Future<AiRecommendationResult> recommend(
     AiRecommendationRequest request, {
     bool forceRefresh = false,
@@ -103,14 +110,45 @@ class AiRecommendationService {
     _cache[cacheKey] = future;
     try {
       final result = await future;
+      // 空结果不缓存（可能是 AI 抽风返回 0 条，下次允许重试）
+      if (result.isEmpty) {
+        _cache.remove(cacheKey);
+        return const AiRecommendationResult(
+          recommendations: [],
+          fromCache: false,
+          error: 'AI 未返回有效推荐，已切换本地推荐',
+        );
+      }
       return AiRecommendationResult(recommendations: result, fromCache: false);
     } catch (e) {
       // 任何异常静默返回空列表，v4 兜底
       // 失败结果不缓存（删除刚写入的失败 Future，下次进看板允许重试）
       _cache.remove(cacheKey);
       debugPrint('AI 推荐失败（v4 兜底）：$e');
-      return const AiRecommendationResult(recommendations: [], fromCache: false);
+      return AiRecommendationResult(
+        recommendations: const [],
+        fromCache: false,
+        error: _friendlyError(e),
+      );
     }
+  }
+
+  /// 将异常转为用户友好的错误文案
+  String _friendlyError(Object e) {
+    final s = e.toString();
+    if (s.contains('TimeoutException') || s.contains('timeout')) {
+      return 'AI 响应超时，已切换本地推荐';
+    }
+    if (s.contains('401') || s.contains('Unauthorized')) {
+      return 'GLM API Key 无效，已切换本地推荐';
+    }
+    if (s.contains('429') || s.contains('rate limit')) {
+      return 'AI 调用太频繁，请稍后重试';
+    }
+    if (s.contains('SocketException') || s.contains('network')) {
+      return '网络连接失败，已切换本地推荐';
+    }
+    return 'AI 推荐暂不可用，已切换本地推荐';
   }
 
   /// 清理非当日缓存（避免静态 Map 无限增长）
@@ -183,12 +221,32 @@ class AiRecommendationService {
   }
 
   /// 调 GLM-4-Flash（封装以便测试 mock）
+  /// 含 1 次重试（429/5xx/网络抖动指数退避 1s），401/400 等不可恢复错误不重试
   Future<String> _callGlm(String userPrompt) async {
-    return _provider.createChatCompletion(
-      systemPrompt: AiRecommendationPrompt.systemPrompt,
-      userPrompt: userPrompt,
-      temperature: 0.8, // 推荐需一定随机性，避免每次都推相同的 5 道菜
-    );
+    try {
+      return await _provider.createChatCompletion(
+        systemPrompt: AiRecommendationPrompt.systemPrompt,
+        userPrompt: userPrompt,
+        temperature: 0.8, // 推荐需一定随机性，避免每次都推相同的 5 道菜
+      );
+    } catch (e) {
+      final s = e.toString();
+      // 不可恢复错误（401 key 失效 / 400 参数错误）不重试，快速失败
+      if (s.contains('401') ||
+          s.contains('Unauthorized') ||
+          s.contains('400') ||
+          s.contains('Bad Request')) {
+        rethrow;
+      }
+      // 可恢复错误（429 限流 / 5xx 服务器错误 / 网络抖动）退避 1s 后重试 1 次
+      debugPrint('AI 调用失败，1s 后重试：$e');
+      await Future.delayed(const Duration(seconds: 1));
+      return _provider.createChatCompletion(
+        systemPrompt: AiRecommendationPrompt.systemPrompt,
+        userPrompt: userPrompt,
+        temperature: 0.8,
+      );
+    }
   }
 
   /// 解析 AI 返回的 JSON 为推荐列表（静态方法，易测）

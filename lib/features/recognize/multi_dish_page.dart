@@ -10,6 +10,7 @@ import '../../core/widgets/m3_widgets.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/seed/food_category_defaults.dart';
 import '../manual_entry/manual_entry_page.dart';
+import 'dish_name_editor.dart';
 import 'providers.dart';
 import 'recognize_controller.dart';
 
@@ -39,7 +40,8 @@ class MultiDishPage extends ConsumerStatefulWidget {
   ConsumerState<MultiDishPage> createState() => _MultiDishPageState();
 }
 
-class _MultiDishPageState extends ConsumerState<MultiDishPage> {
+class _MultiDishPageState extends ConsumerState<MultiDishPage>
+    with DishNameEditor<MultiDishPage> {
   // 每菜的份量状态（索引 0=主菜，1..n=additionalDishes）
   late List<double> _servings;
   // v1.3：每菜的数量状态（同物多份，索引与 _servings 对齐）
@@ -49,6 +51,12 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
   // 防重入：记录中禁止连点
   bool _isRecording = false;
   bool _dirty = false; // 用户是否改过滑块份量/数量（PopScope 未保存确认用）
+  // 改菜名支持：每菜当前菜名 + 当前单品营养（命中后 setState 替换）
+  // _currentSingles 跟踪每菜的单品营养（rename 后写入；复合菜保留 null）
+  late List<String> _currentNames;
+  late List<NutritionResult?> _currentSingles;
+  // 每菜"改菜名"防重入标志（独立于 _isRecording，允许同时改多个菜名）
+  late List<bool> _isRenamingFlags;
 
   @override
   void initState() {
@@ -75,6 +83,13 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
           (e.compositeNutrition != null &&
               e.compositeNutrition!.componentHits.isNotEmpty)),
     ];
+    // 改菜名：菜名和单品营养从 widget 拷贝到 state（rename 后 setState 替换）
+    _currentNames = allDishes.map((d) => d.dishName).toList();
+    _currentSingles = [
+      widget.mainSingle,
+      ...widget.additionalItems.take(5).map((e) => e.singleNutrition),
+    ];
+    _isRenamingFlags = List.filled(allDishes.length, false);
   }
 
   @override
@@ -179,6 +194,11 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
   Widget _buildDishCard(int index, VisionRecognitionResult dish) {
     final hit = _hitFlags[index];
     final (cal, p, f, c) = hit ? _calcNutrition(index, dish) : (0.0, 0.0, 0.0, 0.0);
+    // 改菜名按钮显示条件：单品路径（_currentSingles 非空）或完全未命中（无 composite 数据）
+    // 复合菜命中（componentHits 非空）不显示，因为多组分改单名语义复杂
+    final composite = _getCompositeNutrition(index);
+    final canRename = _currentSingles[index] != null ||
+        composite == null || composite.componentHits.isEmpty;
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
@@ -190,8 +210,9 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
               children: [
                 Expanded(
                   // v1.3：多份时菜名后显示 ×数量（用 state _quantities，步进器改后同步）
+                  // 改菜名后用 _currentNames[index] 实时刷新
                   child: Text(
-                      '${dish.dishName}${_quantities[index] > 1 ? " ×${_quantities[index]}" : ""}',
+                      '${_currentNames[index]}${_quantities[index] > 1 ? " ×${_quantities[index]}" : ""}',
                       style: Theme.of(context).textTheme.titleMedium),
                 ),
                 if (!hit)
@@ -210,6 +231,26 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
                             color: Theme.of(context)
                                 .colorScheme
                                 .tertiary)),
+                  ),
+                // 改菜名按钮（icon button，紧凑布局）
+                if (canRename)
+                  IconButton(
+                    icon: _isRenamingFlags[index]
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.drive_file_rename_outline,
+                            size: 20),
+                    onPressed: _isRenamingFlags[index]
+                        ? null
+                        : () => _handleRename(index),
+                    tooltip: '改菜名',
+                    visualDensity: VisualDensity.compact,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(
+                        minWidth: 32, minHeight: 32),
                   ),
               ],
             ),
@@ -246,7 +287,7 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
             ] else
               Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text('库中未找到「${dish.dishName}」，记录时将跳过此菜',
+                child: Text('库中未找到「${_currentNames[index]}」，记录时将跳过此菜',
                     style: TextStyle(
                         fontSize: 12,
                         color: Theme.of(context)
@@ -268,9 +309,17 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
   }
 
   /// v1.3：获取某菜的单品查库结果（判断是否单品路径用）
-  NutritionResult? _getSingleNutrition(int index) {
-    if (index == 0) return widget.mainSingle;
-    return widget.additionalItems[index - 1].singleNutrition;
+  /// 改菜名后用 _currentSingles[index]（rename 后实时刷新）
+  NutritionResult? _getSingleNutrition(int index) => _currentSingles[index];
+
+  /// 获取某菜的复合菜查库结果（判断是否复合菜路径用）
+  /// 改菜名不影响 composite 数据（rename 后 composite 仍来自 widget 原值）
+  CompositeNutritionResult? _getCompositeNutrition(int index) {
+    if (index == 0) return widget.mainComposite;
+    if (index - 1 < widget.additionalItems.length) {
+      return widget.additionalItems[index - 1].compositeNutrition;
+    }
+    return null;
   }
 
   /// v1.3：数量步进器（同物多份场景，仅单品命中 + perUnitG > 0 显示）
@@ -347,8 +396,9 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
     }
     if (index == 0) {
       // 主菜
-      if (widget.mainSingle != null) {
-        final n = widget.mainSingle!;
+      // 改菜名后用 _currentSingles[0]（rename 后实时刷新）
+      if (_currentSingles[0] != null) {
+        final n = _currentSingles[0]!;
         return (
           n.calories * ratio,
           n.proteinG * ratio,
@@ -367,9 +417,9 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
       }
     } else {
       // additionalDishes（index-1 对应 additionalItems）
-      final item = widget.additionalItems[index - 1];
-      if (item.singleNutrition != null) {
-        final n = item.singleNutrition!;
+      // 改菜名后用 _currentSingles[index]（rename 后实时刷新）
+      if (_currentSingles[index] != null) {
+        final n = _currentSingles[index]!;
         return (
           n.calories * ratio,
           n.proteinG * ratio,
@@ -377,6 +427,7 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
           n.carbsG * ratio,
         );
       }
+      final item = widget.additionalItems[index - 1];
       if (item.compositeNutrition != null) {
         final n = item.compositeNutrition!;
         return (
@@ -388,6 +439,53 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
       }
     }
     return (0, 0, 0, 0);
+  }
+
+  /// 改菜名→搜库→重算 单菜（多菜列表页）
+  /// 命中后 setState 替换 _currentNames[i] + _currentSingles[i] + _hitFlags[i]=true
+  /// 未命中弹 toast 提示，原菜名和营养保留不变
+  /// 取消（newName==null）静默返回，不打扰用户
+  Future<void> _handleRename(int index) async {
+    if (_isRenamingFlags[index]) return; // 防重入
+    setState(() => _isRenamingFlags[index] = true);
+    try {
+      final lookup = await ref.read(nutritionLookupProvider.future);
+      final foodRepo = await ref.read(foodItemRepoProvider.future);
+      if (!mounted) return;
+      final dish = (index == 0)
+          ? widget.mainDish
+          : widget.additionalItems[index - 1].dish;
+      final result = await editDishNameAndLookup(
+        originalName: _currentNames[index],
+        // 用 AI 估算 mid 作 servingG（per100g 反算基准，符合硬约束 #4）
+        servingG: dish.estimatedWeightGMid,
+        foodRepo: foodRepo,
+        lookup: lookup,
+      );
+      if (!mounted) return;
+      // 用户取消：静默返回
+      if (result.newName == null) return;
+      // 命中：替换菜名 + 单品营养 + 标记命中，标记 dirty（PopScope 未保存确认）
+      if (result.nutrition != null) {
+        setState(() {
+          _currentNames[index] = result.newName!;
+          _currentSingles[index] = result.nutrition;
+          _hitFlags[index] = true;
+          _dirty = true;
+        });
+        if (mounted) {
+          showAppToast(context, '已按「${result.newName}」重算营养');
+        }
+      } else {
+        // 未命中：保留原菜名 + 原营养，提示用户
+        showNotFoundToast();
+      }
+    } catch (e) {
+      // 防御性兜底（lookup 内部异常 / provider 异常）
+      if (mounted) showAppToast(context, '改菜名失败：$e');
+    } finally {
+      if (mounted) setState(() => _isRenamingFlags[index] = false);
+    }
   }
 
   /// 全部记录：对每个命中菜品写一条 meal_log（同日期同餐次）
@@ -411,11 +509,13 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
       await db.transaction(() async {
         // v1.9：单品哨兵分支的 foodItemId 解析（包装 OCR 优先 + 品类校准兜底）
         // i==0 主菜和 i>0 附加菜共用同一逻辑，避免代码重复
+        // 改菜名支持：nameOverride 非空时用新菜名写 food_item（rename + OFF 兜底场景）
         Future<int> resolveSingleFoodItemId(
           VisionRecognitionResult dish,
           NutritionResult n,
-          FoodItemRepository foodRepo,
-        ) async {
+          FoodItemRepository foodRepo, {
+          String? nameOverride,
+        }) async {
           final mid = dish.estimatedWeightGMid;
           final per100 = mid > 0 ? 100.0 / mid : 0.0;
           // v1.9：包装食品 OCR 优先路径——有包装营养表数据时按包装换算，
@@ -452,20 +552,21 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
                         category: dish.foodCategory,
                       );
                     })();
+          final effectiveName = nameOverride ?? dish.dishName;
           if (!dish.hasPackageNutrition) {
             final rawCalPer100 = n.calories * per100;
             if (caloriesPer100g != rawCalPer100) {
               debugPrint(
-                  '[FoodCategoryDefaults] ${dish.dishName}(${dish.foodCategory}) '
+                  '[FoodCategoryDefaults] $effectiveName(${dish.foodCategory}) '
                   'AI per100g=$rawCalPer100 偏离品类默认值，校准为 $caloriesPer100g');
             }
           } else {
             debugPrint(
-                '[PackageOCR] ${dish.dishName} 使用包装营养表换算 per100g=$caloriesPer100g '
+                '[PackageOCR] $effectiveName 使用包装营养表换算 per100g=$caloriesPer100g '
                 '(serving=${dish.packageServingG}g/${dish.packageServingKj}kJ/${dish.packageServingKcal}kcal)');
           }
           return foodRepo.upsertAiRecognized(
-            name: dish.dishName,
+            name: effectiveName,
             brand: dish.brand,
             caloriesPer100g: caloriesPer100g,
             proteinPer100g: proteinPer100g,
@@ -480,113 +581,77 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
           final dish = allDishes[i];
           final serving = _servings[i];
           final (cal, p, f, c) = _calcNutrition(i, dish);
+          // 改菜名后用 _currentNames[i] 写库（rename + 兜底场景才走 upsert）
+          final effectiveName = _currentNames[i];
 
           // 获取 foodItemId：单品用查库命中的 foodItemId，复合菜 upsert ai_recognized
           // v1.4：单品若库未命中走 AI 兜底，foodItemId=0 是哨兵，写库前必须替换为真实 id
           // （meal_log.food_item_id 是非空 FK，PRAGMA foreign_keys=ON 时 id=0 触发外键违规崩溃）
+          // 改菜名后 _currentSingles[i] 优先于 widget.mainSingle / additionalItems.single
           int foodItemId;
           String? componentsSnapshot;
-          if (i == 0) {
-            if (widget.mainSingle != null) {
-              final n = widget.mainSingle!;
-              if (n.foodItemId == 0) {
-                // 哨兵：AI 兜底结果 → 创建 ai_recognized food_item
-                // v1.9：包装 OCR 优先 + 品类校准兜底（共用 resolveSingleFoodItemId）
-                foodItemId =
-                    await resolveSingleFoodItemId(dish, n, foodRepo);
-              } else {
-                foodItemId = n.foodItemId;
-              }
+          final composite = _getCompositeNutrition(i);
+          if (_currentSingles[i] != null) {
+            final n = _currentSingles[i]!;
+            if (n.foodItemId == 0) {
+              // 哨兵：AI 兜底 / 改菜名 + OFF 兜底 → 创建 ai_recognized food_item
+              // v1.9：包装 OCR 优先 + 品类校准兜底（共用 resolveSingleFoodItemId）
+              // 改菜名：传 effectiveName 让新建 food_item 用新菜名
+              foodItemId = await resolveSingleFoodItemId(dish, n, foodRepo,
+                  nameOverride: effectiveName);
             } else {
-              final oilG = widget.mainComposite?.oilG ?? 0;
-              componentsSnapshot = _encodeComponents(dish, oilG: oilG);
-              // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），per100g 用包装换算值（替代 0）
-              // v1.10：包装换算宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ per100g 用 0 占位，
-              //   避免写入库的 food_item 宏量全 0 误导未来查库（与 offline_queue 复合菜全命中路径一致）
-              final packagePer100 = dish.hasPackageNutrition
-                  ? dish.computePackageNutritionPer100g(
-                      estimatedProteinG: dish.estimatedProteinG,
-                      estimatedFatG: dish.estimatedFatG,
-                      estimatedCarbsG: dish.estimatedCarbsG,
-                    )
-                  : null;
-              // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
-              final packageMacrosAllZero = packagePer100 != null &&
-                  packagePer100.$2 == 0 &&
-                  packagePer100.$3 == 0 &&
-                  packagePer100.$4 == 0;
-              foodItemId = await foodRepo.upsertAiRecognized(
-                name: dish.dishName,
-                brand: dish.brand,
-                caloriesPer100g:
-                    (packagePer100 != null && !packageMacrosAllZero)
-                        ? packagePer100.$1
-                        : 0,
-                proteinPer100g:
-                    (packagePer100 != null && !packageMacrosAllZero)
-                        ? packagePer100.$2
-                        : 0,
-                fatPer100g: (packagePer100 != null && !packageMacrosAllZero)
-                    ? packagePer100.$3
-                    : 0,
-                carbsPer100g: (packagePer100 != null && !packageMacrosAllZero)
-                    ? packagePer100.$4
-                    : 0,
-                confidence: dish.confidence,
-                componentsJson: componentsSnapshot,
-              );
+              foodItemId = n.foodItemId;
             }
+          } else if (composite != null) {
+            final oilG = composite.oilG;
+            componentsSnapshot = _encodeComponents(dish, oilG: oilG);
+            // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），per100g 用包装换算值（替代 0）
+            // v1.10：包装换算宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ per100g 用 0 占位，
+            //   避免写入库的 food_item 宏量全 0 误导未来查库（与 offline_queue 复合菜全命中路径一致）
+            final packagePer100 = dish.hasPackageNutrition
+                ? dish.computePackageNutritionPer100g(
+                    estimatedProteinG: dish.estimatedProteinG,
+                    estimatedFatG: dish.estimatedFatG,
+                    estimatedCarbsG: dish.estimatedCarbsG,
+                  )
+                : null;
+            // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
+            final packageMacrosAllZero = packagePer100 != null &&
+                packagePer100.$2 == 0 &&
+                packagePer100.$3 == 0 &&
+                packagePer100.$4 == 0;
+            foodItemId = await foodRepo.upsertAiRecognized(
+              name: effectiveName,
+              brand: dish.brand,
+              caloriesPer100g:
+                  (packagePer100 != null && !packageMacrosAllZero)
+                      ? packagePer100.$1
+                      : 0,
+              proteinPer100g:
+                  (packagePer100 != null && !packageMacrosAllZero)
+                      ? packagePer100.$2
+                      : 0,
+              fatPer100g: (packagePer100 != null && !packageMacrosAllZero)
+                  ? packagePer100.$3
+                  : 0,
+              carbsPer100g: (packagePer100 != null && !packageMacrosAllZero)
+                  ? packagePer100.$4
+                  : 0,
+              confidence: dish.confidence,
+              componentsJson: componentsSnapshot,
+            );
           } else {
-            final item = widget.additionalItems[i - 1];
-            if (item.singleNutrition != null) {
-              final n = item.singleNutrition!;
-              if (n.foodItemId == 0) {
-                // 哨兵：附加菜 AI 兜底 → 创建 ai_recognized food_item
-                // v1.9：包装 OCR 优先 + 品类校准兜底（共用 resolveSingleFoodItemId）
-                foodItemId =
-                    await resolveSingleFoodItemId(dish, n, foodRepo);
-              } else {
-                foodItemId = n.foodItemId;
-              }
-            } else {
-              final oilG = item.compositeNutrition?.oilG ?? 0;
-              componentsSnapshot = _encodeComponents(dish, oilG: oilG);
-              // v1.9：复合菜有包装营养表数据时，per100g 用包装换算值（替代 0）
-              // v1.10：包装换算宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ per100g 用 0 占位，
-              //   避免写入库的 food_item 宏量全 0 误导未来查库（与主菜复合菜路径一致）
-              final packagePer100 = dish.hasPackageNutrition
-                  ? dish.computePackageNutritionPer100g(
-                      estimatedProteinG: dish.estimatedProteinG,
-                      estimatedFatG: dish.estimatedFatG,
-                      estimatedCarbsG: dish.estimatedCarbsG,
-                    )
-                  : null;
-              // v1.10：判断包装换算宏量是否全 0
-              final packageMacrosAllZero = packagePer100 != null &&
-                  packagePer100.$2 == 0 &&
-                  packagePer100.$3 == 0 &&
-                  packagePer100.$4 == 0;
-              foodItemId = await foodRepo.upsertAiRecognized(
-                name: dish.dishName,
-                brand: dish.brand,
-                caloriesPer100g:
-                    (packagePer100 != null && !packageMacrosAllZero)
-                        ? packagePer100.$1
-                        : 0,
-                proteinPer100g:
-                    (packagePer100 != null && !packageMacrosAllZero)
-                        ? packagePer100.$2
-                        : 0,
-                fatPer100g: (packagePer100 != null && !packageMacrosAllZero)
-                    ? packagePer100.$3
-                    : 0,
-                carbsPer100g: (packagePer100 != null && !packageMacrosAllZero)
-                    ? packagePer100.$4
-                    : 0,
-                confidence: dish.confidence,
-                componentsJson: componentsSnapshot,
-              );
-            }
+            // 主菜/附加菜均无营养数据（理论不应到这里，因 _hitFlags[i] 已守卫）
+            // 防御性兜底：用 effectiveName 创建空 food_item，避免后续 insertMealLog FK 违规
+            foodItemId = await foodRepo.upsertAiRecognized(
+              name: effectiveName,
+              brand: dish.brand,
+              caloriesPer100g: 0,
+              proteinPer100g: 0,
+              fatPer100g: 0,
+              carbsPer100g: 0,
+              confidence: dish.confidence,
+            );
           }
 
           await mealRepo.insertMealLog(

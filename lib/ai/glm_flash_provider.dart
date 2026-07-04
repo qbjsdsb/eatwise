@@ -18,12 +18,18 @@ class GlmFlashProvider {
 
   /// 根据一周饮食 + 体重数据生成 ≤300 字中文建议
   ///
-  /// weeklyData 格式：
+  /// weeklyData 格式（v1.11 增强）：
   /// {
   ///   'daily_calories': [1800, 2100, 1500, 2200, 1900, 2500, 1700],
   ///   'daily_weights': [70.2, 70.1, 70.3, 70.0, 69.8, 69.9, 69.7],
   ///   'target_calories': 2000,
   ///   'goal': 'cut',
+  ///   'daily_protein': [80, 95, 70, 110, 85, 120, 75],   // 每日蛋白 g
+  ///   'daily_fat': [60, 70, 50, 75, 65, 80, 55],          // 每日脂肪 g
+  ///   'daily_carbs': [200, 230, 180, 250, 210, 280, 190], // 每日碳水 g
+  ///   'protein_goal': 98.0,  'fat_goal': 63.0,  'carb_goal': 250.0,
+  ///   'recorded_days': 7,  'total_days': 7,  'coverage_rate': 1.0,
+  ///   'preference_foods': ['米饭', '鸡蛋', '鸡胸肉', '西兰花', '牛奶'],
   /// }
   Future<String> generateWeeklySummary(Map<String, dynamic> weeklyData) async {
     final prompt = _buildPrompt(weeklyData);
@@ -33,8 +39,9 @@ class GlmFlashProvider {
             model: 'glm-4-flash',
             messages: [
               ChatMessage.system(
-                '你是营养师助手。根据用户一周的饮食热量和体重数据，给出不超过300字的具体中文建议，'
-                '包含：1）热量摄入评估 2）体重趋势分析 3）下周可执行建议。直接给建议，不要寒暄。',
+                '你是营养师助手。根据用户一周的饮食热量、体重、宏量营养素、饮食偏好数据，'
+                '给出不超过300字的具体中文建议，包含：1）热量摄入评估 2）宏量营养素达成率分析 '
+                '3）体重趋势分析 4）下周可执行建议（结合饮食偏好）。直接给建议，不要寒暄。',
               ),
               // openai_dart 7.0: UserMessageContent.text(...) 工厂构造器
               ChatMessage.user(UserMessageContent.text(prompt)),
@@ -48,27 +55,26 @@ class GlmFlashProvider {
     return res.text ?? '（无内容返回）';
   }
 
+  /// 构造周报 user prompt（v1.11 增强：宏量达成率 + 偏好 + 覆盖率）
   String _buildPrompt(Map<String, dynamic> data) {
     final calories = data['daily_calories'] as List;
     final weights = data['daily_weights'] as List;
     final target = data['target_calories'];
     final goal = data['goal'];
     final goalLabel = goal == 'cut' ? '减脂' : goal == 'bulk' ? '增肌' : '维持';
-    return '本周目标：$goalLabel，每日热量目标 $target kcal。'
-        '每日摄入热量：$calories kcal。'
-        '每日体重：$weights kg。'
-        '请给出本周总结和下周建议。';
+
+    final buf = StringBuffer('本周目标：$goalLabel，每日热量目标 $target kcal。');
+    buf.write('每日摄入热量：$calories kcal。');
+    buf.write('每日体重：$weights kg。');
+    _appendMacroAndPreference(buf, data, '本周');
+    buf.write('请给出本周总结和下周建议，结合宏量达成率分析饮食结构是否合理。');
+    return buf.toString();
   }
 
   /// 根据一月饮食 + 体重数据生成 ≤400 字中文建议
   ///
-  /// monthlyData 格式：
-  /// {
-  ///   'daily_calories': [1800, 2100, ...], // 28~31 元素
-  ///   'daily_weights': [70.2, 70.1, ...],
-  ///   'target_calories': 2000,
-  ///   'goal': 'cut',
-  /// }
+  /// monthlyData 格式（v1.11 增强，字段与 weeklyData 一致，仅日数 28~31）：
+  /// 见 [generateWeeklySummary] 的 weeklyData 注释。
   Future<String> generateMonthlySummary(Map<String, dynamic> monthlyData) async {
     final prompt = _buildMonthlyPrompt(monthlyData);
     final res = await _client.chat.completions
@@ -77,8 +83,10 @@ class GlmFlashProvider {
             model: 'glm-4-flash',
             messages: [
               ChatMessage.system(
-                '你是营养师助手。根据用户一个月的饮食热量和体重数据，给出不超过400字的具体中文建议，'
-                '包含：1）月度热量摄入评估 + 周环比趋势 2）体重变化分析 3）下月可执行建议。直接给建议，不要寒暄。',
+                '你是营养师助手。根据用户一个月的饮食热量、体重、宏量营养素、饮食偏好数据，'
+                '给出不超过400字的具体中文建议，包含：1）月度热量摄入评估 + 周环比趋势 '
+                '2）宏量营养素达成率分析 3）体重变化分析 4）下月可执行建议（结合饮食偏好）。'
+                '直接给建议，不要寒暄。',
               ),
               ChatMessage.user(UserMessageContent.text(prompt)),
             ],
@@ -90,16 +98,77 @@ class GlmFlashProvider {
     return res.text ?? '（无内容返回）';
   }
 
+  /// 构造月报 user prompt（v1.11 增强：宏量达成率 + 偏好 + 覆盖率 + 周环比）
   String _buildMonthlyPrompt(Map<String, dynamic> data) {
     final calories = data['daily_calories'] as List;
     final weights = data['daily_weights'] as List;
     final target = data['target_calories'];
     final goal = data['goal'];
     final goalLabel = goal == 'cut' ? '减脂' : goal == 'bulk' ? '增肌' : '维持';
-    return '本月目标：$goalLabel，每日热量目标 $target kcal。'
-        '每日摄入热量：$calories kcal。'
-        '每日体重：$weights kg。'
-        '请给出本月总结和下月建议，包含周环比分析。';
+
+    final buf = StringBuffer('本月目标：$goalLabel，每日热量目标 $target kcal。');
+    buf.write('每日摄入热量：$calories kcal。');
+    buf.write('每日体重：$weights kg。');
+    _appendMacroAndPreference(buf, data, '本月');
+    buf.write('请给出本月总结和下月建议，包含周环比分析，结合宏量达成率分析饮食结构。');
+    return buf.toString();
+  }
+
+  /// 追加宏量达成率 + 覆盖率 + 偏好画像到 prompt（周/月共用）
+  ///
+  /// v1.11 新增：让 AI 能看到三宏实际摄入 vs 目标、数据完整度、常吃食物，
+  /// 从而给出更智能的建议（如"蛋白不足，常吃米饭可搭配鸡蛋"）。
+  ///
+  /// 宏量均值只统计有记录的天数（calories > 0），避免 0 填充日拉低均值。
+  void _appendMacroAndPreference(
+      StringBuffer buf, Map<String, dynamic> data, String periodLabel) {
+    // 宏量达成率（蛋白/脂肪/碳水 实际均值 vs 目标）
+    final protein = data['daily_protein'] as List?;
+    final fat = data['daily_fat'] as List?;
+    final carbs = data['daily_carbs'] as List?;
+    final calories = data['daily_calories'] as List?;
+    final proteinGoal = data['protein_goal'];
+    final fatGoal = data['fat_goal'];
+    final carbGoal = data['carb_goal'];
+    if (protein != null && fat != null && carbs != null && calories != null) {
+      // 只统计有记录的天数（热量>0），避免 0 填充日拉低均值
+      double sumP = 0, sumF = 0, sumC = 0;
+      var n = 0;
+      for (var i = 0; i < calories.length; i++) {
+        final cal = (calories[i] as num).toDouble();
+        if (cal <= 0) continue;
+        n++;
+        sumP += (protein[i] as num).toDouble();
+        sumF += (fat[i] as num).toDouble();
+        sumC += (carbs[i] as num).toDouble();
+      }
+      if (n > 0) {
+        final avgP = sumP / n;
+        final avgF = sumF / n;
+        final avgC = sumC / n;
+        buf.write('$periodLabel 记录日均值：蛋白 ${avgP.toStringAsFixed(1)}g'
+            '（目标 ${proteinGoal?.toStringAsFixed(0)}g）、'
+            '脂肪 ${avgF.toStringAsFixed(1)}g'
+            '（目标 ${fatGoal?.toStringAsFixed(0)}g）、'
+            '碳水 ${avgC.toStringAsFixed(1)}g'
+            '（目标 ${carbGoal?.toStringAsFixed(0)}g）。');
+      }
+    }
+
+    // 覆盖率（让 AI 知道数据完整度，覆盖率低时建议用户多记录）
+    final recordedDays = data['recorded_days'];
+    final totalDays = data['total_days'];
+    final coverageRate = data['coverage_rate'];
+    if (recordedDays != null && totalDays != null && coverageRate != null) {
+      buf.write('记录覆盖 $recordedDays/$totalDays 天'
+          '（${(coverageRate * 100).round()}%）。');
+    }
+
+    // 饮食偏好画像（高频食物 top 5）
+    final prefs = data['preference_foods'] as List?;
+    if (prefs != null && prefs.isNotEmpty) {
+      buf.write('常吃食物：${prefs.join('、')}。');
+    }
   }
 
   /// 通用聊天补全（v5 AI 推荐用）

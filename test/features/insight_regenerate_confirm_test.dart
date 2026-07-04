@@ -16,16 +16,16 @@ void main() {
     addTearDown(db.close);
 
     // 先插入一条已有汇总（模拟用户之前生成过）
+    // v1.11：滚动窗口策略——periodStart = today-6, periodEnd = today（不再用自然周一二三四五六日）
     final repo = InsightRepository(db);
     final now = DateTime.now();
-    final monday = now.subtract(Duration(days: now.weekday - 1));
-    final sunday = monday.add(const Duration(days: 6));
+    final start = now.subtract(const Duration(days: 6));
     String fmt(DateTime d) =>
         '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
     await repo.insert(
       periodType: 'weekly',
-      periodStart: fmt(monday),
-      periodEnd: fmt(sunday),
+      periodStart: fmt(start),
+      periodEnd: fmt(now),
       summaryText: '这是已有的汇总内容',
     );
 
@@ -46,8 +46,12 @@ void main() {
 
     // 点"重新生成"按钮
     expect(find.text('重新生成'), findsOneWidget);
-    await tester.tap(find.text('重新生成'));
+    // v1.11：覆盖率提示 + 汇总 Card 把按钮推到 600px 视口外，需手动滚动 ListView 再 tap
+    // （scrollUntilVisible 会因 pump 时 setState 产生多匹配而抛 "Too many elements"）
+    await tester.drag(find.byType(ListView), const Offset(0, -300));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('重新生成'));
+    await tester.pumpAndSettle(const Duration(seconds: 1));
 
     // 验证确认对话框出现
     expect(find.text('重新生成'), findsWidgets); // 对话框标题也是"重新生成"

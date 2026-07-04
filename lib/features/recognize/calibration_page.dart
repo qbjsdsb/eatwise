@@ -7,6 +7,7 @@ import '../../ai/vision_provider.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../manual_entry/manual_entry_page.dart';
+import 'dish_name_editor.dart';
 
 /// 校准页：按置信度分级
 /// - 置信度 ≥ 0.85 且单品：允许"一键记录"跳过校准
@@ -22,6 +23,9 @@ class CalibrationPage extends StatefulWidget {
   // 非空时滑块初值用它（而非 AI 估算 mid），减少手动拖滑块。
   // 仅单品路径生效；复合菜份量按组分，不走此参数。
   final double? suggestedServingG;
+  // 改菜名→搜库→重算 用的 NutritionLookup 实例（recognize_page 注入）
+  // null 时隐藏"改菜名"按钮（单品路径才有此按钮；复合菜改菜名语义复杂，跳过）
+  final NutritionLookup? nutritionLookup;
 
   const CalibrationPage({
     super.key,
@@ -31,13 +35,14 @@ class CalibrationPage extends StatefulWidget {
     required this.foodItemRepo,
     required this.onConfirm,
     this.suggestedServingG,
+    this.nutritionLookup,
   });
 
   @override
   State<CalibrationPage> createState() => _CalibrationPageState();
 }
 
-class _CalibrationPageState extends State<CalibrationPage> {
+class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<CalibrationPage> {
   late double _servingG;
   late bool _canSkipCalibration;
   // 是否用了历史中位数作初值（UI 提示用）
@@ -53,6 +58,12 @@ class _CalibrationPageState extends State<CalibrationPage> {
   // 防重入：写入 meal_log 期间禁用按钮，避免双击重复记录
   bool _isRecording = false;
   bool _dirty = false; // 用户是否拖过滑块（PopScope 未保存确认用）
+
+  // 改菜名后的可变状态（initState 从 widget 初始化，改菜名命中后 setState 替换）
+  // 让菜名和营养展示读 state 而非 widget 字段，实现"改菜名后 UI 实时刷新"
+  late String _currentDishName;
+  late NutritionResult? _currentNutrition;
+  bool _isRenaming = false; // 改菜名防重入
 
   void _markDirty() {
     if (_dirty) return;
@@ -104,6 +115,9 @@ class _CalibrationPageState extends State<CalibrationPage> {
       }
       _oilG = widget.compositeNutrition!.oilG;
     }
+    // 改菜名支持：菜名和单品营养从 widget 拷贝到 state（改菜名命中后 setState 替换）
+    _currentDishName = widget.recognitionResult.dishName;
+    _currentNutrition = widget.singleNutrition;
   }
 
   @override
@@ -134,6 +148,23 @@ class _CalibrationPageState extends State<CalibrationPage> {
               onPressed: _isRecording ? null : _trustAi,
               child: const Text('信任 AI'),
             ),
+          // 识别错了？改菜名重算（仅单品路径 + 注入 lookup 时显示）
+          // 复合菜改菜名语义复杂（涉及多组分），不在此处提供，引导用户转手动
+          if (widget.nutritionLookup != null &&
+              widget.singleNutrition != null)
+            TextButton.icon(
+              onPressed: _isRecording || _isRenaming
+                  ? null
+                  : _handleRename,
+              icon: _isRenaming
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.drive_file_rename_outline),
+              label: const Text('改菜名'),
+            ),
           // 识别不准？转手动录入（避免用户被迫记录错误识别结果）
           TextButton.icon(
             onPressed: _isRecording
@@ -158,13 +189,13 @@ class _CalibrationPageState extends State<CalibrationPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                        '识别结果：${widget.recognitionResult.dishName}'
+                        '识别结果：$_currentDishName'
                         '${_quantity > 1 ? " ×$_quantity" : ""}',
                         style: Theme.of(context).textTheme.headlineSmall),
-                    if (widget.singleNutrition != null)
+                    if (_currentNutrition != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: _sourceBadge(widget.singleNutrition!.source),
+                        child: _sourceBadge(_currentNutrition!.source),
                       ),
                     Text('置信度：${(widget.recognitionResult.confidence * 100).toStringAsFixed(0)}%'),
                     if (isLowConfidence)
@@ -282,7 +313,8 @@ class _CalibrationPageState extends State<CalibrationPage> {
                     ],
                     const SizedBox(height: 24),
                     // 复合菜：份量由各组分滑块累加，主滑块无效故隐藏，避免"调了没反应"困惑
-                    if (widget.singleNutrition != null) ...[
+                    // 改菜名后 _currentNutrition 仍非空，滑块继续显示
+                    if (_currentNutrition != null) ...[
                       Text('份量：${_servingG.toStringAsFixed(0)} g'
                           ' (估算 ${widget.recognitionResult.estimatedWeightGLow.toStringAsFixed(0)}-${widget.recognitionResult.estimatedWeightGHigh.toStringAsFixed(0)} g)'),
                       if (_usedHistoryServing)
@@ -356,15 +388,15 @@ class _CalibrationPageState extends State<CalibrationPage> {
   }
 
   Widget _buildNutritionPreview() {
-    if (widget.singleNutrition != null) {
-      // 单品路径：按总份量滑块比例重算
+    if (_currentNutrition != null) {
+      // 单品路径：按总份量滑块比例重算（改菜名后用 _currentNutrition，营养会随之刷新）
       // 防除零：AI 返回 estimatedWeightGMid <= 0 时 ratio=1（用原值，不按比例换算）
       final mid = widget.recognitionResult.estimatedWeightGMid;
       final ratio = mid > 0 ? _servingG / mid : 1.0;
-      final cal = widget.singleNutrition!.calories * ratio;
-      final protein = widget.singleNutrition!.proteinG * ratio;
-      final fat = widget.singleNutrition!.fatG * ratio;
-      final carbs = widget.singleNutrition!.carbsG * ratio;
+      final cal = _currentNutrition!.calories * ratio;
+      final protein = _currentNutrition!.proteinG * ratio;
+      final fat = _currentNutrition!.fatG * ratio;
+      final carbs = _currentNutrition!.carbsG * ratio;
       // 防除零：mid <= 0 时 lowRatio/highRatio = 1（不显示区间）
       final lowRatio = mid > 0 ? widget.recognitionResult.estimatedWeightGLow / mid : 1.0;
       final highRatio = mid > 0 ? widget.recognitionResult.estimatedWeightGHigh / mid : 1.0;
@@ -527,7 +559,7 @@ class _CalibrationPageState extends State<CalibrationPage> {
   /// 仅单品路径 + perUnitG > 0 时显示；复合菜份量按组分，不走数量步进器
   /// − / 数量+单位 / + 三段式，范围 1-20；改数量时同步 _servingG = perUnitG × quantity
   Widget _buildQuantityStepper() {
-    if (widget.singleNutrition == null) return const SizedBox.shrink();
+    if (_currentNutrition == null) return const SizedBox.shrink();
     if (_perUnitG <= 0) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 8),
@@ -585,20 +617,63 @@ class _CalibrationPageState extends State<CalibrationPage> {
     _confirmWithServing(_servingG);
   }
 
+  /// 改菜名→搜库→重算 单品路径
+  /// 命中后 setState 替换 _currentDishName + _currentNutrition，UI 实时刷新
+  /// 未命中弹 toast 提示，原菜名和营养保留不变（避免显示新菜名 + 错误营养）
+  /// 取消（newName==null）静默返回，不打扰用户
+  Future<void> _handleRename() async {
+    if (_isRenaming) return; // 防重入
+    final lookup = widget.nutritionLookup;
+    if (lookup == null) return; // 没注入 lookup 不应该出现（AppBar 已守卫）
+    setState(() => _isRenaming = true);
+    try {
+      final result = await editDishNameAndLookup(
+        originalName: _currentDishName,
+        // 用 AI 估算 mid 作 servingG（per100g 反算基准，符合硬约束 #4）
+        servingG: widget.recognitionResult.estimatedWeightGMid,
+        foodRepo: widget.foodItemRepo,
+        lookup: lookup,
+      );
+      if (!mounted) return;
+      // 用户取消：静默返回
+      if (result.newName == null) return;
+      // 命中：替换菜名 + 营养，标记 dirty（PopScope 未保存确认）
+      if (result.nutrition != null) {
+        setState(() {
+          _currentDishName = result.newName!;
+          _currentNutrition = result.nutrition;
+          _dirty = true;
+        });
+        if (mounted) {
+          showAppToast(context, '已按「${result.newName}」重算营养');
+        }
+      } else {
+        // 未命中：保留原菜名 + 原营养，提示用户
+        showNotFoundToast();
+      }
+    } catch (e) {
+      // 防御性兜底（lookup 内部异常）
+      if (mounted) showAppToast(context, '改菜名失败：$e');
+    } finally {
+      if (mounted) setState(() => _isRenaming = false);
+    }
+  }
+
   Future<void> _confirmWithServing(double servingG) async {
     if (_isRecording) return; // 防重入
     setState(() => _isRecording = true);
     try {
-      if (widget.singleNutrition != null) {
+      if (_currentNutrition != null) {
         // 防除零：AI 返回 estimatedWeightGMid <= 0 时 ratio=1
+        // 改菜名后用 _currentNutrition 的热量/宏量（已按 AI mid 份量反算）
         final mid = widget.recognitionResult.estimatedWeightGMid;
         final ratio = mid > 0 ? servingG / mid : 1.0;
         await widget.onConfirm(
           servingG,
-          widget.singleNutrition!.calories * ratio,
-          widget.singleNutrition!.proteinG * ratio,
-          widget.singleNutrition!.fatG * ratio,
-          widget.singleNutrition!.carbsG * ratio,
+          _currentNutrition!.calories * ratio,
+          _currentNutrition!.proteinG * ratio,
+          _currentNutrition!.fatG * ratio,
+          _currentNutrition!.carbsG * ratio,
         );
       } else if (widget.compositeNutrition != null) {
         // 复合菜用总组分份量之和

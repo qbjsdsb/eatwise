@@ -28,10 +28,14 @@ void main() {
     ));
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
-    // _summary 为空时按钮文案是"生成本周汇总"
-    expect(find.text('生成本周汇总'), findsOneWidget);
-    await tester.tap(find.text('生成本周汇总'));
+    // _summary 为空时按钮文案是"生成近 7 天汇总"（v1.11 滚动窗口）
+    expect(find.text('生成近 7 天汇总'), findsOneWidget);
+    // v1.11：覆盖率提示把按钮推到 600px 视口外，需 scrollUntilVisible 后再 tap
+    final btnFinder = find.text('生成近 7 天汇总');
+    await tester.scrollUntilVisible(btnFinder, 200);
     await tester.pumpAndSettle();
+    await tester.tap(btnFinder);
+    await tester.pumpAndSettle(const Duration(seconds: 2));
 
     // 验证无网络提示出现
     expect(find.textContaining('当前无网络'), findsOneWidget);

@@ -282,6 +282,9 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
           );
         }
         if (!mounted) return;
+        // 改菜名支持：注入 NutritionLookup 供 calibration_page 调用（5 级模糊兜底 + OFF 云查）
+        final nutritionLookup = await ref.read(nutritionLookupProvider.future);
+        if (!mounted) return;
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => CalibrationPage(
@@ -290,6 +293,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
               compositeNutrition: state.compositeNutrition,
               foodItemRepo: foodItemRepo,
               suggestedServingG: suggestedServingG,
+              nutritionLookup: nutritionLookup,
               onConfirm:
                   (
                     servingG,
