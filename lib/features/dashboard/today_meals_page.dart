@@ -269,10 +269,18 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
                 : _meals.isEmpty
                     ? EmptyState(
                         icon: Icons.restaurant_menu,
-                        title: '今日暂无记录',
-                        subtitle: '点下方拍照按钮开始记录',
-                        actionLabel: '去拍照',
-                        onAction: () => context.push('/recognize'),
+                        title: _selectedDate == todayYmd()
+                            ? '今日暂无记录'
+                            : '该日暂无记录',
+                        subtitle: _selectedDate == todayYmd()
+                            ? '点下方拍照按钮开始记录'
+                            : '该日没有拍照记录',
+                        actionLabel: _selectedDate == todayYmd()
+                            ? '去拍照'
+                            : null,
+                        onAction: _selectedDate == todayYmd()
+                            ? () => context.push('/recognize')
+                            : null,
                       )
                     : ListView(
                         padding: const EdgeInsets.symmetric(

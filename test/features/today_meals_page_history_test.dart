@@ -174,4 +174,27 @@ void main() {
     // 关闭后 DatePicker 应消失
     expect(find.byType(DatePickerDialog), findsNothing);
   });
+
+  testWidgets('B4: 非今日空态显示"该日暂无记录"且不显示"去拍照"按钮', (tester) async {
+    await pumpPage(tester);
+
+    // 切到昨天（昨天无记录）
+    await tester.tap(find.byIcon(Icons.chevron_left));
+    await tester.pumpAndSettle(const Duration(seconds: 2));
+
+    // 空态文案应为"该日暂无记录"（不是"今日暂无记录"）
+    expect(find.text('该日暂无记录'), findsOneWidget);
+    expect(find.text('今日暂无记录'), findsNothing);
+
+    // 非今日不应显示"去拍照"按钮（不能在过去添加）
+    expect(find.text('去拍照'), findsNothing);
+  });
+
+  testWidgets('B4: 今日空态保留"去拍照"按钮', (tester) async {
+    await pumpPage(tester);
+
+    // 今日无记录时应显示"今日暂无记录" + "去拍照"按钮
+    expect(find.text('今日暂无记录'), findsOneWidget);
+    expect(find.text('去拍照'), findsOneWidget);
+  });
 }
