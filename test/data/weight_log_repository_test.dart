@@ -40,12 +40,38 @@ void main() {
     expect(logs.last.date, '2026-07-05');
   });
 
-  test('同一天多次记录各存一条', () async {
+  test('同一天多次记录各存一条（DB 层）', () async {
+    // insert 层各存一条（保留历史，编辑/删除用）
     await repo.insert(date: '2026-07-02', weightKg: 70.0);
     await repo.insert(date: '2026-07-02', weightKg: 70.2);
 
+    // 直接查 DB 验证两条都存了（不经过 getRange 去重）
+    final all = await db.select(db.weightLogs).get();
+    expect(all.length, 2, reason: 'DB 层应保留所有记录');
+  });
+
+  test('L5: getRange 同日多条去重保留最新（与 getRangeForTdee 一致）', () async {
+    // 同日插入两条，第二条是更新后的值
+    await repo.insert(date: '2026-07-02', weightKg: 70.0);
+    await repo.insert(date: '2026-07-02', weightKg: 71.5);
+
     final logs = await repo.getRange('2026-07-02', '2026-07-02');
-    expect(logs.length, 2);
+    expect(logs.length, 1, reason: 'L5: 同日多条应去重，折线图只显示一个点');
+    expect(logs.first.weightKg, 71.5,
+        reason: 'L5: 保留最新（后插入的 id 大，是用户最新值）');
+  });
+
+  test('L5: getRange 跨日多条只对同日去重，不同日各保留', () async {
+    await repo.insert(date: '2026-07-01', weightKg: 70.0);
+    await repo.insert(date: '2026-07-01', weightKg: 70.5); // 覆盖 07-01
+    await repo.insert(date: '2026-07-02', weightKg: 71.0);
+
+    final logs = await repo.getRange('2026-07-01', '2026-07-02');
+    expect(logs.length, 2, reason: '不同日应各保留一条');
+    expect(logs[0].date, '2026-07-01');
+    expect(logs[0].weightKg, 70.5, reason: '07-01 取最新');
+    expect(logs[1].date, '2026-07-02');
+    expect(logs[1].weightKg, 71.0);
   });
 
   test('getRecent 返回最近 N 天', () async {
