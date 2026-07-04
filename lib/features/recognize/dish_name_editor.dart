@@ -123,7 +123,9 @@ mixin DishNameEditor<T extends StatefulWidget> on State<T> {
       return (newName: null, nutrition: null);
     }
 
-    final candidates = await foodRepo.searchByName(newName, limit: 30);
+    // L4：改菜名场景用户已输入精准关键词，30 候选在 AlertDialog 内滚动筛选成本高，
+    // 10 足够（GLM 5 级模糊兜底仍保留，仍能命中别名/拼音/模糊匹配）
+    final candidates = await foodRepo.searchByName(newName, limit: 10);
     if (!mounted) return (newName: newName, nutrition: null);
 
     NutritionResult? nutrition;
