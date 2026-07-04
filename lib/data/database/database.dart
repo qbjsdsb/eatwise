@@ -10,6 +10,7 @@ import 'tables/weight_log_table.dart';
 import 'tables/pending_recognition_table.dart';
 import 'tables/insight_summary_table.dart';
 import 'tables/recognition_feedback_table.dart';
+import 'tables/recommendation_feedback_table.dart';
 
 part 'database.g.dart';
 
@@ -21,6 +22,7 @@ part 'database.g.dart';
   PendingRecognitions,
   InsightSummaries,
   RecognitionFeedbacks,
+  RecommendationFeedbacks,
 ])
 class EatWiseDatabase extends _$EatWiseDatabase {
   /// 生产环境：传入 openEncryptedConnection() 的 executor
@@ -31,7 +33,7 @@ class EatWiseDatabase extends _$EatWiseDatabase {
   final bool seedOnCreate;
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -43,6 +45,10 @@ class EatWiseDatabase extends _$EatWiseDatabase {
             await m.addColumn(profiles, profiles.specialCondition);
             await m.addColumn(profiles, profiles.dietPreference);
             await m.addColumn(profiles, profiles.healthCondition);
+          }
+          // v2 → v3：新增 recommendation_feedbacks 表（AI 推荐满意度反馈）
+          if (from < 3) {
+            await m.createTable(recommendationFeedbacks);
           }
         },
         beforeOpen: (details) async {

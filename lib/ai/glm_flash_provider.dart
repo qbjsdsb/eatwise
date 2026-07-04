@@ -101,4 +101,31 @@ class GlmFlashProvider {
         '每日体重：$weights kg。'
         '请给出本月总结和下月建议，包含周环比分析。';
   }
+
+  /// 通用聊天补全（v5 AI 推荐用）
+  ///
+  /// 调用方传入 [systemPrompt] 和 [userPrompt]，返回模型文本响应。
+  /// 不在此处做 timeout（调用方按场景控制，AI 推荐用 30s）。
+  Future<String> createChatCompletion({
+    required String systemPrompt,
+    required String userPrompt,
+    String model = 'glm-4-flash',
+    int maxCompletionTokens = 1000,
+    double temperature = 0.7,
+  }) async {
+    final res = await _client.chat.completions
+        .create(
+          ChatCompletionCreateRequest(
+            model: model,
+            messages: [
+              ChatMessage.system(systemPrompt),
+              ChatMessage.user(UserMessageContent.text(userPrompt)),
+            ],
+            maxCompletionTokens: maxCompletionTokens,
+            temperature: temperature,
+          ),
+        )
+        .timeout(const Duration(seconds: 30));
+    return res.text ?? '';
+  }
 }

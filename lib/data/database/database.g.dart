@@ -4671,6 +4671,423 @@ class RecognitionFeedbacksCompanion
   }
 }
 
+class $RecommendationFeedbacksTable extends RecommendationFeedbacks
+    with TableInfo<$RecommendationFeedbacksTable, RecommendationFeedback> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RecommendationFeedbacksTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+    'id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _foodNameMeta = const VerificationMeta(
+    'foodName',
+  );
+  @override
+  late final GeneratedColumn<String> foodName = GeneratedColumn<String>(
+    'food_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _ratingMeta = const VerificationMeta('rating');
+  @override
+  late final GeneratedColumn<int> rating = GeneratedColumn<int>(
+    'rating',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _mealTypeMeta = const VerificationMeta(
+    'mealType',
+  );
+  @override
+  late final GeneratedColumn<String> mealType = GeneratedColumn<String>(
+    'meal_type',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _recommendDateMeta = const VerificationMeta(
+    'recommendDate',
+  );
+  @override
+  late final GeneratedColumn<String> recommendDate = GeneratedColumn<String>(
+    'recommend_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    foodName,
+    rating,
+    mealType,
+    recommendDate,
+    createdAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'recommendation_feedbacks';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<RecommendationFeedback> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('food_name')) {
+      context.handle(
+        _foodNameMeta,
+        foodName.isAcceptableOrUnknown(data['food_name']!, _foodNameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_foodNameMeta);
+    }
+    if (data.containsKey('rating')) {
+      context.handle(
+        _ratingMeta,
+        rating.isAcceptableOrUnknown(data['rating']!, _ratingMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_ratingMeta);
+    }
+    if (data.containsKey('meal_type')) {
+      context.handle(
+        _mealTypeMeta,
+        mealType.isAcceptableOrUnknown(data['meal_type']!, _mealTypeMeta),
+      );
+    }
+    if (data.containsKey('recommend_date')) {
+      context.handle(
+        _recommendDateMeta,
+        recommendDate.isAcceptableOrUnknown(
+          data['recommend_date']!,
+          _recommendDateMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  RecommendationFeedback map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return RecommendationFeedback(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}id'],
+      )!,
+      foodName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}food_name'],
+      )!,
+      rating: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}rating'],
+      )!,
+      mealType: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}meal_type'],
+      ),
+      recommendDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}recommend_date'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+    );
+  }
+
+  @override
+  $RecommendationFeedbacksTable createAlias(String alias) {
+    return $RecommendationFeedbacksTable(attachedDatabase, alias);
+  }
+}
+
+class RecommendationFeedback extends DataClass
+    implements Insertable<RecommendationFeedback> {
+  final int id;
+  final String foodName;
+
+  /// 1=不喜欢 / 2=一般 / 3=喜欢
+  final int rating;
+
+  /// 当时推荐的餐次 breakfast/lunch/dinner/snack，便于时段感知学习
+  final String? mealType;
+
+  /// 当时推荐的日期 YYYY-MM-DD，便于按时间窗口过滤
+  final String? recommendDate;
+  final int createdAt;
+  const RecommendationFeedback({
+    required this.id,
+    required this.foodName,
+    required this.rating,
+    this.mealType,
+    this.recommendDate,
+    required this.createdAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['food_name'] = Variable<String>(foodName);
+    map['rating'] = Variable<int>(rating);
+    if (!nullToAbsent || mealType != null) {
+      map['meal_type'] = Variable<String>(mealType);
+    }
+    if (!nullToAbsent || recommendDate != null) {
+      map['recommend_date'] = Variable<String>(recommendDate);
+    }
+    map['created_at'] = Variable<int>(createdAt);
+    return map;
+  }
+
+  RecommendationFeedbacksCompanion toCompanion(bool nullToAbsent) {
+    return RecommendationFeedbacksCompanion(
+      id: Value(id),
+      foodName: Value(foodName),
+      rating: Value(rating),
+      mealType: mealType == null && nullToAbsent
+          ? const Value.absent()
+          : Value(mealType),
+      recommendDate: recommendDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(recommendDate),
+      createdAt: Value(createdAt),
+    );
+  }
+
+  factory RecommendationFeedback.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return RecommendationFeedback(
+      id: serializer.fromJson<int>(json['id']),
+      foodName: serializer.fromJson<String>(json['foodName']),
+      rating: serializer.fromJson<int>(json['rating']),
+      mealType: serializer.fromJson<String?>(json['mealType']),
+      recommendDate: serializer.fromJson<String?>(json['recommendDate']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'foodName': serializer.toJson<String>(foodName),
+      'rating': serializer.toJson<int>(rating),
+      'mealType': serializer.toJson<String?>(mealType),
+      'recommendDate': serializer.toJson<String?>(recommendDate),
+      'createdAt': serializer.toJson<int>(createdAt),
+    };
+  }
+
+  RecommendationFeedback copyWith({
+    int? id,
+    String? foodName,
+    int? rating,
+    Value<String?> mealType = const Value.absent(),
+    Value<String?> recommendDate = const Value.absent(),
+    int? createdAt,
+  }) => RecommendationFeedback(
+    id: id ?? this.id,
+    foodName: foodName ?? this.foodName,
+    rating: rating ?? this.rating,
+    mealType: mealType.present ? mealType.value : this.mealType,
+    recommendDate: recommendDate.present
+        ? recommendDate.value
+        : this.recommendDate,
+    createdAt: createdAt ?? this.createdAt,
+  );
+  RecommendationFeedback copyWithCompanion(
+    RecommendationFeedbacksCompanion data,
+  ) {
+    return RecommendationFeedback(
+      id: data.id.present ? data.id.value : this.id,
+      foodName: data.foodName.present ? data.foodName.value : this.foodName,
+      rating: data.rating.present ? data.rating.value : this.rating,
+      mealType: data.mealType.present ? data.mealType.value : this.mealType,
+      recommendDate: data.recommendDate.present
+          ? data.recommendDate.value
+          : this.recommendDate,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RecommendationFeedback(')
+          ..write('id: $id, ')
+          ..write('foodName: $foodName, ')
+          ..write('rating: $rating, ')
+          ..write('mealType: $mealType, ')
+          ..write('recommendDate: $recommendDate, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, foodName, rating, mealType, recommendDate, createdAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is RecommendationFeedback &&
+          other.id == this.id &&
+          other.foodName == this.foodName &&
+          other.rating == this.rating &&
+          other.mealType == this.mealType &&
+          other.recommendDate == this.recommendDate &&
+          other.createdAt == this.createdAt);
+}
+
+class RecommendationFeedbacksCompanion
+    extends UpdateCompanion<RecommendationFeedback> {
+  final Value<int> id;
+  final Value<String> foodName;
+  final Value<int> rating;
+  final Value<String?> mealType;
+  final Value<String?> recommendDate;
+  final Value<int> createdAt;
+  const RecommendationFeedbacksCompanion({
+    this.id = const Value.absent(),
+    this.foodName = const Value.absent(),
+    this.rating = const Value.absent(),
+    this.mealType = const Value.absent(),
+    this.recommendDate = const Value.absent(),
+    this.createdAt = const Value.absent(),
+  });
+  RecommendationFeedbacksCompanion.insert({
+    this.id = const Value.absent(),
+    required String foodName,
+    required int rating,
+    this.mealType = const Value.absent(),
+    this.recommendDate = const Value.absent(),
+    required int createdAt,
+  }) : foodName = Value(foodName),
+       rating = Value(rating),
+       createdAt = Value(createdAt);
+  static Insertable<RecommendationFeedback> custom({
+    Expression<int>? id,
+    Expression<String>? foodName,
+    Expression<int>? rating,
+    Expression<String>? mealType,
+    Expression<String>? recommendDate,
+    Expression<int>? createdAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (foodName != null) 'food_name': foodName,
+      if (rating != null) 'rating': rating,
+      if (mealType != null) 'meal_type': mealType,
+      if (recommendDate != null) 'recommend_date': recommendDate,
+      if (createdAt != null) 'created_at': createdAt,
+    });
+  }
+
+  RecommendationFeedbacksCompanion copyWith({
+    Value<int>? id,
+    Value<String>? foodName,
+    Value<int>? rating,
+    Value<String?>? mealType,
+    Value<String?>? recommendDate,
+    Value<int>? createdAt,
+  }) {
+    return RecommendationFeedbacksCompanion(
+      id: id ?? this.id,
+      foodName: foodName ?? this.foodName,
+      rating: rating ?? this.rating,
+      mealType: mealType ?? this.mealType,
+      recommendDate: recommendDate ?? this.recommendDate,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (foodName.present) {
+      map['food_name'] = Variable<String>(foodName.value);
+    }
+    if (rating.present) {
+      map['rating'] = Variable<int>(rating.value);
+    }
+    if (mealType.present) {
+      map['meal_type'] = Variable<String>(mealType.value);
+    }
+    if (recommendDate.present) {
+      map['recommend_date'] = Variable<String>(recommendDate.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RecommendationFeedbacksCompanion(')
+          ..write('id: $id, ')
+          ..write('foodName: $foodName, ')
+          ..write('rating: $rating, ')
+          ..write('mealType: $mealType, ')
+          ..write('recommendDate: $recommendDate, ')
+          ..write('createdAt: $createdAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$EatWiseDatabase extends GeneratedDatabase {
   _$EatWiseDatabase(QueryExecutor e) : super(e);
   $EatWiseDatabaseManager get managers => $EatWiseDatabaseManager(this);
@@ -4685,6 +5102,8 @@ abstract class _$EatWiseDatabase extends GeneratedDatabase {
   );
   late final $RecognitionFeedbacksTable recognitionFeedbacks =
       $RecognitionFeedbacksTable(this);
+  late final $RecommendationFeedbacksTable recommendationFeedbacks =
+      $RecommendationFeedbacksTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -4697,6 +5116,7 @@ abstract class _$EatWiseDatabase extends GeneratedDatabase {
     pendingRecognitions,
     insightSummaries,
     recognitionFeedbacks,
+    recommendationFeedbacks,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -7609,6 +8029,240 @@ typedef $$RecognitionFeedbacksTableProcessedTableManager =
       RecognitionFeedback,
       PrefetchHooks Function({bool mealLogId})
     >;
+typedef $$RecommendationFeedbacksTableCreateCompanionBuilder =
+    RecommendationFeedbacksCompanion Function({
+      Value<int> id,
+      required String foodName,
+      required int rating,
+      Value<String?> mealType,
+      Value<String?> recommendDate,
+      required int createdAt,
+    });
+typedef $$RecommendationFeedbacksTableUpdateCompanionBuilder =
+    RecommendationFeedbacksCompanion Function({
+      Value<int> id,
+      Value<String> foodName,
+      Value<int> rating,
+      Value<String?> mealType,
+      Value<String?> recommendDate,
+      Value<int> createdAt,
+    });
+
+class $$RecommendationFeedbacksTableFilterComposer
+    extends Composer<_$EatWiseDatabase, $RecommendationFeedbacksTable> {
+  $$RecommendationFeedbacksTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get foodName => $composableBuilder(
+    column: $table.foodName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get rating => $composableBuilder(
+    column: $table.rating,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get mealType => $composableBuilder(
+    column: $table.mealType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recommendDate => $composableBuilder(
+    column: $table.recommendDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$RecommendationFeedbacksTableOrderingComposer
+    extends Composer<_$EatWiseDatabase, $RecommendationFeedbacksTable> {
+  $$RecommendationFeedbacksTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get foodName => $composableBuilder(
+    column: $table.foodName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get rating => $composableBuilder(
+    column: $table.rating,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get mealType => $composableBuilder(
+    column: $table.mealType,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recommendDate => $composableBuilder(
+    column: $table.recommendDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$RecommendationFeedbacksTableAnnotationComposer
+    extends Composer<_$EatWiseDatabase, $RecommendationFeedbacksTable> {
+  $$RecommendationFeedbacksTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get foodName =>
+      $composableBuilder(column: $table.foodName, builder: (column) => column);
+
+  GeneratedColumn<int> get rating =>
+      $composableBuilder(column: $table.rating, builder: (column) => column);
+
+  GeneratedColumn<String> get mealType =>
+      $composableBuilder(column: $table.mealType, builder: (column) => column);
+
+  GeneratedColumn<String> get recommendDate => $composableBuilder(
+    column: $table.recommendDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+}
+
+class $$RecommendationFeedbacksTableTableManager
+    extends
+        RootTableManager<
+          _$EatWiseDatabase,
+          $RecommendationFeedbacksTable,
+          RecommendationFeedback,
+          $$RecommendationFeedbacksTableFilterComposer,
+          $$RecommendationFeedbacksTableOrderingComposer,
+          $$RecommendationFeedbacksTableAnnotationComposer,
+          $$RecommendationFeedbacksTableCreateCompanionBuilder,
+          $$RecommendationFeedbacksTableUpdateCompanionBuilder,
+          (
+            RecommendationFeedback,
+            BaseReferences<
+              _$EatWiseDatabase,
+              $RecommendationFeedbacksTable,
+              RecommendationFeedback
+            >,
+          ),
+          RecommendationFeedback,
+          PrefetchHooks Function()
+        > {
+  $$RecommendationFeedbacksTableTableManager(
+    _$EatWiseDatabase db,
+    $RecommendationFeedbacksTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RecommendationFeedbacksTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$RecommendationFeedbacksTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$RecommendationFeedbacksTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                Value<String> foodName = const Value.absent(),
+                Value<int> rating = const Value.absent(),
+                Value<String?> mealType = const Value.absent(),
+                Value<String?> recommendDate = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+              }) => RecommendationFeedbacksCompanion(
+                id: id,
+                foodName: foodName,
+                rating: rating,
+                mealType: mealType,
+                recommendDate: recommendDate,
+                createdAt: createdAt,
+              ),
+          createCompanionCallback:
+              ({
+                Value<int> id = const Value.absent(),
+                required String foodName,
+                required int rating,
+                Value<String?> mealType = const Value.absent(),
+                Value<String?> recommendDate = const Value.absent(),
+                required int createdAt,
+              }) => RecommendationFeedbacksCompanion.insert(
+                id: id,
+                foodName: foodName,
+                rating: rating,
+                mealType: mealType,
+                recommendDate: recommendDate,
+                createdAt: createdAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$RecommendationFeedbacksTableProcessedTableManager =
+    ProcessedTableManager<
+      _$EatWiseDatabase,
+      $RecommendationFeedbacksTable,
+      RecommendationFeedback,
+      $$RecommendationFeedbacksTableFilterComposer,
+      $$RecommendationFeedbacksTableOrderingComposer,
+      $$RecommendationFeedbacksTableAnnotationComposer,
+      $$RecommendationFeedbacksTableCreateCompanionBuilder,
+      $$RecommendationFeedbacksTableUpdateCompanionBuilder,
+      (
+        RecommendationFeedback,
+        BaseReferences<
+          _$EatWiseDatabase,
+          $RecommendationFeedbacksTable,
+          RecommendationFeedback
+        >,
+      ),
+      RecommendationFeedback,
+      PrefetchHooks Function()
+    >;
 
 class $EatWiseDatabaseManager {
   final _$EatWiseDatabase _db;
@@ -7627,4 +8281,9 @@ class $EatWiseDatabaseManager {
       $$InsightSummariesTableTableManager(_db, _db.insightSummaries);
   $$RecognitionFeedbacksTableTableManager get recognitionFeedbacks =>
       $$RecognitionFeedbacksTableTableManager(_db, _db.recognitionFeedbacks);
+  $$RecommendationFeedbacksTableTableManager get recommendationFeedbacks =>
+      $$RecommendationFeedbacksTableTableManager(
+        _db,
+        _db.recommendationFeedbacks,
+      );
 }

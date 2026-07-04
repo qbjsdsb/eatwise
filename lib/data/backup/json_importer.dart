@@ -10,13 +10,13 @@ class JsonImporter {
   JsonImporter(this._db);
 
   /// 从 JSON 字符串导入，返回各表条数统计 + 图片失效检测结果
-  Future<({int profiles, int foodItems, int mealLogs, int weightLogs, int insights, int feedbacks, ImageCheckResult imageCheckResult})>
+  Future<({int profiles, int foodItems, int mealLogs, int weightLogs, int insights, int feedbacks, int recFeedbacks, ImageCheckResult imageCheckResult})>
       importFromString(String jsonStr) async {
     final data = jsonDecode(jsonStr) as Map<String, dynamic>;
     return importFromMap(data);
   }
 
-  Future<({int profiles, int foodItems, int mealLogs, int weightLogs, int insights, int feedbacks, ImageCheckResult imageCheckResult})>
+  Future<({int profiles, int foodItems, int mealLogs, int weightLogs, int insights, int feedbacks, int recFeedbacks, ImageCheckResult imageCheckResult})>
       importFromMap(Map<String, dynamic> data) async {
     final schemaVersion = data['schemaVersion'] as int;
     // 版本兼容策略：只拒绝"高于当前"的版本（旧 app 无法读新格式）；
@@ -31,9 +31,10 @@ class JsonImporter {
     // 用 transaction 包裹：DELETE + 批量 INSERT 原子化，中途失败回滚避免半库
     // PRAGMA foreign_keys 在事务外设置无效，故用批量 DELETE 顺序（先子后父）规避级联
     final result = await _db.transaction(() async {
-      // 清空 7 表（顺序：先子表后父表，避免外键约束冲突）
+      // 清空 8 表（顺序：先子表后父表，避免外键约束冲突）
       // pending_recognitions.result_food_item_id 是 FK（NO ACTION），
       // 必须在 DELETE food_items 之前清空，否则 FK 阻塞致导入失败
+      await _db.customStatement('DELETE FROM recommendation_feedbacks;');
       await _db.customStatement('DELETE FROM recognition_feedbacks;');
       await _db.customStatement('DELETE FROM insight_summaries;');
       await _db.customStatement('DELETE FROM weight_logs;');
@@ -42,7 +43,7 @@ class JsonImporter {
       await _db.customStatement('DELETE FROM food_items;');
       await _db.customStatement('DELETE FROM profiles;');
 
-      var profiles = 0, foodItems = 0, mealLogs = 0, weightLogs = 0, insights = 0, feedbacks = 0;
+      var profiles = 0, foodItems = 0, mealLogs = 0, weightLogs = 0, insights = 0, feedbacks = 0, recFeedbacks = 0;
 
       // 1. profiles
       for (final p in (tables['profiles'] as List)) {
@@ -80,6 +81,16 @@ class JsonImporter {
             .insert(_feedbackFromJson(f as Map<String, dynamic>));
         feedbacks++;
       }
+      // 7. recommendation_feedbacks（独立，无外键）
+      // 旧版本备份（schemaVersion < 3）无此表，跳过即可
+      final recList = tables['recommendation_feedbacks'];
+      if (recList is List) {
+        for (final f in recList) {
+          await _db.into(_db.recommendationFeedbacks)
+              .insert(_recFeedbackFromJson(f as Map<String, dynamic>));
+          recFeedbacks++;
+        }
+      }
 
       return (
         profiles: profiles,
@@ -88,6 +99,7 @@ class JsonImporter {
         weightLogs: weightLogs,
         insights: insights,
         feedbacks: feedbacks,
+        recFeedbacks: recFeedbacks,
       );
     });
     // 事务外执行图片失效检测（独立操作，避免嵌套事务）
@@ -99,6 +111,7 @@ class JsonImporter {
       weightLogs: result.weightLogs,
       insights: result.insights,
       feedbacks: result.feedbacks,
+      recFeedbacks: result.recFeedbacks,
       imageCheckResult: imageCheck,
     );
   }
@@ -226,6 +239,17 @@ class JsonImporter {
         correctedDishName: Value(j['correctedDishName'] as String?),
         correctedServingG: Value(_asDoubleOrNull(j['correctedServingG'])),
         promptVersion: j['promptVersion'] as String,
+        createdAt: _asInt(j['createdAt']),
+      );
+
+  RecommendationFeedbacksCompanion _recFeedbackFromJson(
+          Map<String, dynamic> j) =>
+      RecommendationFeedbacksCompanion.insert(
+        id: Value(_asInt(j['id'])),
+        foodName: j['foodName'] as String,
+        rating: _asInt(j['rating']),
+        mealType: Value(j['mealType'] as String?),
+        recommendDate: Value(j['recommendDate'] as String?),
         createdAt: _asInt(j['createdAt']),
       );
 

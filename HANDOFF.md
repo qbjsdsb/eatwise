@@ -36,7 +36,7 @@
 
 **最后更新**：2026-07-04
 
-**工作区状态**：v0.15.0 release 已 push 远程（commit 4b35dcb + tag v0.15.0）；v0.15.0 审计修复已 push（commit c13143b）；Phase 2.11 图标重设计 + 拍照识别页改造 + 推荐算法 v4 用户偏好学习已 push（commit 1dd3087）
+**工作区状态**：v0.15.0 release 已 push 远程（commit 4b35dcb + tag v0.15.0）；v0.15.0 审计修复已 push（commit c13143b）；Phase 2.11 图标重设计 + 拍照识别页改造 + 推荐算法 v4 用户偏好学习已 push（commit 1dd3087）；Phase 2.12 AI 个性化推荐 v5（渐进增强 + 满意度反馈学习，待 commit）
 **当前分支**：trae/agent-wX1X6Q（HEAD = 1dd3087；v0.15.0 tag 指向 4b35dcb；v0.14.0 tag 指向 8bccee4）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
@@ -396,6 +396,48 @@
 **验证（2026-07-04 沙箱实测）**：
 - ✅ `flutter analyze` → No issues found
 - ✅ `flutter test` → 661 passed / 3 skipped / 0 failed（含 v4 新增 52 测试 + T48 日期漂移修复）
+
+**Phase 2.12 AI 个性化推荐 v5（渐进增强 + 满意度反馈学习，2026-07-04，待 commit）**：
+
+用户反馈"智能推荐完全不智能，根据每个人的饮食习惯自己学习，多维度（材质/价格/口味/风格），可接入 ai"。v4 是纯本地关键词匹配，v5 接入 GLM-4-Flash 让 AI 综合用户完整画像（身高/体重/体脂/年龄/性别/活动量/目标/健康状况/饮食偏好/特殊人群）+ 历史饮食（近14天 top 20 食物）+ 满意度反馈（近30条）做真正个性化推荐。
+
+**架构：渐进增强（用户选择的方案）**
+- v4 本地推荐秒出（现有行为不变）→ AI 返回后用更精准的排序+个性化理由替换
+- AI 失败/离线/key未配置 → 静默回退 v4（AI 是"锦上添花"，不阻塞 UI）
+- 当日缓存（key=date+mealType），用户点"换一批"强制刷新
+- 候选范围：纯 AI 生成（不限于库内食物，AI 直接生成菜名+理由+估算营养）
+- Tap 行为：跳 ManualEntryPage(initialName:) 与 v4 一致
+
+**满意度反馈学习（用户要求）**
+- 用户对每条 AI 推荐打分（👍喜欢/一般/👎不喜欢），存 `recommendation_feedbacks` 表
+- 下次推荐时读近 30 条反馈注入 prompt，让 AI 学习用户偏好
+- 反馈不立即触发重新调 AI（避免频繁调 API），下次自然推荐时生效
+- 设计原则：显式反馈 > 隐式反馈（v4 的"吃过=偏好"），用户明确说"不喜欢"比"没吃过"信号更强
+
+**Phase 2.12 文件清单（3 lib 新增 + 1 table 新增 + 1 repo 新增 + 4 lib 修改 + 3 test 新增 + 1 test 修改）**：
+- 新增表：`lib/data/database/tables/recommendation_feedback_table.dart`（RecommendationFeedbacks 表：foodName/rating 1-3/mealType?/recommendDate?/createdAt）
+- 新增 repo：`lib/data/repositories/recommendation_feedback_repository.dart`（insertFeedback + getRecent + clearAll）
+- 新增 prompt：`lib/nutrition/ai_recommendation_prompt.dart`（AiRecommendationContext + FeedbackRecord + AiRecommendation 数据类 + AiRecommendationPrompt 纯函数构建器）
+- 新增 service：`lib/nutrition/ai_recommendation_service.dart`（AiRecommendationService：缓存+降级+AI调用+JSON解析）
+- 修改 DB：`lib/data/database/database.dart`（schemaVersion 2→3，新增 RecommendationFeedbacks 表 + v2→v3 migration createTable）
+- 修改 AI provider：`lib/ai/glm_flash_provider.dart`（新增 createChatCompletion 通用聊天补全方法，供 AI 推荐用）
+- 修改 dashboard：`lib/features/dashboard/dashboard_page.dart`（合并推荐区：v4 兜底 + AI 渐进增强 + 换一批按钮 + 满意度反馈按钮行 + AI loading 骨架）
+- 修改 backup：`lib/data/backup/json_exporter.dart` + `json_importer.dart`（导出/导入 recommendation_feedbacks 表，旧版本备份无此表时跳过）
+- 新增测试：`test/nutrition/ai_recommendation_prompt_test.dart`（16 测试：6 段落构建 + 标签映射 + 边界）/ `test/nutrition/ai_recommendation_service_test.dart`（21 测试：JSON 解析 14 + 缓存 4 + 降级 3）/ `test/data/recommendation_feedback_repository_test.dart`（11 测试：rating 校验 + getRecent 倒序 + clearAll + 字段持久化）
+- 修改测试：`test/data/backup/json_export_import_test.dart`（schemaVersion 2→3 + 新增 recommendation_feedbacks 表断言）
+
+**关键设计决策**：
+1. **AI 候选范围=纯生成**：AI 直接根据画像生成 5 道菜（不限于库内），用户 tap 后跳 ManualEntryPage 录入。比"库内重排"更灵活，符合用户"纯 AI 生成"选择
+2. **缓存当日有效**：key=`${date}_${mealType}`，用户跨天/换餐次自动重调，"换一批"forceRefresh。不随 RefreshBus 失效（避免记录一条就重新调 AI）
+3. **降级链**：GLM key 空→跳过；离线→跳过；AI 异常/超时→静默返回空（v4 兜底）；失败不缓存（下次允许重试）
+4. **JSON 解析容错**：_extractJson 找第一个 `{` 到最后一个 `}`，兼容 AI 偶尔在 JSON 外加 markdown/解释文字；malformed JSON 返回空不抛异常
+5. **temperature=0.8**：推荐需一定随机性，避免每次都推相同 5 道菜（"换一批"才有意义）
+6. **反馈表无外键**：foodName 直接存字符串（AI 推荐的食物可能不在库），避免用户记录前先入库的约束
+7. **schemaVersion 2→3 migration**：v2→v3 用 `m.createTable(recommendationFeedbacks)`，旧用户升级自动建表；导入旧版本备份（无 recommendation_feedbacks 段）时跳过该表插入
+
+**验证（2026-07-04 沙箱实测）**：
+- ✅ `flutter analyze` → No issues found
+- ✅ `flutter test` → 709 passed / 3 skipped / 0 failed（含 v5 新增 48 测试 + backup 测试更新）
 
 **Phase 3 调研结论（2026-07-04，决策：不推荐实施）**：
 
@@ -972,6 +1014,12 @@
 51. **v1.9 包装 OCR 优先路径：actual* 与 per100g 职责分离 + 三路径必须同步**：`computePackageNutritionPer100g()` 返回的 per100g 值只用于 `upsertAiRecognized` 写入 food_item（作未来查库密度参考），**不能覆盖 meal_log 的 actual* 值**。actual* 仍用 AI 估算的整菜值（`result.estimatedCalories` 等），因为 meal_log 记录的是本餐实际摄入量，per100g 是食物的密度属性，两者职责不同。三路径（recognize_page / multi_dish_page / offline_queue_controller）哨兵分支必须同步加 `hasPackageNutrition` 优先检查，否则后台回补路径会用品类校准覆盖包装精确值致热量偏差。复合菜组分全 miss 路径也加包装 OCR 优先——预包装速冻食品可能被识别为 composite 但有包装营养表。`computePackageNutritionPer100g` 返回 null 时（servingG=0 或所有 serving_*=0）调用方必须走 AI 估算兜底，不能直接用 null 致空指针
 
 52. **v4 推荐算法"未尝试" vs "少碰" 必须区分，不能都惩罚**：`UserPreferenceProfile._weight(tag, freq)` 必须三段判断——① `tag == null` 或 `freq.isEmpty` → 0.5 中性（未知）；② `!freq.containsKey(tag)` → 0.5 中性（用户从未吃过该标签，不惩罚"未知"，用户没吃过 ≠ 不喜欢）；③ 标签在 freq 表 → `freq[tag]! / max`（0.0-1.0）。原实现把②③混为一谈（`freq[tag] ?? 0`），导致用户从未吃过的口味被当 weight=0 触发减分分支（`w < 0.2 && freq.isNotEmpty`）。正确行为：只有"尝试过但很少"（如 sweet:10 + spicy:1，weight=0.1 < 0.2）才减分。`UserPreferenceLearner.learn` 永远不会产生 count=0 的 freq entry（只对吃过的食物打标签累加），所以 freq[tag]=0 只可能来自测试构造的人工 profile。改 `_weight` 必须同步改测试期望（user_preference_learner_test "未知标签 → 0.5 中性"）
+
+53. **v5 AI 推荐失败必须静默返回空列表，绝不抛异常到 UI**：`AiRecommendationService.recommend()` 内部 `try/catch` 包裹 `_fetchFromAi`，任何异常（网络/超时/JSON 解析/API 错误）都返回 `AiRecommendationResult(recommendations: [], fromCache: false)`，dashboard 的 FutureBuilder 永远不会进 `hasError` 分支。AI 是"锦上添花"，v4 本地推荐永远兜底。**失败结果不缓存**（`_cache[cacheKey] = result` 只在成功路径执行），下次进看板允许重试。改 `recommend()` 不能把 catch 改成 rethrow，否则 dashboard 会显示红屏错误
+
+54. **v5 AI 推荐缓存 key 必须含 mealType**：`_cache` key = `"${date}_${mealType}"`，不能只用 date。因为早餐和晚餐的推荐完全不同（早餐推燕麦粥，晚餐推牛排），共用 key 会导致用户早餐看完推荐后晚餐还看到早餐的缓存。`forceRefresh=true` 时跳过缓存（"换一批"按钮）。缓存是静态 Map（进程内存），App 重启失效，当日有效（跨天 key 变化自然失效）
+
+55. **v5 schemaVersion 2→3 migration 必须用 createTable 不是 addColumn**：`recommendation_feedbacks` 是全新表（不是给旧表加列），migration 用 `m.createTable(recommendationFeedbacks)`。旧版本备份导入时（schemaVersion < 3）JSON 无 `recommendation_feedbacks` 段，importer 用 `tables['recommendation_feedbacks'] is List` 守卫跳过，不能强转 `as List` 否则旧备份导入崩。导出时必须包含该表（JsonExporter.export 新增 `recommendation_feedbacks` 段），否则新版本备份缺表数据
 
 ---
 

@@ -10,7 +10,7 @@ class JsonExporter {
   JsonExporter(this._db);
 
   /// 导出全表为 JSON Map
-  /// 结构：{ schemaVersion: 1, exportedAt: ms, tables: { profiles: [...], ... } }
+  /// 结构：{ schemaVersion: 3, exportedAt: ms, tables: { profiles: [...], ... } }
   Future<Map<String, dynamic>> export() async {
     final profiles = await _db.profiles.select().get();
     final foodItems = await _db.foodItems.select().get();
@@ -18,6 +18,8 @@ class JsonExporter {
     final weightLogs = await _db.weightLogs.select().get();
     final insightSummaries = await _db.insightSummaries.select().get();
     final recognitionFeedbacks = await _db.recognitionFeedbacks.select().get();
+    final recommendationFeedbacks =
+        await _db.recommendationFeedbacks.select().get();
 
     return {
       'schemaVersion': _db.schemaVersion,
@@ -30,6 +32,8 @@ class JsonExporter {
         'insight_summaries': insightSummaries.map(_insightToJson).toList(),
         'recognition_feedbacks':
             recognitionFeedbacks.map(_feedbackToJson).toList(),
+        'recommendation_feedbacks':
+            recommendationFeedbacks.map(_recFeedbackToJson).toList(),
         // 注意：pending_recognitions 不导出（临时队列）
       },
     };
@@ -122,6 +126,15 @@ class JsonExporter {
         'correctedDishName': f.correctedDishName,
         'correctedServingG': f.correctedServingG,
         'promptVersion': f.promptVersion,
+        'createdAt': f.createdAt,
+      };
+
+  Map<String, dynamic> _recFeedbackToJson(RecommendationFeedback f) => {
+        'id': f.id,
+        'foodName': f.foodName,
+        'rating': f.rating,
+        'mealType': f.mealType,
+        'recommendDate': f.recommendDate,
         'createdAt': f.createdAt,
       };
 }
