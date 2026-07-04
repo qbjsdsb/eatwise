@@ -16,8 +16,8 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "triggerInstall" -> {
-                        // 兼容两种传参方式：位置参数（String）或 named argument
-                        val apkPath = call.argument<String>(0) ?: call.arguments as? String
+                        // Dart 侧 invokeMethod("triggerInstall", apkPath) 直接传 String 作为 arguments
+                        val apkPath = call.arguments as? String
                         if (apkPath == null) {
                             result.error("INVALID_ARGS", "缺少 apkPath 参数", null)
                             return@setMethodCallHandler
