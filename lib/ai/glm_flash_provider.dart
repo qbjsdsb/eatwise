@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:openai_dart/openai_dart.dart';
 
 /// GLM-4-Flash 汇总建议生成器（智谱免费文本模型，OpenAI 兼容）
@@ -56,11 +57,14 @@ class GlmFlashProvider {
   }
 
   /// 构造周报 user prompt（v1.11 增强：宏量达成率 + 偏好 + 覆盖率）
+  ///
+  /// H3 修复：核心字段加 null 兜底，避免调用方传不完整 data 时崩溃。
+  /// 与 _appendMacroAndPreference 的兜底风格一致。
   String _buildPrompt(Map<String, dynamic> data) {
-    final calories = data['daily_calories'] as List;
-    final weights = data['daily_weights'] as List;
-    final target = data['target_calories'];
-    final goal = data['goal'];
+    final calories = data['daily_calories'] as List? ?? const [];
+    final weights = data['daily_weights'] as List? ?? const [];
+    final target = data['target_calories'] ?? 2000;
+    final goal = data['goal'] ?? 'maintain';
     final goalLabel = goal == 'cut' ? '减脂' : goal == 'bulk' ? '增肌' : '维持';
 
     final buf = StringBuffer('本周目标：$goalLabel，每日热量目标 $target kcal。');
@@ -70,6 +74,11 @@ class GlmFlashProvider {
     buf.write('请给出本周总结和下周建议，结合宏量达成率分析饮食结构是否合理。');
     return buf.toString();
   }
+
+  /// @visibleForTesting：暴露 _buildPrompt 供测试验证 null 兜底（H3）
+  @visibleForTesting
+  String buildWeeklySummaryForTest(Map<String, dynamic> data) =>
+      _buildPrompt(data);
 
   /// 根据一月饮食 + 体重数据生成 ≤400 字中文建议
   ///
@@ -99,11 +108,13 @@ class GlmFlashProvider {
   }
 
   /// 构造月报 user prompt（v1.11 增强：宏量达成率 + 偏好 + 覆盖率 + 周环比）
+  ///
+  /// H3 修复：核心字段加 null 兜底（与 _buildPrompt 一致）
   String _buildMonthlyPrompt(Map<String, dynamic> data) {
-    final calories = data['daily_calories'] as List;
-    final weights = data['daily_weights'] as List;
-    final target = data['target_calories'];
-    final goal = data['goal'];
+    final calories = data['daily_calories'] as List? ?? const [];
+    final weights = data['daily_weights'] as List? ?? const [];
+    final target = data['target_calories'] ?? 2000;
+    final goal = data['goal'] ?? 'maintain';
     final goalLabel = goal == 'cut' ? '减脂' : goal == 'bulk' ? '增肌' : '维持';
 
     final buf = StringBuffer('本月目标：$goalLabel，每日热量目标 $target kcal。');
@@ -113,6 +124,11 @@ class GlmFlashProvider {
     buf.write('请给出本月总结和下月建议，包含周环比分析，结合宏量达成率分析饮食结构。');
     return buf.toString();
   }
+
+  /// @visibleForTesting：暴露 _buildMonthlyPrompt 供测试验证 null 兜底（H3）
+  @visibleForTesting
+  String buildMonthlySummaryForTest(Map<String, dynamic> data) =>
+      _buildMonthlyPrompt(data);
 
   /// 追加宏量达成率 + 覆盖率 + 偏好画像到 prompt（周/月共用）
   ///
@@ -131,10 +147,15 @@ class GlmFlashProvider {
     final fatGoal = data['fat_goal'];
     final carbGoal = data['carb_goal'];
     if (protein != null && fat != null && carbs != null && calories != null) {
+      // M1 修复：取四数组最小长度作为循环上界，避免长度不一致时 RangeError
+      // 当前调用方长度一致，但防御性加固防未来扩展崩溃
+      final minLen = [protein, fat, carbs, calories]
+          .map((l) => l.length)
+          .reduce((a, b) => a < b ? a : b);
       // 只统计有记录的天数（热量>0），避免 0 填充日拉低均值
       double sumP = 0, sumF = 0, sumC = 0;
       var n = 0;
-      for (var i = 0; i < calories.length; i++) {
+      for (var i = 0; i < minLen; i++) {
         final cal = (calories[i] as num).toDouble();
         if (cal <= 0) continue;
         n++;
