@@ -17,6 +17,10 @@ import '../recognize/providers.dart' as recognize;
 import 'meal_edit_dialog.dart';
 
 /// 今日记录页（按餐次分组 + 编辑份量 + 删除 + 识别反馈）
+///
+/// M15-B：支持任意日期切换（_selectedDate 可变状态，默认今日）。
+/// 顶部加日期切换栏：左箭头/日期文本/右箭头/跳今日按钮（非今日时显示）。
+/// 复用现有 MealLogRepository.getMealsByDate(date) 仓库能力，零数据层改动。
 class TodayMealsPage extends ConsumerStatefulWidget {
   const TodayMealsPage({super.key, this.embedded = false});
   final bool embedded;
@@ -26,7 +30,8 @@ class TodayMealsPage extends ConsumerStatefulWidget {
 
 /// 公开 State：RecordsTabPage 通过 `GlobalKey<TodayMealsPageState>` 调用 refresh()
 class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
-  late final String _today;
+  // M15-B：_today final → _selectedDate 可变状态，支持日期切换
+  late String _selectedDate;
   List<MealLog> _meals = [];
   Map<int, String> _foodNames = {};
   bool _loading = true;
@@ -36,7 +41,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   @override
   void initState() {
     super.initState();
-    _today = todayYmd();
+    _selectedDate = todayYmd(); // M15-B：默认今日
     _load();
   }
 
@@ -46,7 +51,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   Future<void> _load() async {
     try {
       final mealRepo = await ref.read(recognize.mealLogRepoProvider.future);
-      final meals = await mealRepo.getMealsByDate(_today);
+      final meals = await mealRepo.getMealsByDate(_selectedDate);
       // 批量反查食物名（原 N+1 逐条 getById → 1 次 IN 查询）
       final db = await ref.read(recognize.databaseProvider.future);
       final foodRepo = FoodItemRepository(db);
@@ -76,11 +81,150 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     }
   }
 
+  /// M15-B：格式化日期为 AppBar 标题（"X月X日 记录"）
+  String _formatDateForTitle(String ymd) {
+    try {
+      final parsed = parseYmd(ymd);
+      return '${parsed.month}月${parsed.day}日 记录';
+    } catch (_) {
+      return '记录';
+    }
+  }
+
+  /// M15-B：日期切换栏（左箭头/日期文本/右箭头/跳今日按钮）
+  Widget _buildDateNavigator() {
+    final cs = Theme.of(context).colorScheme;
+    final today = todayYmd();
+    final isToday = _selectedDate == today;
+    String dateText;
+    try {
+      final parsed = parseYmd(_selectedDate);
+      dateText = '${parsed.month}月${parsed.day}日';
+    } catch (_) {
+      dateText = _selectedDate;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.chevron_left),
+            tooltip: '前一天',
+            onPressed: _goToPrevDay,
+          ),
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: _pickDate,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Text(
+                isToday ? '今天' : dateText,
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: cs.primary,
+                    ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            icon: const Icon(Icons.chevron_right),
+            tooltip: '后一天',
+            onPressed: isToday ? null : _goToNextDay,
+          ),
+          if (!isToday) ...[
+            const SizedBox(width: 8),
+            TextButton.icon(
+              onPressed: _goToToday,
+              icon: const Icon(Icons.today, size: 18),
+              label: const Text('今日'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// M15-B：跳到前一天
+  void _goToPrevDay() {
+    try {
+      final parsed = parseYmd(_selectedDate);
+      setState(() {
+        _loading = true;
+        _selectedDate = formatYmd(parsed.subtract(const Duration(days: 1)));
+      });
+      _load();
+    } catch (_) {
+      // _selectedDate 格式异常，忽略
+    }
+  }
+
+  /// M15-B：跳到后一天（不能超过今日）
+  void _goToNextDay() {
+    try {
+      final parsed = parseYmd(_selectedDate);
+      final next = parsed.add(const Duration(days: 1));
+      final today = DateTime.now();
+      // 不能超过今日（截断到日期比较，避免时分秒干扰）
+      if (formatYmd(next).compareTo(formatYmd(today)) > 0) return;
+      setState(() {
+        _loading = true;
+        _selectedDate = formatYmd(next);
+      });
+      _load();
+    } catch (_) {
+      // _selectedDate 格式异常，忽略
+    }
+  }
+
+  /// M15-B：跳回今日
+  void _goToToday() {
+    setState(() {
+      _loading = true;
+      _selectedDate = todayYmd();
+    });
+    _load();
+  }
+
+  /// M15-B：弹 DatePicker 选择任意日期
+  Future<void> _pickDate() async {
+    DateTime initial;
+    try {
+      initial = parseYmd(_selectedDate);
+    } catch (_) {
+      initial = DateTime.now();
+    }
+    final today = DateTime.now();
+    if (!mounted) return;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2020),
+      lastDate: today,
+    );
+    if (picked == null) return;
+    if (!mounted) return;
+    setState(() {
+      _loading = true;
+      _selectedDate = formatYmd(picked);
+    });
+    _load();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
       return Scaffold(
-        appBar: widget.embedded ? null : AppBar(title: const Text('今日记录')),
+        appBar: widget.embedded
+            ? null
+            : AppBar(
+                title: Text(_selectedDate == todayYmd()
+                    ? '今日记录'
+                    : _formatDateForTitle(_selectedDate))),
         body: const LoadingState(),
       );
     }
@@ -98,37 +242,53 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     };
 
     return Scaffold(
-      appBar: widget.embedded ? null : AppBar(title: const Text('今日记录')),
-      body: _loadError
-          ? ErrorState(
-              message: '数据加载失败',
-              onRetry: () {
-                setState(() {
-                  _loading = true;
-                  _loadError = false;
-                });
-                _load();
-              },
-            )
-          : _meals.isEmpty
-              ? EmptyState(
-                  icon: Icons.restaurant_menu,
-                  title: '今日暂无记录',
-                  subtitle: '点下方拍照按钮开始记录',
-                  actionLabel: '去拍照',
-                  onAction: () => context.push('/recognize'),
-                )
-          : ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              children: [
-                for (final type in order)
-                  if (groups.containsKey(type)) ...[
-                    _buildSectionHeader(labels[type]!, groups[type]!),
-                    for (final m in groups[type]!) _buildMealCard(m),
-                    const SizedBox(height: 8),
-                  ],
-              ],
-            ),
+      appBar: widget.embedded
+          ? null
+          : AppBar(
+              title: Text(_selectedDate == todayYmd()
+                  ? '今日记录'
+                  : _formatDateForTitle(_selectedDate))),
+      // M15-B：日期切换栏常驻顶部（空态/有数据/加载失败都显示），
+      // 让用户无论何种状态都能切换日期
+      body: Column(
+        children: [
+          _buildDateNavigator(),
+          const Divider(height: 1),
+          Expanded(
+            child: _loadError
+                ? ErrorState(
+                    message: '数据加载失败',
+                    onRetry: () {
+                      setState(() {
+                        _loading = true;
+                        _loadError = false;
+                      });
+                      _load();
+                    },
+                  )
+                : _meals.isEmpty
+                    ? EmptyState(
+                        icon: Icons.restaurant_menu,
+                        title: '今日暂无记录',
+                        subtitle: '点下方拍照按钮开始记录',
+                        actionLabel: '去拍照',
+                        onAction: () => context.push('/recognize'),
+                      )
+                    : ListView(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        children: [
+                          for (final type in order)
+                            if (groups.containsKey(type)) ...[
+                              _buildSectionHeader(labels[type]!, groups[type]!),
+                              for (final m in groups[type]!) _buildMealCard(m),
+                              const SizedBox(height: 8),
+                            ],
+                        ],
+                      ),
+          ),
+        ],
+      ),
     );
   }
 
