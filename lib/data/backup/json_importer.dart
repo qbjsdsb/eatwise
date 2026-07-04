@@ -261,7 +261,16 @@ class JsonImporter {
 
   /// int 安全转换：JSON 数字可能是 int 或 double，直接 `as int` 会在 double 时抛 _TypeError；
   /// 旧版备份缺字段时 null 会抛 _TypeError，用 _asIntOrNull 兜底
-  int _asInt(dynamic v) => (v as num).toInt();
+  ///
+  /// H2 修复：原实现 `(v as num).toInt()` 对 null 抛 _TypeError 难定位。
+  /// 改为显式 ArgumentError，给清晰错误信息，调用方据 message 决定是否切 _asIntOrNull + 默认值。
+  int _asInt(dynamic v) {
+    if (v == null) {
+      throw ArgumentError('必填 int 字段缺失（旧版备份可能缺新字段），请用 _asIntOrNull + 默认值兜底');
+    }
+    if (v is num) return v.toInt();
+    throw ArgumentError('字段类型非 num：$v (${v.runtimeType})');
+  }
 
   /// 可空 int（旧版备份缺字段兜底用）
   int? _asIntOrNull(dynamic v) => v == null ? null : (v as num).toInt();

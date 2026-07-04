@@ -168,4 +168,46 @@ void main() {
       'recommendation_feedbacks',
     });
   });
+
+  // H2 修复：_asInt 注释承诺"用 _asIntOrNull 兜底"但实现没兜底
+  // 旧版备份缺必填 int 字段（如 age）时，应抛 ArgumentError（清晰错误）而非 _TypeError
+  test('H2: 旧版备份缺必填 int 字段时 _asInt 抛 ArgumentError 而非 _TypeError', () async {
+    final brokenData = {
+      'schemaVersion': 1,
+      'exportedAt': 0,
+      'tables': {
+        // profile 缺 age 字段（模拟旧版备份极端场景）
+        'profiles': [
+          {
+            'id': 1,
+            'heightCm': 170.0,
+            'weightKg': 70.0,
+            // age 缺失
+            'gender': 'male',
+            'activityLevel': 1.375,
+            'goal': 'maintain',
+            'goalRateKgPerWeek': 0.0,
+            'formula': 'mifflin',
+            'dailyCalorieTarget': 2000,
+            'proteinGPerKg': 1.4,
+            'fatGPerKg': 0.9,
+            'updatedAt': 0,
+          }
+        ],
+        'food_items': [],
+        'meal_logs': [],
+        'weight_logs': [],
+        'insight_summaries': [],
+        'recognition_feedbacks': [],
+        'recommendation_feedbacks': [],
+      },
+    };
+    final importer = JsonImporter(srcDb);
+    // H2 修复前：_asInt(null) 抛 _TypeError 'type 'Null' is not a subtype of type 'num''
+    // H2 修复后：抛 ArgumentError '必填 int 字段缺失...'（清晰错误信息）
+    expect(
+      () => importer.importFromMap(brokenData),
+      throwsA(isA<ArgumentError>()),
+    );
+  });
 }
