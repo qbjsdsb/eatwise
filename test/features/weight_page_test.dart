@@ -4,7 +4,6 @@
 // - 用户输入体重后未保存返回，应弹"放弃修改？"确认对话框
 // - 确认后才退出页面；取消则保留输入继续编辑
 import 'package:drift/native.dart';
-import 'package:eatwise/core/config/secure_config_store.dart';
 import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/features/recognize/providers.dart' as recognize;
 import 'package:eatwise/features/weight/weight_page.dart';
