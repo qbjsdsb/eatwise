@@ -29,11 +29,23 @@ class WeightPageState extends ConsumerState<WeightPage> {
   Map<String, double> _dailyCalories = {}; // 日期 → 当日总热量
   bool _loading = true;
   bool _busy = false; // 防重入：记录期间禁用按钮，避免双击重复写库
+  // M14：用户是否改过输入（PopScope 未保存确认用）
+  // _loading 守卫防初始赋值（_load 后清空 _weightCtrl 不应误标 dirty）
+  bool _dirty = false;
 
   @override
   void initState() {
     super.initState();
+    // M14：监听输入变化标记 dirty（防初始赋值误标）
+    _weightCtrl.addListener(_markDirty);
     _load();
+  }
+
+  /// M14：标记用户已修改输入（PopScope 弹放弃确认用）
+  void _markDirty() {
+    if (_loading) return;
+    if (_dirty) return; // 已是 dirty 不重复 setState
+    setState(() => _dirty = true);
   }
 
   /// 公开刷新方法：切换到该页时由父容器调用
@@ -41,6 +53,7 @@ class WeightPageState extends ConsumerState<WeightPage> {
 
   @override
   void dispose() {
+    _weightCtrl.removeListener(_markDirty);
     _weightCtrl.dispose();
     super.dispose();
   }
@@ -80,44 +93,55 @@ class WeightPageState extends ConsumerState<WeightPage> {
         body: const LoadingState(),
       );
     }
-    return Scaffold(
-      appBar: widget.embedded ? null : AppBar(title: const Text('体重记录')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _weightCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: '今日体重 (kg)'),
+    // M14：PopScope 未保存确认（与 manual_entry_page/calibration_page 风格一致）
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await confirmDiscardChanges(context) && context.mounted) {
+          _dirty = false;
+          Navigator.pop(context);
+        }
+      },
+      child: Scaffold(
+        appBar: widget.embedded ? null : AppBar(title: const Text('体重记录')),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _weightCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: '今日体重 (kg)'),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 16),
-              FilledButton(
-                onPressed: _busy ? null : _save,
-                child: _busy
-                    ? SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Theme.of(context).colorScheme.onPrimary),
-                      )
-                    : const Text('记录'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          if (_logs.length >= 2)
-            SizedBox(height: 250, child: _buildChart())
-          else
-            const EmptyChartHint('至少记录 2 次才能显示趋势图'),
-          const SizedBox(height: 16),
-          for (final log in _logs.reversed)
-            _buildWeightTile(log),
-        ],
+                const SizedBox(width: 16),
+                FilledButton(
+                  onPressed: _busy ? null : _save,
+                  child: _busy
+                      ? SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Theme.of(context).colorScheme.onPrimary),
+                        )
+                      : const Text('记录'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            if (_logs.length >= 2)
+              SizedBox(height: 250, child: _buildChart())
+            else
+              const EmptyChartHint('至少记录 2 次才能显示趋势图'),
+            const SizedBox(height: 16),
+            for (final log in _logs.reversed)
+              _buildWeightTile(log),
+          ],
+        ),
       ),
     );
   }
@@ -390,6 +414,8 @@ class WeightPageState extends ConsumerState<WeightPage> {
       // 修复：原代码只刷新本页（_load），主页宏量目标/目标热量不更新
       RefreshBus.instance.notify();
       if (mounted) {
+        // M14：保存成功后清 dirty 标志，避免 _weightCtrl.clear() 触发 listener 误标
+        _dirty = false;
         showAppToast(context, '已记录体重');
       }
     } catch (e) {
