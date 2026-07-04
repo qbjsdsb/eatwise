@@ -500,7 +500,9 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
             } else {
               final oilG = widget.mainComposite?.oilG ?? 0;
               componentsSnapshot = _encodeComponents(dish, oilG: oilG);
-              // v1.9：复合菜有包装营养表数据时，per100g 用包装换算值（替代 0）
+              // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），per100g 用包装换算值（替代 0）
+              // v1.10：包装换算宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ per100g 用 0 占位，
+              //   避免写入库的 food_item 宏量全 0 误导未来查库（与 offline_queue 复合菜全命中路径一致）
               final packagePer100 = dish.hasPackageNutrition
                   ? dish.computePackageNutritionPer100g(
                       estimatedProteinG: dish.estimatedProteinG,
@@ -508,13 +510,28 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
                       estimatedCarbsG: dish.estimatedCarbsG,
                     )
                   : null;
+              // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
+              final packageMacrosAllZero = packagePer100 != null &&
+                  packagePer100.$2 == 0 &&
+                  packagePer100.$3 == 0 &&
+                  packagePer100.$4 == 0;
               foodItemId = await foodRepo.upsertAiRecognized(
                 name: dish.dishName,
                 brand: dish.brand,
-                caloriesPer100g: packagePer100?.$1 ?? 0,
-                proteinPer100g: packagePer100?.$2 ?? 0,
-                fatPer100g: packagePer100?.$3 ?? 0,
-                carbsPer100g: packagePer100?.$4 ?? 0,
+                caloriesPer100g:
+                    (packagePer100 != null && !packageMacrosAllZero)
+                        ? packagePer100.$1
+                        : 0,
+                proteinPer100g:
+                    (packagePer100 != null && !packageMacrosAllZero)
+                        ? packagePer100.$2
+                        : 0,
+                fatPer100g: (packagePer100 != null && !packageMacrosAllZero)
+                    ? packagePer100.$3
+                    : 0,
+                carbsPer100g: (packagePer100 != null && !packageMacrosAllZero)
+                    ? packagePer100.$4
+                    : 0,
                 confidence: dish.confidence,
                 componentsJson: componentsSnapshot,
               );
@@ -535,6 +552,8 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
               final oilG = item.compositeNutrition?.oilG ?? 0;
               componentsSnapshot = _encodeComponents(dish, oilG: oilG);
               // v1.9：复合菜有包装营养表数据时，per100g 用包装换算值（替代 0）
+              // v1.10：包装换算宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ per100g 用 0 占位，
+              //   避免写入库的 food_item 宏量全 0 误导未来查库（与主菜复合菜路径一致）
               final packagePer100 = dish.hasPackageNutrition
                   ? dish.computePackageNutritionPer100g(
                       estimatedProteinG: dish.estimatedProteinG,
@@ -542,13 +561,28 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
                       estimatedCarbsG: dish.estimatedCarbsG,
                     )
                   : null;
+              // v1.10：判断包装换算宏量是否全 0
+              final packageMacrosAllZero = packagePer100 != null &&
+                  packagePer100.$2 == 0 &&
+                  packagePer100.$3 == 0 &&
+                  packagePer100.$4 == 0;
               foodItemId = await foodRepo.upsertAiRecognized(
                 name: dish.dishName,
                 brand: dish.brand,
-                caloriesPer100g: packagePer100?.$1 ?? 0,
-                proteinPer100g: packagePer100?.$2 ?? 0,
-                fatPer100g: packagePer100?.$3 ?? 0,
-                carbsPer100g: packagePer100?.$4 ?? 0,
+                caloriesPer100g:
+                    (packagePer100 != null && !packageMacrosAllZero)
+                        ? packagePer100.$1
+                        : 0,
+                proteinPer100g:
+                    (packagePer100 != null && !packageMacrosAllZero)
+                        ? packagePer100.$2
+                        : 0,
+                fatPer100g: (packagePer100 != null && !packageMacrosAllZero)
+                    ? packagePer100.$3
+                    : 0,
+                carbsPer100g: (packagePer100 != null && !packageMacrosAllZero)
+                    ? packagePer100.$4
+                    : 0,
                 confidence: dish.confidence,
                 componentsJson: componentsSnapshot,
               );

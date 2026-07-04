@@ -86,11 +86,17 @@ class PackageNutritionOcrParser {
 
   // 碳水匹配模式（含"碳水化合物"/"碳水"/"糖"/"carbs"/"carbohydrate"）
   // 注意：含糖饮料包装常标"碳水"或"碳水化合物"，部分标"糖"
-  // 例：碳水10.6g / 碳水化合物：10.6g / 碳水 10.6g / carbs 10.6g
+  // 顺序：先匹配长词"碳水化合物"再"碳水"（防"碳水"误匹配"碳水化合物"前缀）
+  // "糖"作为兜底（部分包装只标"糖"不标"碳水"，如某些功能饮料）
+  // 例：碳水10.6g / 碳水化合物：10.6g / 碳水 10.6g / carbs 10.6g / 糖11g
   static final List<RegExp> _carbsPatterns = [
     RegExp(r'碳水化合物\s*[：:、\s]*\s*(\d+(?:\.\d+)?)\s*g', caseSensitive: false),
     RegExp(r'碳水\s*[：:、\s]*\s*(\d+(?:\.\d+)?)\s*g', caseSensitive: false),
     RegExp(r'carbohydrate\s*[：:、\s]*\s*(\d+(?:\.\d+)?)\s*g', caseSensitive: false),
     RegExp(r'carbs\s*[：:、\s]*\s*(\d+(?:\.\d+)?)\s*g', caseSensitive: false),
+    // "糖"作为最后兜底（部分包装只标"糖"不标"碳水"）
+    // 用负向回视断言防误匹配"低糖/无糖/加糖/含糖"等修饰词（这些词"糖"前有修饰字）
+    // 注意 Dart RegExp 支持 (?<!...) 固定宽度回视（Dart 2.4+）
+    RegExp(r'(?<![低无加含少减高])糖\s*[：:、\s]*\s*(\d+(?:\.\d+)?)\s*g', caseSensitive: false),
   ];
 }
