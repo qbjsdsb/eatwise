@@ -100,14 +100,17 @@ class RecognitionValidator {
         final def = FoodCategoryDefaults.defaults[result.foodCategory];
         if (def != null && def.$1 > 0) {
           final scale = cal / def.$1;
-          correctedProteinG = def.$2 * scale;
-          correctedFatG = def.$3 * scale;
-          correctedCarbsG = def.$4 * scale;
+          final p = def.$2 * scale;
+          final f = def.$3 * scale;
+          final c = def.$4 * scale;
+          correctedProteinG = p;
+          correctedFatG = f;
+          correctedCarbsG = c;
           reasons.add('宏量营养素全 0 但 calories=$cal，按品类 '
               '${result.foodCategory} 默认比例反推: '
-              'p=${correctedProteinG!.toStringAsFixed(1)}, '
-              'f=${correctedFatG!.toStringAsFixed(1)}, '
-              'c=${correctedCarbsG!.toStringAsFixed(1)}');
+              'p=${p.toStringAsFixed(1)}, '
+              'f=${f.toStringAsFixed(1)}, '
+              'c=${c.toStringAsFixed(1)}');
         }
       }
     }

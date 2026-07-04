@@ -36,7 +36,7 @@
 
 **最后更新**：2026-07-04
 
-**工作区状态**：clean（v0.14.0 已发布，所有改动已 commit + push）
+**工作区状态**：1 个未 commit 修改（recognition_validator.dart warning 修复，局部变量替代 `!` 断言）；v1.10 含糖饮料碳水缺失修复已在 3e2c8f8 commit
 **当前分支**：trae/agent-wX1X6Q（与 v0.10.0-m3-merge 同步在 2cc8249；v0.14.0 tag 指向 8bccee4 版本号 bump commit）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
@@ -172,6 +172,53 @@
 - multi_dish_page widget test 缺失（无回归保护，待补）
 - 版本号硬编码 settings_page L333 / me_page L216（待改用 package_info_plus）
 
+**Phase 2.7 v1.10 含糖饮料碳水缺失修复（2026-07-04，commit 3e2c8f8）**：
+
+用户反馈"拍照识别菊花茶成功，但热量显示蛋白质/脂肪无碳水"——含糖饮料（盒装菊花茶）碳水必标（GB 28050 强制标注营养成分表），但 AI 漏填 estimated_carbs_g 时显示 0。经严谨三重根因分析 + 三层防御架构修复：
+
+**三重缺陷根因**：
+1. **架构缺陷**：`computePackageNutritionPer100g` 注释"包装通常不标碳水"对含糖饮料是错的（GB 28050 强制标注），AI 漏填 estimated_carbs_g 时无兜底
+2. **prompt 缺陷**：规则 10 说"基于 package_serving_* 换算"但 6 字段无碳水值，AI 实际只能用 estimatedXxxG 反算
+3. **兜底缺陷**：包装路径短路 `FoodCategoryDefaults.calibrate`，AI 漏填时无兜底
+
+**三层防御架构**：
+- **第 1 层（OCR 正则兜底）**：新增 `lib/ai/package_nutrition_ocr_parser.dart`——`PackageNutritionOcrParser.parse(ocrText)` 从 `package_nutrition_table_ocr` 原文正则提取蛋白/脂肪/碳水（中英文 + 各种分隔符 + 0g 支持）
+- **第 2 层（三层优先级换算）**：`vision_provider.dart` 加 3 字段 `packageServingProteinG/FatG/CarbsG` + `computePackageNutritionPer100g` 改造为三层优先级（包装字段 > OCR 正则 > AI 估算反算）
+- **第 3 层（自洽反推 + 三路径宏量兜底）**：
+  - `recognition_validator.dart` 加自洽反推修正（cal>0 但三宏量全 0 → 按品类默认比例反推）
+  - `food_category_defaults.dart` 新增 3 品类（tea/protein_drink/energy_drink）
+  - 三路径（recognize_page/multi_dish_page/calibration_page/offline_queue_controller）加 `packageMacrosAllZero` 守卫——包装换算宏量全 0 但 cal>0 时回退品类校准/AI 估算/组分累加
+  - `actualCalories` 与 per100g 职责分离：包装宏量全 0 时 per100g 回退品类校准，actualCalories 也回退 AI 估算（避免两者脱节）
+
+**关键 bug 修复（PostProcessor 透传完整性）**：
+- `recognition_post_processor.dart` 两处重建 VisionRecognitionResult（applyDensityConversion + correctAdditionalDishes）原只透传 6 个旧 `package_*` 字段，遗漏 v1.10 新增的 3 字段
+- 影响：触发密度换算（液体+package_label+density≠1.0，如油/蜂蜜）或 additionalDishes 修正时，重建后主菜丢失 3 个新字段，致 `computePackageNutritionPer100g` 第 1 层失效
+- 修复：两处重建各加 3 行透传新字段
+
+**prompt v1.10 改造**：
+- version bump v1.9 → v1.10
+- schema 加 3 字段 `package_serving_protein_g/fat_g/carbs_g`（含糖饮料必标）
+- food_category 枚举扩展（tea/protein_drink/energy_drink）
+- 规则 10 重写：要求 AI 显式填 3 个宏量字段 + 加宏量换算公式
+- 示例 8b 菊花茶：250ml/盒，food_category=tea，package_serving_carbs_g=16，碳水必标
+
+**测试覆盖（174 个测试，5 个文件）**：
+- `test/ai/package_nutrition_ocr_parser_test.dart`（新建，~25 测试）：中英文/各种分隔符/0g/空串/菊花茶/红牛/豆奶真实场景
+- `test/ai/vision_response_parser_test.dart`（追加 v1.10 group）：3 字段解析 + 三层优先级换算 + 示例 8b 端到端
+- `test/core/recognition_validator_test.dart`（追加 v1.10 group）：自洽反推修正覆盖 tea/protein_drink/energy_drink/carbonated/solid/water + cal=0 + 部分宏量非 0 + cal=null 旧 prompt 兼容
+- `test/core/recognition_post_processor_test.dart`（追加 v1.10 group）：3 字段透传完整性（密度换算路径 + additionalDishes 修正路径 + 菊花茶端到端）
+- `test/data/food_category_defaults_test.dart`（追加 v1.10 group）：3 新品类默认值 + calibrate 各路径
+
+**验证（2026-07-04 沙箱实测）**：
+- ✅ `flutter analyze` → No issues found（修复 recognition_validator.dart 3 个 `unnecessary_non_null_assertion` warning，用局部变量替代 `!` 断言）
+- ✅ `flutter test` → 486 passed / 3 skipped / 1 failed（T48 pre-existing 日期漂移 bug，与 v1.10 无关，已 stash 验证）
+- 关键断言全过：菊花茶 per100g 碳水 = 6.4（非 0）/ AI 漏填时 OCR 兜底碳水非 0 / PostProcessor 重建后 3 字段保留
+
+**v1.10 文件清单（10 个 lib + 5 个 test）**：
+- 新建：`lib/ai/package_nutrition_ocr_parser.dart` / `test/ai/package_nutrition_ocr_parser_test.dart`
+- 修改：`lib/ai/vision_provider.dart` / `lib/ai/prompts.dart` / `lib/core/util/recognition_post_processor.dart` / `lib/core/util/recognition_validator.dart` / `lib/data/seed/food_category_defaults.dart` / `lib/features/offline/offline_queue_controller.dart` / `lib/features/recognize/calibration_page.dart` / `lib/features/recognize/multi_dish_page.dart` / `lib/features/recognize/recognize_page.dart`
+- 修改测试：`test/ai/vision_response_parser_test.dart` / `test/core/recognition_post_processor_test.dart` / `test/core/recognition_validator_test.dart` / `test/data/food_category_defaults_test.dart`
+
 **Phase 3 调研结论（2026-07-04，决策：不推荐实施）**：
 
 经沙箱严谨调研，Phase 3 thinking 模式存在 5 重障碍，ROI 不足以支撑实施成本：
@@ -216,6 +263,7 @@
 - `image_cleanup_startup_test.dart T48` 日期敏感测试：测试硬编码日期但代码用 `DateTime.now()`，每过一段时间会失败。建议后续改成相对日期（`DateTime.now().subtract(Duration(days: 8))` 动态生成测试日期）
 
 **最近 commit**：
+- `3e2c8f8` feat: v1.10 含糖饮料碳水缺失修复——三层防御架构（OCR 正则兜底 + 三层优先级换算 + 自洽反推 + 三路径宏量兜底）+ 174 测试
 - `8bccee4` chore: bump 版本号到 0.14.0+15 准备发布 v0.14.0
 - `e20b65f` fix: 5 维度深度检查修复 + Gap1 集成测试补全
 - `3321a25` fix(ai): 修复 v1.9 包装 OCR 4 个 gap，达到豆包级识别精度
