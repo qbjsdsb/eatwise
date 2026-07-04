@@ -790,28 +790,32 @@ void main() {
       expect(per100.$2, 0); // 10 * 0 = 0（mid=0 → per100Ratio=0）
     });
 
-    test('hasPackageNutrition：仅 serving_kj>0 → true', () {
+    test('hasPackageNutrition：仅 serving_kj>0 → false（M5：需 servingG 配合）', () {
+      // M5 修复：与 computePackageNutritionPer100g 一致——
+      // kj>0 但 servingG=0 时换算分母为 0 返回 null，getter 应一致返回 false
       final result = buildResult(
         servingG: 0,
         servingKj: 170,
         servingKcal: 0,
       );
-      expect(result.hasPackageNutrition, isTrue);
+      expect(result.hasPackageNutrition, isFalse);
     });
 
-    test('hasPackageNutrition：仅 serving_kcal>0 → true', () {
+    test('hasPackageNutrition：仅 serving_kcal>0 → false（M5：需 servingG 配合）', () {
+      // M5 修复：kcal>0 但 servingG=0 时换算分母为 0 返回 null，getter 应一致返回 false
       final result = buildResult(
         servingG: 0,
         servingKcal: 50,
       );
-      expect(result.hasPackageNutrition, isTrue);
+      expect(result.hasPackageNutrition, isFalse);
     });
 
-    test('hasPackageNutrition：仅 serving_g>0 → true', () {
+    test('hasPackageNutrition：仅 serving_g>0 → false（M5：需能量配合）', () {
+      // M5 修复：servingG>0 但 kj/kcal=0 时换算能量来源缺失返回 null，getter 应一致返回 false
       final result = buildResult(
         servingG: 10.5,
       );
-      expect(result.hasPackageNutrition, isTrue);
+      expect(result.hasPackageNutrition, isFalse);
     });
 
     test('hasPackageNutrition：所有 serving_* 为 0/null → false', () {
@@ -1234,6 +1238,50 @@ void main() {
       };
       final result = VisionRecognitionResult.fromJson(json, 'v1.10');
       expect(result.cookingMethod, 'raw');
+    });
+  });
+
+  group('M5: hasPackageNutrition 与 computePackageNutritionPer100g 一致性', () {
+    test('只有份量无能量时，getter 应返回 false（与 computePackageNutritionPer100g 一致）', () {
+      // 边界场景：packageServingG=100 但 kj/kcal 都为 null
+      // computePackageNutritionPer100g 会返回 null（servingKcal=0, kj=0 → return null）
+      // hasPackageNutrition 也应返回 false，否则调用方误以为有包装数据却换算失败
+      final result = VisionRecognitionResult(
+        dishName: '测试',
+        estimatedWeightGLow: 90,
+        estimatedWeightGMid: 100,
+        estimatedWeightGHigh: 110,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.10',
+        packageServingG: 100, // 有份量
+        packageServingKj: null, // 无能量
+        packageServingKcal: null,
+      );
+      expect(result.hasPackageNutrition, false,
+          reason: '只有份量无能量时，computePackageNutritionPer100g 返回 null，getter 应一致返回 false');
+      expect(result.computePackageNutritionPer100g(), isNull);
+    });
+
+    test('有份量+kJ 时，getter 返回 true（与 computePackageNutritionPer100g 一致）', () {
+      final result = VisionRecognitionResult(
+        dishName: '测试',
+        estimatedWeightGLow: 90,
+        estimatedWeightGMid: 100,
+        estimatedWeightGHigh: 110,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.10',
+        packageServingG: 100,
+        packageServingKj: 418,
+        packageServingKcal: null,
+      );
+      expect(result.hasPackageNutrition, true);
+      expect(result.computePackageNutritionPer100g(), isNotNull);
     });
   });
 }

@@ -103,11 +103,13 @@ class VisionRecognitionResult {
   bool get isMultiQuantity => quantity > 1;
 
   /// v1.9：是否有包装营养表数据（用于 LLM-first 优先路径判断）
-  /// 任一 package_serving_* 字段非空非 0 即视为有包装数据
+  /// M5 修复：与 computePackageNutritionPer100g 前置条件一致——
+  /// 需同时满足 packageServingG>0（per100g 换算分母）和 kj/kcal>0（能量来源），
+  /// 否则调用方误以为有包装数据但 computePackageNutritionPer100g 返回 null 致换算失败
   bool get hasPackageNutrition =>
-      (packageServingG != null && packageServingG! > 0) ||
-      (packageServingKj != null && packageServingKj! > 0) ||
-      (packageServingKcal != null && packageServingKcal! > 0);
+      (packageServingG != null && packageServingG! > 0) &&
+      ((packageServingKj != null && packageServingKj! > 0) ||
+          (packageServingKcal != null && packageServingKcal! > 0));
 
   /// v1.9/v1.10：基于包装营养成分表换算 per100g 营养值
   ///
