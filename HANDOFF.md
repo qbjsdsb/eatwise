@@ -34,10 +34,10 @@
 
 ## 2. 当前状态（每次会话结束更新）
 
-**最后更新**：2026-07-04
+**最后更新**：2026-07-05
 
-**工作区状态**：v0.16.0 release 已 push 远程（commit e6ae182 + tag v0.16.0，含 v5 AI 推荐审计修复 + 满意度反馈按钮改为点开才显示 + 测试 mock 修复 + 版本号 bump）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push（AI 推荐失败修复 + 改菜名 mixin 三入口 + 周月总结滚动窗口+宏量+偏好+覆盖率+数据守卫）
-**当前分支**：trae/agent-wX1X6Q（HEAD = 7017ee3 待 push；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
+**工作区状态**：v0.16.0 release 已 push 远程（commit e6ae182 + tag v0.16.0，含 v5 AI 推荐审计修复 + 满意度反馈按钮改为点开才显示 + 测试 mock 修复 + 版本号 bump）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push（AI 推荐失败修复 + 改菜名 mixin 三入口 + 周月总结滚动窗口+宏量+偏好+覆盖率+数据守卫）；**深度审查修复批次（2026-07-05）已 commit 23 个待 push**（H1-H6 / M1-M14 / L1-L5，详见下方"深度审查修复批次"章节）
+**当前分支**：trae/agent-wX1X6Q（HEAD = 1d8da3d 待 push，23 个 commit 待推送 194d4ca~1d8da3d；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
@@ -561,6 +561,76 @@
 
 
 
+**深度审查修复批次（2026-07-05）—— 严格 TDD 修复 6 High + 14 Medium + 5 Low**：
+
+用户要求"对这个项目再次进行深度的问题寻找与修复，所有的地方都要检查到，而且是反复的，必须要严谨，不能出问题，仔细"。3 个并行 search agent 全面审查发现 6 个 High + 17 个 Medium + 若干 Low，全部采用严格 TDD（Red-Green-Refactor：先写失败测试→验证失败原因正确→最小实现→验证通过→commit）渐进修复，分 5 个 Section（A-E）。新增 60+ 个测试用例，全量验证通过。
+
+**Section A：High 级崩溃/数据污染 bug 修复（6 个 Task）**：
+- **H1（commit 194d4ca）vision_provider.dart fromJson null 兜底**：cooking_method/is_single_item/confidence 用 `as String/bool/num` 强转，Qwen-VL 偶发漏返字段时抛 _TypeError 致整次识别失败。改 `as String?/bool?/num? + ?? 默认值`，与同文件其他 13 个字段兜底风格一致
+- **H2（commit 25c601b）json_importer _asInt 兑现注释承诺**：原 `_asInt` 注释说"用 _asIntOrNull 兜底"但实现没兜底，null 直接抛 _TypeError 难定位。改为显式 ArgumentError 给清晰错误信息（必填字段缺失/类型非 num 各一分支），调用方据 message 决定是否切 _asIntOrNull + 默认值
+- **H3+M1（commit f1241ad）glm_flash_provider _buildPrompt null 兜底 + 宏量数组越界守卫**：`_buildPrompt`/`_buildMonthlyPrompt` 对 daily_calories/daily_weights 无 null 兜底，调用方传不完整 data 时崩溃。加 `as List? ?? const []` 兜底；同时 M1 给宏量数组加 index 越界守卫防 IndexError
+- **H4（commit 63bcbf7）meal_log_repository recent 三方法加 endDate 上界**：getRecentMeals/getRecentFoodCounts/getMealTypeDistribution 原只 startDate 下界无 endDate 上界，未来日期污染推荐。加 `w.date <= today` 上界，与 getRangeForTdee 行为一致
+- **H5+H6（commit aa77a21）prompt 规则 6 容忍度与 validator 一致 + 酒精例外**：prompts.dart L60 规则 6 自洽约束 vs L221 示例 5 啤酒明确违反（5% 容忍度下啤酒 cal 43 vs 三宏量推算 48 偏差 12%），模型困惑。recognition_validator L21 容忍度 10% vs prompts.dart L60 5% 不一致。修复：validator 与 prompt 容忍度常量统一（提取 `kCalorieTolerancePercent = 0.10`）；prompt 规则 6 加"酒精例外"（啤酒/葡萄酒等酒精饮料 cal 来自乙醇 7kcal/g，三宏量推算会偏差，不触发自洽修正），示例 5 加注释说明例外适用
+- **关键测试**：vision_response_parser_test 加"fromJson 字段缺失时不崩溃" / json_export_import_test 加"H2 _asInt 给清晰错误" / glm_flash_provider_test 新建（含 H3 null 兜底 + 宏量数组越界）/ meal_log_repository_test 加"H4 endDate 上界" / recognition_validator_test 加"H5+H6 酒精例外 + 容忍度统一"
+
+**Section B：Phase 4 防御性加固（4 个 Task）**：
+- **M2（commit a429344）insight_page SegmentedButton 快速切换竞态守卫**：SegmentedButton 快速切换周/月时 onSelectionChanged 异步 _load 与 setState 竞态，UI 显示错乱。加 `_isSwitching` 守卫防重入
+- **M3（commit 33eb588）recognize_page 迁移 DishNameEditor mixin（DRY）**：recognize_page 的改菜名逻辑与 calibration_page/multi_dish_page 重复，违反 DRY。迁移到 DishNameEditor mixin（已在 Phase 4 创建），recognize_page `with DishNameEditor` 复用
+- **M4（commit f034ae4）insight 测试滚动策略统一为 drag**：insight_key_test/insight_offline_guard_test/insight_regenerate_confirm_test 三个测试用 `scrollUntilVisible` 在某些场景抛 "Too many elements"，统一改用 `tester.drag(find.byType(ListView), const Offset(0, -300))` 手动滚动
+- **关键测试**：insight 测试三文件滚动策略统一 + recognize_page mixin 迁移后行为不变验证
+
+**Section C：AI 链路修复（6 个 Task）**：
+- **M5（commit 1ff0fa6）hasPackageNutrition getter 与 computePackageNutritionPer100g 一致**：getter 检查 6 字段非 0，但 computePackageNutritionPer100g 实际只看 4 字段（packageServingG/Kj/Kcal/TotalG），不一致。统一为同一份字段集合
+- **M6（commit 638fc7e）copyWith 补全 v1.9/v1.10 新增 9 个 package_* 字段**：copyWith 漏了 v1.9/v1.10 新增的 9 字段，重建 VisionRecognitionResult 时丢失数据
+- **M8（commit 492b190）OCR 糖类正则负向回视扩展，防多字糖类配料名误匹配**："低糖/无糖/加糖/含糖/少糖/减糖/高糖" 等多字糖类配料名会误匹配 "糖" 模式。加 7 个负向回视 `(?<![低无加含少减高])糖`
+- **L2（commit fe94e58）createChatCompletion 加默认 timeout 30s 参数**：原无 timeout，调用方忘加 timeout 时会无限等待。加默认 30s，调用方可覆盖
+- **M7（commit 4e74896）profile_repository update 置空语义限制文档化**：update 的 null 跳过语义（部分更新）未文档化，调用方可能误以为 null=置空。加文档说明"null 跳过保持原值，要置空需用专门的 clear 方法"
+- **关键测试**：vision_response_parser_test 加 M5/M6 用例 / package_nutrition_ocr_parser_test 加 M8 多字糖类负向回视 / glm_flash_provider_test 加 L2 timeout
+
+**Section D：UI + 测试补强（5 个 Task）**：
+- **M11（commit 214ff95）offline_queue_controller 后台回补计入月度识别次数**：后台回补成功识别后未调 incrementMonthlyCount，月度配额漏算。补 incrementMonthlyCount 调用
+- **M12（commit 70edabc）补全 multi_dish_page widget 测试**：multi_dish_page 含 resolveSingleFoodItemId/packageMacrosAllZero 守卫/db.transaction/改菜名等复杂逻辑，原无 widget test。补 5 个 testWidgets（识别成功/守卫触发/改菜名命中/改菜名未命中/复合菜包装数据）
+- **M13（commit 26982ed）版本号用 package_info_plus 动态读取**：替代 me_page/settings_page/sentry_init 三处硬编码版本号。新增 `app_version_provider.dart`（appVersionProvider 返回 version+buildNumber，appVersionShortProvider 返回纯 version）+ 3 个测试（含 mock bump 场景）
+- **M14（commit 0aebcb4）weight_page 加 PopScope 未保存确认**：原输入体重后误触返回会丢失数据。加 `_dirty` 字段 + `_markDirty` listener（用 setState 触发 rebuild 让 canPop 同步）+ PopScope(canPop: !_dirty, onPopInvokedWithResult) + _save 成功后清 _dirty。4 个测试覆盖 4 个路径（输入后弹确认/未输入不弹/放弃退出/继续编辑保留）
+- **关键测试**：multi_dish_page_test 新建 5 个 widget test / app_version_provider_test 新建 3 个测试 / weight_page_test 新建 4 个 widget test
+
+**Section E：Low 级顺手清理（5 个 Task）**：
+- **L1（commit 2e481f3）_friendlyError 加 5xx/403 错误文案**：原仅覆盖 timeout/401/429/network，5xx 和 403 落兜底文案不够精准。加 403（权限不足）和 5xx（服务暂时不可用）分支，用 `RegExp(r'5\d{2}')` 匹配 500/502/503/504
+- **L5（commit d507152）weight_log getRange 同日多条去重（与 getRangeForTdee 一致）**：折线图同日多条会显示多个点跳变。getRange 改为按 date 去重保留最新（asc(id) 排序后 byDate[date]=w 覆盖，最大 id=后插入=用户最新值）
+- **L3（commit ab1e2b4）insight_chart_test 注释同步 v1.11 滚动窗口**：注释从 "monday-sunday 本周" 改为 "v1.11 滚动窗口 today-6 ~ today"（与 Phase 4 滚动窗口策略对齐）
+- **L4（commit cf2ff28）dish_name_editor searchByName limit 30→10**：改菜名场景用户已输入精准关键词，30 候选在 AlertDialog 内滚动筛选成本高，10 足够（GLM 5 级模糊兜底仍保留）
+- **chore（commit 1d8da3d）清理 weight_page_test 未使用 import**：M14 测试实际未直接用 SecureConfigStore，移除 unused import
+
+**修复期间错误与复盘**：
+- M14 测试失败：_markDirty 只修改 _dirty 不调 setState，致 PopScope canPop 未同步（onPopInvokedWithResult didPop=true 直接 pop 不弹确认）。修复：_markDirty 改用 setState + `if (_dirty) return` 防重复 setState
+- M14 analyze 警告 use_build_context_synchronously：`if (await confirmDiscardChanges(context) && mounted)` → `if (await confirmDiscardChanges(context) && context.mounted)`（参考 multi_dish_page.dart 模式）
+- L1 编译错误：mock 类 override 签名缺 timeout 参数（L2 加了 timeout 但 3 个 mock 类未同步）。补 timeout 参数到 _FakeGlmProvider/_ThrowingGlmProvider/_SlowGlmProvider 的 override
+- L5 编译错误：`db.weightLogs.select()` 不可用（某些 drift 版本 table.select() 未暴露）。改用 `db.select(db.weightLogs).get()`（参考 profile_weight_refresh_test.dart）
+
+**验证（2026-07-05 沙箱实测）**：
+- ✅ `flutter analyze` → No issues found
+- ✅ `flutter test` → 772 passed / 3 skipped / 0 failed（含本次新增 60+ 测试）
+
+**深度审查修复批次文件清单**：
+- High 级（6 个 commit）：vision_provider / json_importer / glm_flash_provider / meal_log_repository / prompts / recognition_validator
+- Medium 级（14 个 commit）：insight_page / recognize_page / vision_provider / profile_repository / package_nutrition_ocr_parser / glm_flash_provider / offline_queue_controller / me_page / settings_page / sentry_init / weight_page / pubspec / app_version_provider（新建）/ multi_dish_page_test（新建）
+- Low 级（5 个 commit）：ai_recommendation_service / weight_log_repository / insight_chart_test / dish_name_editor / weight_page_test（清理）
+- 新建文件：`lib/core/config/app_version_provider.dart` / `test/core/app_version_provider_test.dart` / `test/features/multi_dish_page_test.dart` / `test/features/weight_page_test.dart` / `test/ai/glm_flash_provider_test.dart`
+- 完整 commit 列表（23 个，时间顺序）：194d4ca H1 / 25c601b H2 / f1241ad H3+M1 / 63bcbf7 H4 / aa77a21 H5+H6 / a429344 M2 / 33eb588 M3 / f034ae4 M4 / 1ff0fa6 M5 / 638fc7e M6 / 492b190 M8 / fe94e58 L2 / 4e74896 M7 / 4b73238 feat / 214ff95 M11 / 70edabc M12 / 26982ed M13 / 0aebcb4 M14 / 2e481f3 L1 / d507152 L5 / ab1e2b4 L3 / cf2ff28 L4 / 1d8da3d chore
+
+**已知降级未修复项**（深度审查发现但本轮未实施）：
+- M9 GlmFlashProvider autoDispose：需评估生命周期影响，暂不实施
+- M10 nutrition_lookup 三次查库优化：重构风险较高，暂不实施
+- M15 settings_page_test 增强：现有测试已覆盖核心路径，ROI 低
+- M16 recognize_controller 容灾测试：现有容灾逻辑已在 production 路径覆盖，测试增强 ROI 低
+- M17 offline_queue 断路器+事务测试：需 mock workmanager 复杂依赖，成本高
+- 反馈页 reasoning 展示（Phase 2.6 High-1 降级，需 schema 迁移）
+- food_item 表 CHECK 约束（Phase 2.6 Medium 降级，需 schema 迁移）
+
+**实现计划文档**：`/workspace/docs/superpowers/plans/2026-07-04-deep-audit-fixes.md`（25 个 Task 完整 TDD 步骤）
+
+---
+
 **Phase 3 调研结论（2026-07-04，决策：不推荐实施）**：
 
 经沙箱严谨调研，Phase 3 thinking 模式存在 5 重障碍，ROI 不足以支撑实施成本：
@@ -605,6 +675,29 @@
 - `image_cleanup_startup_test.dart T48` 日期敏感测试：测试硬编码日期但代码用 `DateTime.now()`，每过一段时间会失败。建议后续改成相对日期（`DateTime.now().subtract(Duration(days: 8))` 动态生成测试日期）
 
 **最近 commit**：
+- `1d8da3d` chore: 清理 weight_page_test 未使用 import
+- `cf2ff28` ux(L4): dish_name_editor searchByName limit 30→10
+- `ab1e2b4` docs(L3): insight_chart_test 注释同步 v1.11 滚动窗口
+- `d507152` fix(L5): weight_log getRange 同日多条去重（与 getRangeForTdee 一致）
+- `2e481f3` fix(L1): _friendlyError 加 5xx/403 错误文案
+- `0aebcb4` feat(M14): weight_page 加 PopScope 未保存确认
+- `26982ed` feat(M13): 版本号用 package_info_plus 动态读取（替代三处硬编码）
+- `70edabc` test(M12): 补全 multi_dish_page widget 测试
+- `214ff95` fix(M11): offline_queue_controller 后台回补计入月度识别次数
+- `4b73238` feat: 了解项目进展
+- `4e74896` docs(M7): profile_repository update 置空语义限制文档化
+- `fe94e58` fix(L2): createChatCompletion 加默认 timeout 30s 参数
+- `492b190` fix(M8): OCR 糖类正则负向回视扩展，防多字糖类配料名误匹配
+- `638fc7e` fix: M6 copyWith 补全 v1.9/v1.10 新增 9 个 package_* 字段
+- `1ff0fa6` fix: M5 hasPackageNutrition getter 与 computePackageNutritionPer100g 一致
+- `f034ae4` test: M4 insight 测试滚动策略统一为 drag
+- `33eb588` refactor: M3 recognize_page 迁移 DishNameEditor mixin（DRY）
+- `a429344` fix: M2 insight_page SegmentedButton 快速切换竞态守卫
+- `aa77a21` fix: H5+H6 prompt 规则 6 容忍度与 validator 一致 + 酒精例外
+- `63bcbf7` fix: H4 meal_log_repository recent 三方法加 endDate 上界
+- `f1241ad` fix: H3+M1 glm_flash_provider _buildPrompt null 兜底 + 宏量数组越界守卫
+- `25c601b` fix: H2 json_importer _asInt 兑现注释承诺，null 时抛 ArgumentError
+- `194d4ca` fix: H1 vision_provider fromJson 关键字段无 null 兜底致崩溃
 - `7017ee3` feat: Phase 4 用户反馈 5 问题改进（AI 推荐失败修复 + 改菜名 mixin 三入口 + 周月总结滚动窗口+宏量+偏好+覆盖率+数据守卫 + 测试修复）
 - `e6ae182` release: v0.16.0 v5 AI 推荐审计修复（5 high + 5 medium）+ 满意度反馈按钮改 PopupMenuButton + 测试 mock 修复 + 版本号 bump
 - `e09b233` docs: HANDOFF 回填 Phase 2.12 commit hash 27b6a85
