@@ -4,4 +4,7 @@
          让 native splash → Flutter UI 过渡无颜色跳变（减少"黑/白屏一两秒"的突兀感）。
          用户若切了主题色，splash 仍是默认紫调 surface——native 启动太快读不到 secure_storage，可接受。 -->
     <color name="splash_background">#FCF9F9</color>
+    <!-- M15：图标颜色集中定义（替代 drawable 内硬编码，便于后续主题化） -->
+    <color name="ic_launcher_background">#FF6E40</color>
+    <color name="ic_launcher_foreground">#FFFFFF</color>
 </resources>
