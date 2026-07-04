@@ -5,6 +5,7 @@ import 'package:eatwise/data/repositories/food_item_repository.dart';
 import 'package:eatwise/data/repositories/meal_log_repository.dart';
 import 'package:eatwise/data/repositories/profile_repository.dart';
 import 'package:eatwise/nutrition/recommendation_service.dart';
+import 'package:eatwise/nutrition/user_preference_learner.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -275,6 +276,145 @@ void main() {
       // 昨日已吃时鸡蛋得分应更低（降权 -2）
       expect(withYesterday[eggIdxB].score,
           lessThan(withoutYesterday[eggIdxA].score));
+    });
+  });
+
+  group('recommend v4 用户偏好学习', () {
+    test('userPref=null → 不启用偏好加权（向后兼容）', () async {
+      final r = await service.getDailyRemaining('2026-07-02');
+      final recs = await service.recommend(remaining: r, limit: 5, userPref: null);
+      expect(recs, isNotEmpty);
+      // 无 userPref 时行为与 v3 一致，鸡胸肉高蛋白排第一
+      expect(recs.first.food.name, '鸡胸肉');
+    });
+
+    test('userPref 样本不足 → 不启用偏好加权', () async {
+      // 仅 2 次记录（< 5 阈值），hasEnoughSamples=false
+      final pref = UserPreferenceProfile(
+        tasteFreq: {'spicy': 1, 'sweet': 1},
+      );
+      expect(pref.hasEnoughSamples, false);
+      final r = await service.getDailyRemaining('2026-07-02');
+      final recs = await service.recommend(remaining: r, limit: 5, userPref: pref);
+      // 样本不足时不启用偏好，鸡胸肉仍排第一（与 v3 一致）
+      expect(recs.first.food.name, '鸡胸肉');
+    });
+
+    test('辣味偏好 → 辣味食物加分排前', () async {
+      // 加辣味食物到库里
+      await _seedFood(db, name: '麻辣火锅', cal: 200, protein: 10, fat: 12, carbs: 5);
+      await _seedFood(db, name: '川菜辣子鸡', cal: 220, protein: 18, fat: 15, carbs: 4);
+      // 用户偏好辣味（5 辣 + 1 甜 = 6 样本，spicy 是 top1）
+      final pref = UserPreferenceProfile(
+        tasteFreq: {'spicy': 5, 'sweet': 1},
+      );
+      expect(pref.hasEnoughSamples, true);
+      expect(pref.hasSignificantTastePref, true);
+
+      final r = await service.getDailyRemaining('2026-07-02');
+      final recsNoPref = await service.recommend(remaining: r, limit: 10, userPref: null);
+      final recsWithPref = await service.recommend(remaining: r, limit: 10, userPref: pref);
+
+      // 找麻辣火锅在两个列表中的位置
+      final spicyFoodIdxNoPref =
+          recsNoPref.indexWhere((e) => e.food.name == '麻辣火锅');
+      final spicyFoodIdxWithPref =
+          recsWithPref.indexWhere((e) => e.food.name == '麻辣火锅');
+      // 前置断言：麻辣火锅应在列表中
+      expect(spicyFoodIdxNoPref, greaterThanOrEqualTo(0),
+          reason: '无偏好时麻辣火锅应在列表');
+      expect(spicyFoodIdxWithPref, greaterThanOrEqualTo(0),
+          reason: '有偏好时麻辣火锅应在列表');
+      // 有辣味偏好时麻辣火锅得分更高（+2.5）
+      expect(recsWithPref[spicyFoodIdxWithPref].score,
+          greaterThan(recsNoPref[spicyFoodIdxNoPref].score));
+      // reason 文案应包含"符合辣口味"
+      expect(recsWithPref[spicyFoodIdxWithPref].reason, contains('辣'));
+    });
+
+    test('海鲜风格偏好 → 海鲜食物加分', () async {
+      // 加海鲜食物
+      await _seedFood(db, name: '清蒸鲈鱼', cal: 120, protein: 20, fat: 4, carbs: 0);
+      await _seedFood(db, name: '白灼虾', cal: 100, protein: 22, fat: 1, carbs: 0);
+      // 用户偏好海鲜（4 海鲜 + 2 家常 = 6 样本）
+      final pref = UserPreferenceProfile(
+        styleFreq: {'seafood': 4, 'home': 2},
+      );
+      expect(pref.hasEnoughSamples, true);
+
+      final r = await service.getDailyRemaining('2026-07-02');
+      final recsNoPref = await service.recommend(remaining: r, limit: 10, userPref: null);
+      final recsWithPref = await service.recommend(remaining: r, limit: 10, userPref: pref);
+
+      final fishIdxNoPref =
+          recsNoPref.indexWhere((e) => e.food.name == '清蒸鲈鱼');
+      final fishIdxWithPref =
+          recsWithPref.indexWhere((e) => e.food.name == '清蒸鲈鱼');
+      expect(fishIdxNoPref, greaterThanOrEqualTo(0));
+      expect(fishIdxWithPref, greaterThanOrEqualTo(0));
+      expect(recsWithPref[fishIdxWithPref].score,
+          greaterThan(recsNoPref[fishIdxNoPref].score));
+    });
+
+    test('未尝试口味中性：用户从未吃过辣，辣味食物不加分不减分', () async {
+      await _seedFood(db, name: '麻辣火锅', cal: 200, protein: 10, fat: 12, carbs: 5);
+      // 用户只吃过甜味（5 次），从未吃过辣 → spicy 不在 tasteFreq → weight=0.5 中性
+      // 设计原则：不惩罚"未知"（用户没吃过 ≠ 不喜欢）
+      final pref = UserPreferenceProfile(
+        tasteFreq: {'sweet': 5},
+      );
+      expect(pref.hasEnoughSamples, true);
+      expect(pref.tasteWeight('spicy'), 0.5); // 未尝试 → 中性
+
+      final r = await service.getDailyRemaining('2026-07-02');
+      final recsNoPref = await service.recommend(remaining: r, limit: 10, userPref: null);
+      final recsWithPref = await service.recommend(remaining: r, limit: 10, userPref: pref);
+      final spicyIdxNoPref =
+          recsNoPref.indexWhere((e) => e.food.name == '麻辣火锅');
+      final spicyIdxWithPref =
+          recsWithPref.indexWhere((e) => e.food.name == '麻辣火锅');
+      // 前置断言：麻辣火锅应在两个列表中（避免 if 守卫静默跳过断言）
+      expect(spicyIdxNoPref, greaterThanOrEqualTo(0),
+          reason: '无偏好时麻辣火锅应在列表');
+      expect(spicyIdxWithPref, greaterThanOrEqualTo(0),
+          reason: '有偏好时麻辣火锅应在列表');
+      // 辣味食物在甜味偏好下 weight=0.5（中性），不加分不减分
+      // 得分差异应很小（< 0.5，仅基础分微小波动）
+      final diff = (recsWithPref[spicyIdxWithPref].score -
+              recsNoPref[spicyIdxNoPref].score)
+          .abs();
+      expect(diff, lessThan(0.5),
+          reason: '未尝试口味应中性，得分不应大幅变化');
+    });
+
+    test('少碰口味减分：用户吃过辣但很少，辣味食物降权', () async {
+      await _seedFood(db, name: '麻辣火锅', cal: 200, protein: 10, fat: 12, carbs: 5);
+      // 用户甜味 10 次 + 辣味 1 次 → spicy weight = 1/10 = 0.1 < 0.2 → 减分
+      // 设计原则：用户尝试过但很少吃 = 隐式不偏好 → 适度降权
+      final pref = UserPreferenceProfile(
+        tasteFreq: {'sweet': 10, 'spicy': 1},
+      );
+      expect(pref.hasEnoughSamples, true);
+      expect(pref.tasteWeight('spicy'), closeTo(0.1, 0.01));
+      expect(pref.tasteWeight('spicy'), lessThan(0.2)); // 触发减分阈值
+
+      final r = await service.getDailyRemaining('2026-07-02');
+      final recsNoPref = await service.recommend(remaining: r, limit: 10, userPref: null);
+      final recsWithPref = await service.recommend(remaining: r, limit: 10, userPref: pref);
+      final spicyIdxNoPref =
+          recsNoPref.indexWhere((e) => e.food.name == '麻辣火锅');
+      final spicyIdxWithPref =
+          recsWithPref.indexWhere((e) => e.food.name == '麻辣火锅');
+      // 前置断言：麻辣火锅应在两个列表中
+      expect(spicyIdxNoPref, greaterThanOrEqualTo(0),
+          reason: '无偏好时麻辣火锅应在列表');
+      expect(spicyIdxWithPref, greaterThanOrEqualTo(0),
+          reason: '有偏好时麻辣火锅应在列表');
+      // 辣味食物 weight=0.1 < 0.2 → 减分 -1.0
+      // 得分应低于无偏好场景（差值 ≈ 1.0，至少 > 0.5）
+      expect(recsWithPref[spicyIdxWithPref].score,
+          lessThan(recsNoPref[spicyIdxNoPref].score),
+          reason: '少碰口味应被减分');
     });
   });
 }

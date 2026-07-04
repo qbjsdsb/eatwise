@@ -36,7 +36,7 @@
 
 **最后更新**：2026-07-04
 
-**工作区状态**：v0.15.0 release 已 push 远程（commit 4b35dcb + tag v0.15.0）；v0.15.0 审计修复已 push（commit c13143b）；v1.10 深度审查已 commit 7b649f2
+**工作区状态**：v0.15.0 release 已 push 远程（commit 4b35dcb + tag v0.15.0）；v0.15.0 审计修复已 push（commit c13143b）；Phase 2.11 图标重设计 + 拍照识别页改造 + 推荐算法 v4 用户偏好学习（待 commit）
 **当前分支**：trae/agent-wX1X6Q（HEAD = c13143b；v0.15.0 tag 指向 4b35dcb；v0.14.0 tag 指向 8bccee4）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
@@ -349,6 +349,53 @@
 **验证（2026-07-04 沙箱实测）**：
 - ✅ `flutter analyze` → No issues found
 - ✅ `flutter test` → 610 passed / 3 skipped / 1 failed（T48 pre-existing 日期漂移，与本次改动无关）
+
+**Phase 2.11 图标重设计 + 拍照识别页改造 + 推荐算法 v4 用户偏好学习（2026-07-04，待 commit）**：
+
+用户反馈"图标还是太丑，希望更谷歌味道、精致、温馨大方"+"拍照识别界面非常丑陋，大面空白"+"智能推荐完全不智能，可以根据每个人的饮食习惯自己学习，多维度（材质/价格/口味/风格）"。三项全部完成 + 顺手修复一个 pre-existing 日期漂移测试。
+
+**1. 图标重设计（更谷歌、温馨大方）**：
+- 背景：青绿 #5B8C7B → Material Deep Orange 400 #FF6E40（暖橙色，食欲心理学食物色，Google Workspace 常用暖色系）
+- 前景：白色"餐叉+餐刀" → 白色"碗+蒸汽"几何图形（碗比刀叉更温馨；蒸汽 2 道 S 形上升波浪，stroke 风格 round linecap）
+- 文件：`android/app/src/main/res/drawable/ic_launcher_background.xml` + `ic_launcher_foreground.xml`
+
+**2. 拍照识别页面改造（消除大面空白）**：
+- 原 Column mainAxisAlignment.center（上下大面空白）→ 上半 Hero 引导区（Expanded flex:5，96dp 圆形图标 + 标题 + 副标题）+ 下半操作区（Flexible flex:4，餐次选择器 + full width 拍照按钮 + 相册按钮）
+- 文件：`lib/features/recognize/recognize_page.dart`
+
+**3. 推荐算法 v4 用户偏好学习（多维度自学习）**：
+
+核心思路：用户吃过 = 偏好信号（隐式反馈学习，与 Spotify "听过=喜欢" / 抖音 "看完=感兴趣" 一致）。离线友好，纯本地计算，不调 AI。
+
+**新增组件**：
+- `lib/nutrition/food_profile_tagger.dart`（食物画像标签器）：4 维度关键词表（taste 6 类 sweet/sour/bitter/spicy/salty/light + style 7 类 western/japanese/korean/seafood/fast_food/home + texture 7 类 soup/stir_fry/steamed/boiled/grilled/fried/cold + priceTier 3 类 budget/medium/premium），_matchFirst 按顺序匹配。设计要点：seafood 优先于 japanese/korean（"三文鱼刺身"归 seafood）；"酸辣"归 sour 不归 spicy（酸味更主导）
+- `lib/nutrition/user_preference_learner.dart`（用户偏好学习器）：从 meal_log 学习 4 维度频次分布。关键 API：`tasteWeight(tag)` 返回 0.0-1.0（null/空 freq/未知标签 → 0.5 中性；标签在频次表 → 频次/max 频次）；`hasEnoughSamples`（总样本 >= 5 才启用偏好加权，避免小样本噪声）；`hasSignificantTastePref`（top1 占比 >= 0.4 且样本 >= 3 且标签数 >= 2，用于 reason 文案）
+
+**关键设计决策（v4 核心纠偏）**：
+- **"未尝试" vs "少碰" 区分**：原 `_weight` 函数把"标签不在频次表"（用户从未吃过）和"标签在频次表但频次 0"（不可能发生）都当 0 处理，导致未尝试口味被惩罚。修复：`!freq.containsKey(tag)` → 返回 0.5 中性（不惩罚"未知"，用户没吃过 ≠ 不喜欢）；只有"尝试过但很少"（如 sweet:10 + spicy:1，weight=0.1 < 0.2）才减分。这是 v4 设计的核心原则
+
+**推荐服务升级（v3 五维 → v4 九维）**：
+- `lib/nutrition/recommendation_service.dart`：`recommend()` 和 `_scoreFood()` 新增 `UserPreferenceProfile? userPref` 参数。在 v3 五维（缺口匹配/频次/profile/时段/多样性）后插入维度 6-9（用户偏好学习）：
+  - taste: weight >= 0.7 → +2.5（显著偏好时加 reason "符合X口味"）；weight < 0.2 且 freq 非空 → -1.0
+  - style: +2.0 / -0.8
+  - texture: +1.5 / -0.5
+  - priceTier: +1.5 / -0.5
+  - userPref=null 或 hasEnoughSamples=false → 不启用（向后兼容 v3）
+- `lib/data/repositories/meal_log_repository.dart`：新增 `getRecentMeals({days=30})` 方法供偏好学习用
+- `lib/features/dashboard/dashboard_page.dart`：`_loadRecommendations()` 并行查 recentMeals + foods，建 foodMap，调 `UserPreferenceLearner.learn()` 传入 recommend
+
+**4. 顺手修复 pre-existing 日期漂移测试**：
+- `test/features/image_cleanup_startup_test.dart` T48 测试硬编码"今天=2026-07-02"，实际日期漂移后失败。修复：改用 `formatYmd(DateTime.now().subtract(Duration(days: N)))` 相对日期，永久免疫日期漂移
+
+**Phase 2.11 文件清单（4 lib 新增 + 4 lib 修改 + 2 xml + 4 test）**：
+- 新增：`lib/nutrition/food_profile_tagger.dart` / `lib/nutrition/user_preference_learner.dart` / `test/nutrition/food_profile_tagger_test.dart`（32 测试）/ `test/nutrition/user_preference_learner_test.dart`（13 测试）
+- 修改：`lib/nutrition/recommendation_service.dart`（v4 九维评分）/ `lib/data/repositories/meal_log_repository.dart`（getRecentMeals）/ `lib/features/dashboard/dashboard_page.dart`（_loadRecommendations v4 集成）/ `lib/features/recognize/recognize_page.dart`（Hero + 操作区布局）
+- 图标：`android/app/src/main/res/drawable/ic_launcher_background.xml` + `ic_launcher_foreground.xml`
+- 测试修改：`test/nutrition/recommendation_service_test.dart`（v4 集成测试 7 个：userPref=null / 样本不足 / 辣味偏好加分 / 海鲜风格加分 / 未尝试口味中性 / 少碰口味减分）/ `test/features/image_cleanup_startup_test.dart`（T48 日期漂移修复）
+
+**验证（2026-07-04 沙箱实测）**：
+- ✅ `flutter analyze` → No issues found
+- ✅ `flutter test` → 661 passed / 3 skipped / 0 failed（含 v4 新增 52 测试 + T48 日期漂移修复）
 
 **Phase 3 调研结论（2026-07-04，决策：不推荐实施）**：
 
@@ -923,6 +970,8 @@
 50. **主题色默认值是 M3 基线紫 0xFF6750A4 不是莫奈青绿**：`ThemeNotifier.build()`（theme_controller.dart L11）和 `SecureConfigStore.getThemeSeed()` 默认值（secure_config_store.dart）都是 M3 基线紫 `0xFF6750A4`。`0xFF5B8C7B 莫奈睡莲青绿` 只是 `kThemePresets` 列表第一项（settings_page 设置页默认选中色）。新用户首次安装由 main.dart 读 storage（仍是基线紫），实际显示基线紫，需用户主动进设置页选色才变青绿。HANDOFF 第 3.6 节曾误写"默认莫奈青绿"已修正。改默认色必须同步改 ThemeNotifier.build + SecureConfigStore.getThemeSeed + kThemePresets[0] 三处，否则首帧色与设置页选中态不一致
 
 51. **v1.9 包装 OCR 优先路径：actual* 与 per100g 职责分离 + 三路径必须同步**：`computePackageNutritionPer100g()` 返回的 per100g 值只用于 `upsertAiRecognized` 写入 food_item（作未来查库密度参考），**不能覆盖 meal_log 的 actual* 值**。actual* 仍用 AI 估算的整菜值（`result.estimatedCalories` 等），因为 meal_log 记录的是本餐实际摄入量，per100g 是食物的密度属性，两者职责不同。三路径（recognize_page / multi_dish_page / offline_queue_controller）哨兵分支必须同步加 `hasPackageNutrition` 优先检查，否则后台回补路径会用品类校准覆盖包装精确值致热量偏差。复合菜组分全 miss 路径也加包装 OCR 优先——预包装速冻食品可能被识别为 composite 但有包装营养表。`computePackageNutritionPer100g` 返回 null 时（servingG=0 或所有 serving_*=0）调用方必须走 AI 估算兜底，不能直接用 null 致空指针
+
+52. **v4 推荐算法"未尝试" vs "少碰" 必须区分，不能都惩罚**：`UserPreferenceProfile._weight(tag, freq)` 必须三段判断——① `tag == null` 或 `freq.isEmpty` → 0.5 中性（未知）；② `!freq.containsKey(tag)` → 0.5 中性（用户从未吃过该标签，不惩罚"未知"，用户没吃过 ≠ 不喜欢）；③ 标签在 freq 表 → `freq[tag]! / max`（0.0-1.0）。原实现把②③混为一谈（`freq[tag] ?? 0`），导致用户从未吃过的口味被当 weight=0 触发减分分支（`w < 0.2 && freq.isNotEmpty`）。正确行为：只有"尝试过但很少"（如 sweet:10 + spicy:1，weight=0.1 < 0.2）才减分。`UserPreferenceLearner.learn` 永远不会产生 count=0 的 freq entry（只对吃过的食物打标签累加），所以 freq[tag]=0 只可能来自测试构造的人工 profile。改 `_weight` 必须同步改测试期望（user_preference_learner_test "未知标签 → 0.5 中性"）
 
 ---
 

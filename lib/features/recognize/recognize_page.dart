@@ -100,38 +100,95 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
     return Scaffold(
       appBar: AppBar(title: const Text('拍照识别')),
       body: Stack(
         children: [
-          Center(
+          // 整体布局：上半 hero 引导区（图标+标题+副标题）+ 下半操作区（餐次+两个大按钮）
+          // 解决原 Column 在屏幕中央导致上下大面空白的问题
+          SafeArea(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // Sprint 2 T0：餐次选择器（M3：DropdownButton → SegmentedButton）
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: MealTypeSelector(
-                    value: _mealType,
-                    onChanged: (v) => setState(() => _mealType = v),
+                // Hero 引导区：撑满上半空间，居中大图标 + 引导文案
+                Expanded(
+                  flex: 5,
+                  child: Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 96,
+                          height: 96,
+                          decoration: BoxDecoration(
+                            color: cs.primaryContainer,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            Icons.restaurant_menu_rounded,
+                            size: 48,
+                            color: cs.onPrimaryContainer,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        Text('拍照识别食物', style: tt.headlineSmall),
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 32),
+                          child: Text(
+                            'AI 自动识别菜品 + 估算营养，也可选相册图片',
+                            textAlign: TextAlign.center,
+                            style: tt.bodyMedium
+                                ?.copyWith(color: cs.onSurfaceVariant),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  onPressed: _isRecognizing
-                      ? null
-                      : () => _pickAndRecognize(ImageSource.camera),
-                  icon: const Icon(Icons.camera_alt_rounded),
-                  label: const Text('拍照'),
-                ),
-                const SizedBox(height: 12),
-                // 次要入口用 OutlinedButton 与主入口"拍照"形成主次层级（MD3 视觉层级）
-                OutlinedButton.icon(
-                  onPressed: _isRecognizing
-                      ? null
-                      : () => _pickAndRecognize(ImageSource.gallery),
-                  icon: const Icon(Icons.photo_library_rounded),
-                  label: const Text('从相册选择'),
+                // 操作区：餐次选择 + 拍照按钮 + 相册按钮
+                Flexible(
+                  flex: 4,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        MealTypeSelector(
+                          value: _mealType,
+                          onChanged: (v) => setState(() => _mealType = v),
+                        ),
+                        const SizedBox(height: 20),
+                        // 主入口：拍照（大按钮，full width，强视觉权重）
+                        FilledButton.icon(
+                          onPressed: _isRecognizing
+                              ? null
+                              : () => _pickAndRecognize(ImageSource.camera),
+                          icon: const Icon(Icons.camera_alt_rounded),
+                          label: const Text('拍照识别'),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            textStyle: tt.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        // 次入口：相册（OutlinedButton 与主入口形成主次层级）
+                        OutlinedButton.icon(
+                          onPressed: _isRecognizing
+                              ? null
+                              : () => _pickAndRecognize(ImageSource.gallery),
+                          icon: const Icon(Icons.photo_library_rounded),
+                          label: const Text('从相册选择'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -139,7 +196,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
           // 识别中遮罩：用 cs.scrim（MD3 spec 遮罩色）替代硬编码 Colors.black54
           if (_isRecognizing)
             Container(
-              color: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.54),
+              color: cs.scrim.withValues(alpha: 0.54),
               child: Center(
                 child: Card(
                   elevation: 3,

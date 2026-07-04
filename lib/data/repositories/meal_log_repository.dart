@@ -167,6 +167,19 @@ class MealLogRepository {
     return (servings[n ~/ 2 - 1] + servings[n ~/ 2]) / 2;
   }
 
+  /// 查询最近 N 天的全部 meal_log（v4 推荐算法用户偏好学习用）。
+  /// 返回 `List<MealLog>`，调用方自行聚合。
+  /// N 默认 30 天：与 getRecentFoodCounts 窗口一致，覆盖一个月饮食习惯。
+  Future<List<MealLog>> getRecentMeals({int days = 30}) async {
+    final now = DateTime.now();
+    final start = now.subtract(Duration(days: days));
+    final startDate = formatYmd(start);
+    return (_db.mealLogs.select()
+          ..where((m) => m.date.isBiggerOrEqualValue(startDate))
+          ..orderBy([(m) => OrderingTerm.desc(m.loggedAt)]))
+        .get();
+  }
+
   /// 查询最近 N 天各食物的引用次数（智能推荐加权用）。
   /// 返回 foodItemId → 引用次数。常吃的食物频次高，推荐时加分。
   /// N 默认 30 天：覆盖一个月饮食习惯，太短样本少，太长不反映近期偏好变化。

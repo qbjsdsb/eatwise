@@ -11,6 +11,7 @@ import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/profile_repository.dart';
 import '../../nutrition/recommendation_service.dart';
+import '../../nutrition/user_preference_learner.dart';
 import '../manual_entry/manual_entry_page.dart';
 import '../recognize/providers.dart' as recognize;
 
@@ -61,12 +62,20 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
     final service = RecommendationService(foodRepo, mealRepo, profileRepo);
     final now = DateTime.now();
     final today = todayYmd();
-    // 推荐算法 v3：传 profile（偏好/健康过滤）+ mealType（时段感知）+ 昨日（多样性）
+    // 推荐算法 v4：v3 基础上新增用户偏好学习（口味/风格/材质/价格档）
     final yesterday = now.subtract(const Duration(days: 1));
     final yesterdayDate = formatYmd(yesterday);
     final profile = await profileRepo.get();
     final mealType = _currentMealType(now.hour);
     final remaining = await service.getDailyRemaining(today);
+    // v4：并行学习用户偏好（30 天 meal_log + food_item name 标签化）
+    // 用 listAllForRecommendation 拿到食物建 map，避免逐条 findById IO
+    final recentMealsFuture = mealRepo.getRecentMeals(days: 30);
+    final foodsFuture = foodRepo.listAllForRecommendation();
+    final recentMeals = await recentMealsFuture;
+    final foods = await foodsFuture;
+    final foodMap = {for (final f in foods) f.id: f};
+    final userPref = UserPreferenceLearner.learn(recentMeals, foodMap);
     return service.recommend(
       remaining: remaining,
       limit: 5,
@@ -74,6 +83,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
       profile: profile,
       mealType: mealType,
       yesterdayDate: yesterdayDate,
+      userPref: userPref,
     );
   }
 

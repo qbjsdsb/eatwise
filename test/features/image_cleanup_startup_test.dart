@@ -1,5 +1,6 @@
 // test/features/image_cleanup_startup_test.dart
 import 'package:drift/native.dart';
+import 'package:eatwise/core/util/date_format.dart';
 import 'package:eatwise/data/backup/image_cleanup.dart';
 import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/data/repositories/meal_log_repository.dart';
@@ -63,19 +64,23 @@ void main() {
   });
 
   // T48：自定义保留期 7 天
-  // 今天 2026-07-02，retentionDays=7 → cutoff=2026-06-25
-  // 8 天前(2026-06-24) < cutoff → 清；6 天前(2026-06-26) >= cutoff → 留
+  // 用相对日期（基于 DateTime.now()）避免硬编码日期随时间失效。
+  // retentionDays=7 → cutoff = today - 7
+  // 8 天前 < cutoff → 清；6 天前 >= cutoff → 留
   test('T48：自定义保留期 7 天（8 天前清，6 天前留）', () async {
     final mealRepo = MealLogRepository(db);
+    final now = DateTime.now();
+    final oldDate = formatYmd(now.subtract(const Duration(days: 8))); // 8 天前
+    final recentDate = formatYmd(now.subtract(const Duration(days: 6))); // 6 天前
     await mealRepo.insertMealLog(
-      date: '2026-06-24', // 8 天前
+      date: oldDate, // 8 天前
       mealType: 'lunch', foodItemId: 1,
       actualServingG: 100, actualCalories: 100, actualProteinG: 10,
       actualFatG: 5, actualCarbsG: 20,
       originalImagePath: '/tmp/nonexistent_old.jpg',
     );
     await mealRepo.insertMealLog(
-      date: '2026-06-26', // 6 天前
+      date: recentDate, // 6 天前
       mealType: 'lunch', foodItemId: 1,
       actualServingG: 100, actualCalories: 100, actualProteinG: 10,
       actualFatG: 5, actualCarbsG: 20,
@@ -85,8 +90,8 @@ void main() {
     await ImageCleanup.run(db, retentionDays: 7);
 
     final meals = await db.select(db.mealLogs).get();
-    final oldMeal = meals.firstWhere((m) => m.date == '2026-06-24');
-    final recentMeal = meals.firstWhere((m) => m.date == '2026-06-26');
+    final oldMeal = meals.firstWhere((m) => m.date == oldDate);
+    final recentMeal = meals.firstWhere((m) => m.date == recentDate);
     // 8 天前的被清理（路径置空）
     expect(oldMeal.originalImagePath, isNull);
     // 6 天前的保留

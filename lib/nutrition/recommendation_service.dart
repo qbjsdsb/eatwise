@@ -5,6 +5,9 @@ import 'package:eatwise/data/repositories/food_item_repository.dart';
 import 'package:eatwise/data/repositories/meal_log_repository.dart';
 import 'package:eatwise/data/repositories/profile_repository.dart';
 
+import 'food_profile_tagger.dart';
+import 'user_preference_learner.dart';
+
 /// 当日剩余额度（C 功能：智能推荐基础数据）
 class DailyRemaining {
   final double remainingCalories; // 剩余热量（目标-已记录），负值表示已超标
@@ -57,15 +60,24 @@ class RecommendedFood {
 
 /// 智能推荐服务（C 功能）
 ///
-/// v3 五维评分（参考业界饮食推荐 + 项目实际数据约束）：
+/// v4 九维评分（在 v3 五维基础上新增 4 维个人偏好学习）：
 /// 1. 相对缺口匹配（内容推荐 Content-Based）：三大宏量缺口比例，最缺的加权
 /// 2. 冷门降权 + 基础食材加权（频次 + 热门度）：避免冷门高密度食物霸榜，
 ///    常吃/基础食材优先（直击"推荐冷门"痛点）
 /// 3. profile 约束过滤（约束推荐 Constraint-Based）：素食/乳糖不耐/无麸质/
-///    糖尿病/肾病按 profile 字段过滤或降权（v0.11.1 已加字段但推荐侧未用）
+///    糖尿病/肾病按 profile 字段过滤或降权
 /// 4. 时段感知（Time-aware）：数据驱动学习每个食物的历史 mealType 分布，
 ///    当前时段匹配则加分（比硬编码"早餐食物"更贴合个人习惯）
 /// 5. 多样性（Diversity）：排除今日已吃 + 降权昨日已吃，避免每天重复
+/// 6. 口味偏好学习（v4 新增）：从历史 meal_log 学习用户最常吃的口味（甜/酸/辣/...），
+///    命中常口味加分，少碰口味减分
+/// 7. 风格偏好学习（v4 新增）：中式/西式/日式/韩式/快餐/家常/海鲜
+/// 8. 材质偏好学习（v4 新增）：汤水/小炒/清蒸/炖煮/烧烤/煎炸/凉拌
+/// 9. 价格档偏好学习（v4 新增）：经济/适中/精致
+///
+/// v4 维度 6-9 由 [UserPreferenceLearner] 从历史 meal_log 学习，
+/// 由 [FoodProfileTagger] 用关键词匹配推断食物的 4 维标签。
+/// 离线友好：纯本地计算，不调 AI。AI 接入留待后续 enhancement。
 ///
 /// 弃用方案：协同过滤（单机无用户群）、AI 生成食谱（离线 app）、
 /// 替换建议（需建食物替代图谱，工程量大留后续）
@@ -142,12 +154,11 @@ class RecommendationService {
     );
   }
 
-  /// 推荐食物（按五维评分排序，取 top limit）
+  /// 推荐食物（按九维评分排序，取 top limit）
   ///
-  /// v3 在 v2（缺口匹配 + 频次 + 排除今日）基础上新增三维度：
-  /// - [profile]：传入则按饮食偏好/健康状况过滤或降权；不传则跳过该维度（向后兼容）
-  /// - [mealType]：当前时段（breakfast/lunch/dinner/snck），传入则按时段分布加分
-  /// - [yesterdayDate]：昨日日期，传入则昨日已吃食物降权（多样性）
+  /// v4 在 v3（缺口匹配 + 频次 + profile + 时段 + 多样性）基础上新增个人偏好学习：
+  /// - [userPref]：从历史 meal_log 学到的偏好画像（口味/风格/材质/价格档），
+  ///   传入则给"用户常吃"的标签加分；不传则跳过该维度（向后兼容）
   Future<List<RecommendedFood>> recommend({
     required DailyRemaining remaining,
     int limit = 5,
@@ -155,6 +166,7 @@ class RecommendationService {
     Profile? profile,
     String mealType = '',
     String yesterdayDate = '',
+    UserPreferenceProfile? userPref,
   }) async {
     final foods = await _foodRepo.listAllForRecommendation();
     if (foods.isEmpty) return [];
@@ -186,7 +198,7 @@ class RecommendationService {
       if (profile != null && _shouldExcludeByProfile(food, profile)) continue;
       final (score, reason) = _scoreFood(
         food, remaining, freq, dist, yesterdayEaten,
-        profile: profile, mealType: mealType,
+        profile: profile, mealType: mealType, userPref: userPref,
       );
       if (score > 0) {
         recommendations
@@ -197,7 +209,7 @@ class RecommendationService {
     return recommendations.take(limit).toList();
   }
 
-  /// 单个食物五维评分（v3）
+  /// 单个食物九维评分（v4）
   /// 返回 (score, reason)。score <= 0 表示不推荐（被过滤）。
   (double, String) _scoreFood(
     FoodItem food,
@@ -207,6 +219,7 @@ class RecommendationService {
     Set<int> yesterdayEaten, {
     Profile? profile,
     String mealType = '',
+    UserPreferenceProfile? userPref,
   }) {
     double score = 0;
     final reasons = <String>[];
@@ -327,6 +340,60 @@ class RecommendationService {
     // 维度 5：多样性（昨日已吃降权，避免每天推同样）
     if (yesterdayEaten.contains(food.id)) {
       score -= 2;
+    }
+
+    // 维度 6-9（v4 新增）：用户偏好学习（口味/风格/材质/价格档）
+    // 仅当 userPref 有足够样本时启用，避免小样本噪声（5 次以下跳过）
+    if (userPref != null && userPref.hasEnoughSamples) {
+      final tags = FoodProfileTagger.tag(food.name);
+      // 口味
+      if (tags.taste != null) {
+        final w = userPref.tasteWeight(tags.taste);
+        if (w >= 0.7) {
+          score += 2.5; // 常吃口味加分
+          if (userPref.hasSignificantTastePref) {
+            reasons.add('符合${FoodProfileTagger.tasteLabel(tags.taste!)}口味');
+          }
+        } else if (w < 0.2 && userPref.tasteFreq.isNotEmpty) {
+          score -= 1.0; // 少碰口味减分
+        }
+      }
+      // 风格
+      if (tags.style != null) {
+        final w = userPref.styleWeight(tags.style);
+        if (w >= 0.7) {
+          score += 2.0;
+          if (userPref.hasSignificantStylePref) {
+            reasons.add('常吃${FoodProfileTagger.styleLabel(tags.style!)}');
+          }
+        } else if (w < 0.2 && userPref.styleFreq.isNotEmpty) {
+          score -= 0.8;
+        }
+      }
+      // 材质
+      if (tags.texture != null) {
+        final w = userPref.textureWeight(tags.texture);
+        if (w >= 0.7) {
+          score += 1.5;
+          if (userPref.hasSignificantTexturePref) {
+            reasons.add('偏好${FoodProfileTagger.textureLabel(tags.texture!)}');
+          }
+        } else if (w < 0.2 && userPref.textureFreq.isNotEmpty) {
+          score -= 0.5;
+        }
+      }
+      // 价格档
+      if (tags.priceTier != null) {
+        final w = userPref.priceTierWeight(tags.priceTier);
+        if (w >= 0.7) {
+          score += 1.5;
+          if (userPref.hasSignificantPricePref) {
+            reasons.add('${FoodProfileTagger.priceTierLabel(tags.priceTier!)}价位的');
+          }
+        } else if (w < 0.2 && userPref.priceTierFreq.isNotEmpty) {
+          score -= 0.5;
+        }
+      }
     }
 
     // 基础分（保证有分，让排序有意义）
