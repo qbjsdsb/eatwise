@@ -195,25 +195,30 @@ class GlmFlashProvider {
   /// 通用聊天补全（v5 AI 推荐用）
   ///
   /// 调用方传入 [systemPrompt] 和 [userPrompt]，返回模型文本响应。
-  /// 不在此处做 timeout（调用方按场景控制，AI 推荐用 30s）。
+  /// [timeout] 默认 30s，与 generateWeeklySummary/MonthlySummary 一致，
+  /// 避免调用方遗忘 timeout 致网络抖动卡死 UI。
+  /// 调用方仍可传更短 timeout 按场景控制（如 AI 推荐用 30s）。
   Future<String> createChatCompletion({
     required String systemPrompt,
     required String userPrompt,
     String model = 'glm-4-flash',
     int maxCompletionTokens = 1000,
     double temperature = 0.7,
+    Duration timeout = const Duration(seconds: 30),
   }) async {
-    final res = await _client.chat.completions.create(
-      ChatCompletionCreateRequest(
-        model: model,
-        messages: [
-          ChatMessage.system(systemPrompt),
-          ChatMessage.user(UserMessageContent.text(userPrompt)),
-        ],
-        maxCompletionTokens: maxCompletionTokens,
-        temperature: temperature,
-      ),
-    );
+    final res = await _client.chat.completions
+        .create(
+          ChatCompletionCreateRequest(
+            model: model,
+            messages: [
+              ChatMessage.system(systemPrompt),
+              ChatMessage.user(UserMessageContent.text(userPrompt)),
+            ],
+            maxCompletionTokens: maxCompletionTokens,
+            temperature: temperature,
+          ),
+        )
+        .timeout(timeout);
     return res.text ?? '';
   }
 

@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:eatwise/ai/glm_flash_provider.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -93,5 +96,52 @@ void main() {
   // 防 debugPrint 污染测试输出
   setUpAll(() {
     debugPrint = (String? message, {int? wrapWidth}) {};
+  });
+
+  // L2 修复：createChatCompletion 加默认 timeout 参数
+  // 原方法无 timeout，调用方遗忘时网络抖动会卡死 UI。
+  // 修复：加 Duration timeout = Duration(seconds: 30) 默认参数 + .timeout(timeout) 调用。
+  group('L2 createChatCompletion timeout', () {
+    test('L2: createChatCompletion 应用 timeout 参数，超时抛 TimeoutException', () async {
+      // 启动一个"黑洞" TCP 服务器：接受连接但不响应，模拟 GLM API 卡死
+      final server = await ServerSocket.bind('127.0.0.1', 0);
+      server.listen((socket) {
+        // 接受连接但不写入任何响应，模拟 API 卡死
+      });
+
+      final provider = GlmFlashProvider(
+        apiKey: 'fake',
+        baseUrl: 'http://127.0.0.1:${server.port}',
+      );
+
+      // 用 500ms 短 timeout，应在 ~500ms 内抛 TimeoutException
+      // 若 timeout 参数未生效，请求会一直挂起（黑洞服务器不响应）
+      await expectLater(
+        provider.createChatCompletion(
+          systemPrompt: 'test',
+          userPrompt: 'test',
+          timeout: const Duration(milliseconds: 500),
+        ),
+        throwsA(isA<TimeoutException>()),
+      );
+
+      await server.close();
+      provider.close();
+    }, timeout: const Timeout(Duration(seconds: 5)));
+
+    test('L2: createChatCompletion 不传 timeout 时使用默认值（签名兼容）', () {
+      // 验证 timeout 是可选参数（有默认值），现有调用方不传 timeout 仍能编译
+      final provider = GlmFlashProvider(apiKey: 'fake', baseUrl: 'http://test');
+      // 不调用（无网络），仅验证方法签名支持不传 timeout
+      // ignore: unnecessary_lambdas
+      expect(
+        () => provider.createChatCompletion(
+          systemPrompt: 's',
+          userPrompt: 'u',
+        ),
+        isA<Future<String> Function()>(),
+      );
+      provider.close();
+    });
   });
 }
