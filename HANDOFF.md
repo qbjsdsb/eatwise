@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-04
 
-**工作区状态**：v0.14.0 已发布（2026-07-04，workflow success 约 13 分钟）。工作区有未提交改动（HANDOFF release 数据回填，待 final commit）
-**当前分支**：trae/agent-wX1X6Q（基于 v0.10.0-m3-merge，叠加 v1.9 AI 识别精度重构 + Phase 3 调研；v0.10.0-m3-merge 已 fast-forward 到 v0.14.0 commit 8bccee4）
+**工作区状态**：clean（v0.14.0 已发布，所有改动已 commit + push）
+**当前分支**：trae/agent-wX1X6Q（与 v0.10.0-m3-merge 同步在 2cc8249；v0.14.0 tag 指向 8bccee4 版本号 bump commit）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
