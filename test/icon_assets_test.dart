@@ -25,5 +25,20 @@ void main() {
         reason: '图标前景颜色应抽到 colors.xml',
       );
     });
+
+    test('ic_launcher_background.xml 引用 @color/ic_launcher_background 而非硬编码', () {
+      final file = File('$androidResDir/drawable/ic_launcher_background.xml');
+      final content = file.readAsStringSync();
+      expect(
+        content,
+        contains('android:color="@color/ic_launcher_background"'),
+        reason: '背景 drawable 应引用 colors.xml 资源',
+      );
+      expect(
+        content,
+        isNot(contains('#FF6E40')),
+        reason: '不应再硬编码颜色值',
+      );
+    });
   });
 }
