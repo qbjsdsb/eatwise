@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- cache-path 对应 Context.getCacheDir()，path="." 覆盖整个 cache 目录 -->
+    <!-- ApkDownloader 用 getApplicationCacheDirectory() 写文件，Android 端实际落到 cache dir -->
+    <cache-path name="cache" path="." />
+    <!-- 兼容外部 cache（部分设备 getApplicationCacheDirectory 落到 external） -->
+    <external-cache-path name="external_cache" path="." />
+</paths>
