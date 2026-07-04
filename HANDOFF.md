@@ -80,6 +80,46 @@
 - Phase 3: thinking 模式沙箱验证（需 WebSearch 实测 qwen3-vl thinking 支持 + json_object 兼容性 + 成本评估）
 - Phase 4: 两阶段识别 / 追问机制（按需，观察 Phase 1-3 效果后决定）
 
+**Phase 3 调研结论（2026-07-04，决策：不推荐实施）**：
+
+经沙箱严谨调研，Phase 3 thinking 模式存在 5 重障碍，ROI 不足以支撑实施成本：
+
+1. **SDK 障碍**：openai_dart 7.0.0 的 `ChatCompletionCreateRequest.toJson()` 只序列化预定义字段，**无 extra body 扩展点**，无法传递 Qwen 特有的 `enable_thinking: true` 参数。要启用 thinking 需 fork/patch SDK（维护成本高）或绕过 SDK 用原始 HTTP（丢失 SDK 的错误处理/重试/超时逻辑）
+
+2. **架构障碍**：Qwen 官方文档明确 "Structured output is not supported in thinking mode"——thinking 模式与 `response_format: json_object` **不兼容**。需 workaround：thinking 流式输出后用 fast model（如 qwen3.5-flash）+ json_object 修复 JSON（两次 API 调用，延迟翻倍）
+
+3. **成本障碍**：thinking 模式 token 消耗 2-5x + 延迟 3-10x（来源：Qwen 官方 + theneuralbase.com 实测），加上 workaround 的两次 API 调用，移动端用户体验差（识别等待从 ~5s → 15-30s）
+
+4. **备模型障碍**：GLM-4V-Plus **不支持 thinking**（智谱支持 thinking 的视觉模型是 GLM-4.5V/4.6V 系列，非 GLM-4V-Plus）。主备降级时 Qwen thinking → GLM 无 thinking，架构不一致，识别质量波动大
+
+5. **功能重叠**：Phase 1 v1.9 的 `reasoning` 字段已实现 prompt 层面 CoT（让模型在 JSON 内输出推理过程后再给结论），无需 SDK 改造，与 json_object 兼容，主备模型都能用。thinking 模式是 SDK 层面 CoT，与 Phase 1 功能重叠，边际价值低
+
+**Phase 1 prompt 层面 CoT vs Phase 3 SDK 层面 thinking 对比**：
+
+| 维度 | Phase 1 reasoning 字段（已实施） | Phase 3 thinking 模式（不推荐） |
+|------|----------------------------------|-------------------------------|
+| 推理能力 | prompt 层面引导（已上线） | 模型原生能力 |
+| SDK 改造 | 无需 | 需 fork/patch 或绕过 SDK |
+| json_object | ✅ 兼容 | ❌ 不兼容（官方明确） |
+| 流式 | 不需要 | 必须（stream=True） |
+| 成本 | 低（仅输出 token 增加） | 高（token 2-5x + 延迟 3-10x + 两次 API） |
+| 主备兼容 | ✅ 都能用 | ❌ GLM-4V-Plus 不支持 |
+| 可控性 | 高（prompt 控制） | 低（模型内部） |
+
+**SDK 能力评估详情**（openai_dart 7.0.0，已核实源码）：
+- ✅ 流式输出：`createStream()` 方法支持，自动加 `stream: true`
+- ✅ 解析 reasoning_content：`AssistantMessage.reasoningContent` + `ChatDelta.reasoningContent` 都能解析 `reasoning_content` JSON 字段（DeepSeek R1 / vLLM 兼容字段）
+- ❌ 传递 enable_thinking：`ChatCompletionCreateRequest` 无此字段，`toJson()` 无 extra body 扩展点
+
+**模型能力评估详情**（已核实官方文档）：
+- Qwen3-VL-Flash：支持 hybrid thinking（默认 disabled，`enable_thinking=true` 开启），但 thinking 与 json_object 不兼容，必须流式
+- GLM-4V-Plus：不支持 thinking（智谱 thinking 视觉模型是 GLM-4.5V/4.6V 系列）
+
+**建议下一步**：
+- 跳过 Phase 3，先上线 Phase 1+2，收集真实用户反馈
+- 如果未来要启用 thinking，等 openai_dart SDK 支持 extra body 后再实施（或升级备模型到 GLM-4.5V/4.6V）
+- 直接评估 Phase 4（两阶段识别/追问机制）或其他改进方向
+
 **已知非阻塞问题**：
 - `image_cleanup_startup_test.dart T48` 日期敏感测试：测试硬编码日期但代码用 `DateTime.now()`，每过一段时间会失败。建议后续改成相对日期（`DateTime.now().subtract(Duration(days: 8))` 动态生成测试日期）
 
