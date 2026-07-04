@@ -6,6 +6,10 @@ import '../../ai/nutrition_lookup.dart';
 import '../../ai/off_provider.dart';
 import '../../ai/qwen_vl_provider.dart';
 import '../../core/config/app_config.dart';
+import '../../core/config/app_version_provider.dart';
+import '../../core/update/apk_downloader.dart';
+import '../../core/update/github_release_client.dart';
+import '../../core/update/update_service.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
@@ -96,4 +100,29 @@ final circuitBreakerProvider = Provider<CircuitBreaker>((ref) {
 final networkAvailableProvider = FutureProvider<bool>((ref) async {
   final results = await Connectivity().checkConnectivity();
   return results.any((r) => r != ConnectivityResult.none);
+});
+
+// === M16 应用内更新 providers ===
+
+/// GitHubReleaseClient 单例（http.Client 内部复用连接池）
+final gitHubReleaseClientProvider = Provider<GitHubReleaseClient>((ref) {
+  return GitHubReleaseClient();
+});
+
+/// ApkDownloader 单例
+final apkDownloaderProvider = Provider<ApkDownloader>((ref) {
+  return ApkDownloader();
+});
+
+/// UpdateService 实例（异步：需先读 appVersionShortProvider 拿当前版本号）
+/// UI 用 `ref.read(updateServiceProvider.future)` 拿实例后调 checkForUpdate / downloadApk
+final updateServiceProvider = FutureProvider<UpdateService>((ref) async {
+  final version = await ref.read(appVersionShortProvider.future);
+  final releaseClient = ref.read(gitHubReleaseClientProvider);
+  final downloader = ref.read(apkDownloaderProvider);
+  return UpdateService(
+    releaseClient: releaseClient,
+    downloader: downloader,
+    currentVersion: version,
+  );
 });
