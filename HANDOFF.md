@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-04
 
-**工作区状态**：有未提交改动（AI 识别准确度重构 Phase 1+2 完成，待 commit）
-**当前分支**：v0.10.0-m3-merge
+**工作区状态**：v0.14.0 发布中（已打 tag + push，等待 workflow 构建完成回填 APK 大小 + workflow URL）
+**当前分支**：trae/agent-wX1X6Q（基于 v0.10.0-m3-merge，叠加 v1.9 AI 识别精度重构 + Phase 3 调研）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
@@ -216,6 +216,10 @@
 - `image_cleanup_startup_test.dart T48` 日期敏感测试：测试硬编码日期但代码用 `DateTime.now()`，每过一段时间会失败。建议后续改成相对日期（`DateTime.now().subtract(Duration(days: 8))` 动态生成测试日期）
 
 **最近 commit**：
+- `（待补）` chore: bump 版本号到 0.14.0+15 准备发布 v0.14.0
+- `e20b65f` fix: 5 维度深度检查修复 + Gap1 集成测试补全
+- `3321a25` fix(ai): 修复 v1.9 包装 OCR 4 个 gap，达到豆包级识别精度
+- `0203cca` docs: Phase 3 thinking 模式调研结论 - 不推荐实施
 - `1fdff0e` chore: bump 版本号到 0.13.0+14 准备发布 v0.13.0
 - `11a0cba` docs: HANDOFF 补 Phase 3 C/D 批详情 + 陷阱 49（confirmAction/showAppToast 抽象偏好）
 - `4252093` refactor: UI/UX 审查修复 D 批第三轮——confirmAction + showAppToast 公共抽象
@@ -302,6 +306,12 @@
 - `47fd22c` feat: 食物热量计算优化第一波——可食部分系数+组分份量交叉验证+液体密度换算（建议1+3+7）
 
 **已发布**：
+- v0.14.0 已发布（2026-07-04，包含 v0.13.0 之后 1 大块：AI 识别准确度重构 Phase 1+2.5+2.6 + Phase 3 调研结论，达到豆包级识别精度）
+  - Release: https://github.com/qbjsdsb/eatwise/releases/tag/v0.14.0（待回填）
+  - app-release.apk ?? MB / app-debug.apk ?? MB（debug 签名，自用版，待回填）
+  - workflow run: ??（待回填）
+  - 新增能力：①v1.9 prompt 营养师人设 + reasoning CoT 字段 + 包装营养表 OCR 6 字段路径 + 盘子尺度参照 + 示例 7 珍宝珠酸条 + 示例 8 麻婆豆腐 ②包装 OCR 优先路径三路径全覆盖（recognize_page/multi_dish_page/offline_queue_controller 单品+复合菜分支）+ computePackageNutritionPer100g 精确换算 ③4 个 Gap 修复（复合菜漏包装 OCR / reasoning UI 展示 / actualCalories 与包装换算值脱节 / solid 校准 + 示例 7 数据自洽）④5 维度深度检查修复（反馈纠正份量反算 per100g 改用 actualServingG / 食物搜索加 aliasesJson.like 支持品牌名 / mid>0 守卫防误清零 / 三路径 estimatedProteinG 传参统一）⑤Gap1 集成测试补全 ⑥Phase 3 thinking 模式调研结论（5 重障碍不推荐实施，详见 §3.18）
+  - 验证：flutter analyze No issues + flutter test 426 passed / 3 skipped / 1 failed（T48 原有日期 bug）
 - v0.13.0 已发布（2026-07-03，包含 v0.12.0 之后 3 大块：食物识别增强四层自我进化架构 P0/P1/P2 + 全 editable 第一批 体重+餐次 + UI/UX 审查修复 Phase 3 A+B+C+D+E 五批共 26 项）
   - Release: https://github.com/qbjsdsb/eatwise/releases/tag/v0.13.0
   - app-release.apk 74.1 MB / app-debug.apk 167.6 MB（debug 签名，自用版）
