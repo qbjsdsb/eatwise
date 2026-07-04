@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
@@ -28,10 +31,10 @@ android {
     // M16 应用内更新：固定签名 keystore（保证 CI 与本地 build 签名一致，支持覆盖安装）
     // keystore 文件路径与密码从 key.properties 读取（文件不进 repo）
     // key.properties 不存在时回退到 debug 签名（开发期不阻塞）
-    val keystoreProperties = java.util.Properties()
+    val keystoreProperties = Properties()
     val keystorePropertiesFile = rootProject.file("app/key.properties")
     if (keystorePropertiesFile.exists()) {
-        keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
+        keystoreProperties.load(FileInputStream(keystorePropertiesFile))
     }
 
     signingConfigs {
