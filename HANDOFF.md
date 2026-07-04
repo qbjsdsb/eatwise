@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-05
 
-**工作区状态**：v0.17.0 release 待 push（10 个 M15 commit 4d35805~e6b5f3a + 本次 HANDOFF 回填，含图标重设计 + 每日历史记录查看功能）；v0.16.0 release 已 push 远程（commit e6ae182 + tag v0.16.0，含 v5 AI 推荐审计修复 + 满意度反馈按钮改为点开才显示 + 测试 mock 修复 + 版本号 bump）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push（AI 推荐失败修复 + 改菜名 mixin 三入口 + 周月总结滚动窗口+宏量+偏好+覆盖率+数据守卫）；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5，详见下方"深度审查修复批次"章节）
-**当前分支**：trae/agent-wX1X6Q（HEAD = e6b5f3a，10 个 M15 commit 待推送 4d35805~e6b5f3a；远端 origin/trae/agent-wX1X6Q 停在 9554067；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
+**工作区状态**：v0.18.0 release 待 push（13 个 M16 commit ff717a7~14b9c35 + 本次 HANDOFF 回填，含应用内自更新功能：GitHub Releases 检查 + APK 下载 + 系统安装器 + 固定签名 keystore，详见下方"M16 应用内自更新"章节）；v0.17.0 release 待 push（10 个 M15 commit 4d35805~e6b5f3a，含图标重设计 + 每日历史记录查看功能）；v0.16.0 release 已 push 远程（commit e6ae182 + tag v0.16.0，含 v5 AI 推荐审计修复 + 满意度反馈按钮改为点开才显示 + 测试 mock 修复 + 版本号 bump）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push（AI 推荐失败修复 + 改菜名 mixin 三入口 + 周月总结滚动窗口+宏量+偏好+覆盖率+数据守卫）；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5，详见下方"深度审查修复批次"章节）
+**当前分支**：trae/agent-wX1X6Q（HEAD = 14b9c35，13 个 M16 commit 待推送 ff717a7~14b9c35；远端 origin/trae/agent-wX1X6Q 停在 9d62aa7；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
@@ -957,6 +957,78 @@
 **验证**：
 - `flutter analyze` → 0 issues
 - `flutter test` → 787 passed, 0 failed（Section A 后 779 / Section B 后 787）
+
+---
+
+**M16 应用内自更新（2026-07-05）—— 严格 TDD 实现 13 个 Task**：
+
+用户提需求："严谨进行 release 的发布，此外我希望每一次发布都可以直接更新，而不是要删除软件来进行，最好在软件内部就能更新，反复检查不要出问题"。要求用 `test-driven-development` + `writing-plans` 两个 skill。**根因诊断**：用户"必须卸载才能装新版"问题的根因是 CI 用 debug 签名（每次 keystore 不同），解决方案是固定签名 keystore + GitHub Secrets 注入。完整计划文件 `docs/superpowers/plans/2026-07-05-in-app-update.md`，6 个 Section 共 13 个 Task 全部 TDD（Red-Green-Refactor）执行。
+
+**Section A：版本比较 + GitHub API 客户端 + APK 下载（3 个 Task，commit ff717a7/8e3e3b1/cf1b1f3）**：
+- **A1（commit ff717a7）版本号解析与比较纯函数**：`lib/core/update/version_comparator.dart` 实现 `parseSemver(String)→(major,minor,patch)` / `parseVersionFromTag(String)→String`（剥离 v 前缀 + 日期后缀）/ `compareSemver(a,b)→int` / `isNewer({current, latest})→bool`。15 个测试覆盖 3 段/2 段/非法格式 / v 前缀剥离 / 日期后缀剥离 / major/minor/patch 比较 / 相等 / 旧版不降级 / 异常返回 false
+- **B1（commit 8e3e3b1）GitHub Release API 客户端 + 数据模型**：`lib/core/update/update_models.dart` 定义 `ReleaseInfo` + sealed class `UpdateCheckResult`（UpToDate/UpdateAvailable/CheckFailed）+ `DownloadProgress` + 3 个 Exception 类型。`lib/core/update/github_release_client.dart` 实现 `fetchLatestRelease()`：HTTP GET `https://api.github.com/repos/qbjsdsb/eatwise/releases/latest` → 解析 JSON → 遍历 assets 找 `app-release.apk`（跳过 app-debug.apk）。构造函数注入 `http.Client` 便于测试。6 个测试覆盖成功解析 / 无 app-release.apk 抛 ReleaseAssetNotFoundException / HTTP 403/404 抛 ReleaseFetchFailedException 含 statusCode / JSON 缺 tag_name 抛 FormatException / 网络异常抛 ReleaseFetchFailedException
+- **C1（commit cf1b1f3）APK 下载服务**：`lib/core/update/apk_downloader.dart` 实现 `download({url, onProgress})→Future<String>`：HTTP GET → 非 200 抛 ApkDownloadException → 计算 content-length → onProgress 回调 → 写入 `getApplicationCacheDirectory()/eatwise-update.apk` → 下载前删除同名旧文件。6 个测试覆盖成功下载 / 进度 fraction 单调递增 / HTTP 404/500 / 网络异常 / 覆盖旧文件。**PathProvider mock 模式**：用 `extends PathProviderPlatform` 而非 `implements`（abstract class 有默认实现，与项目已有测试惯例一致）
+
+**Section B：编排 + Provider + UI（4 个 Task，commit 6a78872/334098b/1e8efab/f399c24）**：
+- **D1（commit 6a78872）UpdateService 编排**：`lib/core/update/update_service.dart` 实现 `checkForUpdate()`（组合 GitHubReleaseClient + isNewer，返回 UpdateCheckResult，永不抛）+ `downloadApk({url, onProgress})`（透传 ApkDownloader）。7 个测试覆盖当前=最新→UpToDate / 最新>当前→UpdateAvailable / 当前>最新→UpToDate（不降级）/ 抛异常→CheckFailed / 下载成功返回路径 / 下载异常透传
+- **D2（commit 334098b）注册 updateServiceProvider**：`lib/features/recognize/providers.dart` 追加 `gitHubReleaseClientProvider` + `apkDownloaderProvider` + `updateServiceProvider`（FutureProvider，异步读 appVersionShortProvider 拿当前版本号）。821 全量测试通过
+- **E1（commit 1e8efab）UpdatePage 状态机 UI**：`lib/features/update/update_page.dart` 实现 6 状态机：idle（检查更新按钮）/ checking（LoadingState）/ upToDate（已是最新）/ updateAvailable（版本号 + release notes + 下载并安装）/ downloading（LinearProgressIndicator + 已下载/总大小）/ readyToInstall（打开系统安装器）/ error（错误信息 + 重试）。`_busy` 防重入 + async gap 后 mounted 检查。5 个 widget 测试覆盖状态机流转。**坑**：AppBar 标题"检查更新"与按钮文案冲突 → 改 AppBar 为"应用更新"；副标题"打开系统安装器完成升级"会模糊匹配 2 个 → 测试用 `find.text` 精确匹配而非 `find.textContaining`
+- **E2（commit f399c24）settings 关于组加检查更新入口**：`lib/features/settings/settings_page.dart` 在"关于慢慢吃"之前加"检查更新" ListTile → push UpdatePage。复用 LeadingIconContainer(Icons.system_update_alt) 与项目视觉一致
+
+**Section C：Android 原生（2 个 Task，commit da4fec1/bf37735）**：
+- **F1（commit da4fec1）AndroidManifest 加权限 + FileProvider**：`android/app/src/main/AndroidManifest.xml` 加 `REQUEST_INSTALL_PACKAGES` 权限（Android 8+ 安装 APK 必需）+ 注册 FileProvider（authority=`${applicationId}.fileprovider`，grantUriPermissions=true，meta-data 指向 @xml/file_paths）。新建 `android/app/src/main/res/xml/file_paths.xml` 配置 `<cache-path name="cache" path="." />`（共享 cache_dir 下的 APK）+ `<external-cache-path>` 兜底。3 个静态测试断言 manifest 含权限 / FileProvider 注册 / file_paths.xml 配置
+- **F2（commit bf37735）ApkInstaller MethodChannel + MainActivity Intent**：`lib/core/update/apk_installer.dart` Dart 侧 `triggerInstall(String apkPath)` 调 MethodChannel。`android/app/src/main/kotlin/com/eatwise/eatwise/MainActivity.kt` 注册 MethodChannel `com.eatwise.eatwise/apk_installer`，handler 调 `FileProvider.getUriForFile` + `Intent(ACTION_VIEW).setDataAndType(application/vnd.android.package-archive).addFlags(FLAG_GRANT_READ_URI_PERMISSION)`。UpdatePage `_install` 接入 ApkInstaller。831 全量测试通过
+
+**Section D：固定签名 keystore（2 个 Task，commit 7facaaa/216451e）**：
+- **G1（commit 7facaaa）固定签名 keystore 配置 + 生成脚本**：`android/app/build.gradle.kts` 加 `signingConfigs.create("release")` 从 `app/key.properties` 读 keystore（不存在回退 debug 签名，开发期不阻塞）。新建 `scripts/generate_keystore.sh` 用 keytool 生成 `eatwise-release.jks` + `key.properties`（两者都已 .gitignore）。**注意**：build.gradle.kts 改动随 commit 113faa5 一并提交（含计划文件），G1 commit 仅含脚本
+- **G2（commit 216451e）release.yml 从 secrets 注入 keystore**：`.github/workflows/release.yml` 加"注入 release keystore"步骤：从 `ANDROID_KEYSTORE_BASE64` secret 解码到 `android/app/eatwise-release.jks` + 生成 key.properties（未配置 secret 时 echo 警告回退 debug）。Release body 文案更新："先卸载旧版本"改为"直接覆盖安装即可（v0.18.0 起固定 keystore 签名）" + 加"在「设置 → 检查更新」可一键升级到下一版"
+
+**Section E：版本号 + HANDOFF（2 个 Task，commit 14b9c35 + 本次）**：
+- **H1（commit 14b9c35）bump 版本号**：pubspec.yaml `0.17.0+18` → `0.18.0+19`（minor bump 因新增应用内更新 + 固定签名功能）
+- **H2（本次 commit）HANDOFF 回填 M16**：本章节 + 第 2 节当前状态更新
+
+**关键 API 核实**（避免计划初稿误用）：
+- `appVersionShortProvider` → `FutureProvider<String>` 返回纯 version（如 '0.17.0'），UpdateService 用此值做版本比较
+- `PathProviderPlatform` mock 用 `extends` 而非 `implements`（abstract class 有默认实现，避免实现所有方法 + 处理 getExternalStoragePaths 可选参数）
+- MethodChannel mock 用 `TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler`
+- `LoadingState` 在 unbounded 高度容器内需 SizedBox 提供高度约束（UpdatePage 用 Center + Column mainAxisSize.min 避免此问题）
+
+**完整文件清单**（13 个 M16 commit + 本次 HANDOFF commit）：
+- `lib/core/update/version_comparator.dart`（A1，semver 解析与比较纯函数）
+- `test/core/update/version_comparator_test.dart`（A1 测试，15 用例）
+- `lib/core/update/update_models.dart`（B1，ReleaseInfo + sealed UpdateCheckResult + DownloadProgress + 3 Exception）
+- `lib/core/update/github_release_client.dart`（B1，GitHub Releases API 客户端）
+- `test/core/update/github_release_client_test.dart`（B1 测试，6 用例）
+- `lib/core/update/apk_downloader.dart`（C1，APK 下载到 cache dir + 进度回调）
+- `test/core/update/apk_downloader_test.dart`（C1 测试，6 用例）
+- `lib/core/update/update_service.dart`（D1，编排 checkForUpdate + downloadApk）
+- `test/core/update/update_service_test.dart`（D1 测试，7 用例）
+- `lib/features/recognize/providers.dart`（D2 追加 update providers）
+- `lib/features/update/update_page.dart`（E1+F2，6 状态机 UI + 接入 ApkInstaller）
+- `test/features/update_page_test.dart`（E1 测试，5 widget 用例）
+- `lib/features/settings/settings_page.dart`（E2 加检查更新入口）
+- `android/app/src/main/AndroidManifest.xml`（F1 加权限 + FileProvider）
+- `android/app/src/main/res/xml/file_paths.xml`（F1 新建，cache-path 配置）
+- `test/android_update_assets_test.dart`（F1 测试，3 用例）
+- `lib/core/update/apk_installer.dart`（F2，MethodChannel Dart 侧）
+- `android/app/src/main/kotlin/com/eatwise/eatwise/MainActivity.kt`（F2，MethodChannel Kotlin 侧 + Intent）
+- `test/core/update/apk_installer_test.dart`（F2 测试，2 用例）
+- `android/app/build.gradle.kts`（G1 加 signingConfigs release，已随 113faa5 提交）
+- `scripts/generate_keystore.sh`（G1 新建，keystore 生成脚本）
+- `.github/workflows/release.yml`（G2 加 secrets 注入步骤 + 更新安装说明）
+- `pubspec.yaml`（H1 版本号 bump 0.17.0+18 → 0.18.0+19）
+- `HANDOFF.md`（H2 本次回填）
+- `docs/superpowers/plans/2026-07-05-in-app-update.md`（计划文件，用户已批准，已随 113faa5 提交）
+
+**验证**：
+- `flutter analyze` → 0 issues
+- `flutter test` → 831 passed, 0 failed（M16 新增 44 个测试：15+6+6+7+5+3+2）
+
+**待用户本地验证**（沙箱无法测）：
+- 生成 keystore：`bash scripts/generate_keystore.sh` → 上传 4 个 secret 到 GitHub（ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD）
+- 推 tag 触发 CI build → 装 v0.18.0 APK 验证签名切换成功（v0.17.0 旧版需卸载一次）
+- 在 app 内"设置 → 检查更新"验证 GitHub Release API 调用 + 下载 + 系统安装器全链路
+- v0.18.0 装好后，下个版本直接 app 内一键升级（不再卸载）
 
 ---
 
