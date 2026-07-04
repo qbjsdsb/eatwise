@@ -25,11 +25,34 @@ android {
         versionName = flutter.versionName
     }
 
+    // M16 应用内更新：固定签名 keystore（保证 CI 与本地 build 签名一致，支持覆盖安装）
+    // keystore 文件路径与密码从 key.properties 读取（文件不进 repo）
+    // key.properties 不存在时回退到 debug 签名（开发期不阻塞）
+    val keystoreProperties = java.util.Properties()
+    val keystorePropertiesFile = rootProject.file("app/key.properties")
+    if (keystorePropertiesFile.exists()) {
+        keystoreProperties.load(java.io.FileInputStream(keystorePropertiesFile))
+    }
+
+    signingConfigs {
+        create("release") {
+            if (keystoreProperties.isNotEmpty()) {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // M16 应用内更新：有 key.properties 用固定 release 签名，否则回退 debug
+            signingConfig = if (keystoreProperties.isNotEmpty()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             // 禁用 R8 代码压缩：sentry_flutter/workmanager 等插件依赖反射注册，
             // R8 默认规则会剥掉关键类导致 native 启动崩溃（Dart try-catch 抓不住）。
             // 个人自用 app 体积稍大可接受，稳定性优先。
