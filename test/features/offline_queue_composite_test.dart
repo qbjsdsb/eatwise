@@ -185,6 +185,42 @@ void main() {
     // 库反算：889 * 460 / 100 = 4089.4 kcal
     expect(mealLogs.first.actualCalories, closeTo(4089.4, 0.5));
   });
+
+  // v1.9 Gap1 集成测试：复合菜有包装营养表数据时，per100g + actualCalories 用包装换算
+  test('v1.9 Gap1: 复合菜有包装数据时 per100g 用包装换算值（非 0）', () async {
+    final pendingRepo = PendingRecognitionRepository(db);
+    final imgPath = await writeFakeImage('composite_pkg');
+    await pendingRepo.enqueue(
+      imagePath: imgPath,
+      mealType: 'lunch',
+      date: '2026-07-02',
+      promptVersion: 'v1.9',
+    );
+
+    final controller = OfflineQueueController(
+      db: db,
+      visionProvider: _FakeCompositePackageProvider(),
+      nutritionLookup: lookup,
+    );
+    await controller.processPending();
+
+    final mealLogs = await db.select(db.mealLogs).get();
+    expect(mealLogs.length, 1);
+    // 包装换算：servingKcal=250, servingG=100 → per100g=250
+    // actualServingG = 组分总和 = 150+30 = 180g
+    // actualCalories = 250 * 180 / 100 = 450 kcal
+    expect(mealLogs.first.actualServingG, closeTo(180, 0.5));
+    expect(mealLogs.first.actualCalories, closeTo(450, 0.5));
+
+    // food_item 的 per100g 应为包装换算值（250），不是 0
+    final foodItems = await db.select(db.foodItems).get();
+    final compositeItem = foodItems.firstWhere(
+      (f) => f.name == '速冻水饺',
+      orElse: () => throw StateError('速冻水饺 food_item 未创建'),
+    );
+    expect(compositeItem.caloriesPer100g, closeTo(250, 0.5));
+    expect(compositeItem.proteinPer100g, greaterThan(0)); // 包装路径蛋白/脂肪/碳水也按比例反算
+  });
 }
 
 /// 模拟识别 500ml 食用油（包装标签 + 液体类别，触发密度换算）
@@ -254,5 +290,44 @@ class _ThrowingProvider implements VisionProvider {
   @override
   Future<VisionRecognitionResult> recognize(String imageBase64) async {
     throw Exception('识别异常：模拟主模型失败');
+  }
+}
+
+/// v1.9 Gap1 测试用：模拟识别复合菜（速冻水饺）+ 包装营养表数据
+/// 验证复合菜分支 hasPackageNutrition 优先路径实际接入
+class _FakeCompositePackageProvider implements VisionProvider {
+  @override
+  String get name => 'FakeCompositePackage';
+
+  @override
+  String get promptVersion => 'v1.9';
+
+  @override
+  Future<VisionRecognitionResult> recognize(String imageBase64) async {
+    return const VisionRecognitionResult(
+      dishName: '速冻水饺',
+      brand: '必品阁',
+      estimatedWeightGLow: 170,
+      estimatedWeightGMid: 180,
+      estimatedWeightGHigh: 190,
+      foodComponents: [
+        FoodComponent(name: '面粉', estimatedG: 100),
+        FoodComponent(name: '猪肉', estimatedG: 80),
+      ],
+      cookingMethod: 'boil',
+      isSingleItem: false,
+      confidence: 0.85,
+      promptVersion: 'v1.9',
+      estimatedCalories: 450,
+      estimatedProteinG: 18,
+      estimatedFatG: 15,
+      estimatedCarbsG: 60,
+      // 包装营养表：每份 100g，能量 250kcal
+      packageNutritionTableOcr: '每份100g 能量250kcal',
+      packageServingG: 100,
+      packageServingKcal: 250,
+      packageTotalG: 300,
+      packageServingsPerPack: 3,
+    );
   }
 }

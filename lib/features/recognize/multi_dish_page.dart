@@ -421,12 +421,11 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage> {
           // 参考 prompts.dart v1.9 规则 10 + 示例 7（珍宝珠酸条）
           final packagePer100 = dish.hasPackageNutrition
               ? dish.computePackageNutritionPer100g(
-                  estimatedProteinG:
-                      n.proteinG == 0 ? dish.estimatedProteinG : n.proteinG,
-                  estimatedFatG:
-                      n.fatG == 0 ? dish.estimatedFatG : n.fatG,
-                  estimatedCarbsG:
-                      n.carbsG == 0 ? dish.estimatedCarbsG : n.carbsG,
+                  // v1.9：哨兵分支 n.foodItemId==0 来自 _aiFallbackNutrition，
+                  // n.proteinG 等于 r.estimatedProteinG ?? 0，三元死代码简化为直传
+                  estimatedProteinG: dish.estimatedProteinG,
+                  estimatedFatG: dish.estimatedFatG,
+                  estimatedCarbsG: dish.estimatedCarbsG,
                 )
               : null;
           final (caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g) =

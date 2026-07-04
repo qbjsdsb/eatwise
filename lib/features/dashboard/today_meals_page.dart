@@ -520,9 +520,17 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
               // P2-2：库里无此菜 → 创建新条目（source='manual'，自进化闭环）
               // 营养用 meal_log 实际值反算 per100g，aliases 传 AI 错误名（下次 AI 返回错误名时命中别名）
               // 仅在营养数据有效时创建（防 0 卡污染库）
-              final servingG = correctedServingG ?? m.actualServingG;
-              if (servingG > 0 && m.actualCalories > 0) {
-                final per100 = 100.0 / servingG;
+              //
+              // v1.9 修复：per100g 反算基于 m.actualServingG（原记录份量），
+              // 不用 correctedServingG（用户纠正份量）。
+              // 原因：m.actualCalories 是 m.actualServingG 份量对应的热量，
+              //   per100g = actualCalories × 100 ÷ actualServingG 才是密度。
+              //   若用 correctedServingG 反算，密度会随用户纠正反向偏差。
+              //   用户纠正的份量通过新 meal_log（用户重新记录）体现，不影响 food_item 密度。
+              //   与硬约束 4 精神一致（per100g 反算不用用户校准份量）。
+              final baseServingG = m.actualServingG;
+              if (baseServingG > 0 && m.actualCalories > 0) {
+                final per100 = 100.0 / baseServingG;
                 await foodRepo.insertManual(
                   name: correctedDishName,
                   caloriesPer100g: m.actualCalories * per100,

@@ -265,15 +265,11 @@ class _RecognizePageState extends ConsumerState<RecognizePage> {
                         // 参考 prompts.dart v1.9 规则 10 + 示例 7（珍宝珠酸条）
                         final packagePer100 = result.hasPackageNutrition
                             ? result.computePackageNutritionPer100g(
-                                estimatedProteinG: n.proteinG == 0
-                                    ? result.estimatedProteinG
-                                    : n.proteinG,
-                                estimatedFatG: n.fatG == 0
-                                    ? result.estimatedFatG
-                                    : n.fatG,
-                                estimatedCarbsG: n.carbsG == 0
-                                    ? result.estimatedCarbsG
-                                    : n.carbsG,
+                                // v1.9：哨兵分支 n.foodItemId==0 来自 _aiFallbackNutrition，
+                                // n.proteinG 等于 r.estimatedProteinG ?? 0，三元死代码简化为直传
+                                estimatedProteinG: result.estimatedProteinG,
+                                estimatedFatG: result.estimatedFatG,
+                                estimatedCarbsG: result.estimatedCarbsG,
                               )
                             : null;
                         final (caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g) =

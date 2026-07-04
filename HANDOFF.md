@@ -115,9 +115,62 @@
 | 离谱估算拦截 | ✅ 多层防护 | ✅ solid 加合理性区间 clamp（Gap 4 修复） |
 | 啤酒/雪碧混淆 | ✅ 识别正确 | ✅ Phase 1 已解决 |
 
-**后续阶段**：
-- Phase 3: thinking 模式沙箱验证（需 WebSearch 实测 qwen3-vl thinking 支持 + json_object 兼容性 + 成本评估）
-- Phase 4: 两阶段识别 / 追问机制（按需，观察 Phase 1-3 效果后决定）
+**Phase 2.6 深度检查修复（2026-07-04）—— 5 维度深度检查发现的问题全部处理**：
+
+经 5 维度深度检查（AI 链路/UI/数据库/硬约束/测试），0 blocker，3 high，4 medium，3 low，全部处理：
+
+- **High-2 修复（反馈纠正份量反算 per100g 违反硬约束 4）**：
+  - 文件：today_meals_page.dart L519-543
+  - 问题：原 `per100 = 100.0 / servingG` 用 correctedServingG（用户纠正份量）反算 per100g，违反硬约束 4"per100g 反算必须基于 estimatedWeightGMid，不能用 servingG"
+  - 修复：改为 `per100 = 100.0 / m.actualServingG`（原记录份量，对应 m.actualCalories 的份量），与硬约束 4 精神一致
+  - 注意：这里的 actualServingG 是 meal_log 记录的份量（可能已是用户校准后的），但它是 actualCalories 对应的份量，反算 per100g 密度正确
+
+- **High-3 修复（Phase 2.5 Gap1 缺集成测试）**：
+  - 文件：test/features/offline_queue_composite_test.dart
+  - 问题：Gap1 复合菜包装 OCR 优先路径只有单元测试，无集成测试验证三路径实际接入
+  - 修复：加 _FakeCompositePackageProvider + 集成测试，验证复合菜+包装数据时 per100g=250（非 0）、actualCalories=450（包装换算值）
+  - 测试通过：5 个测试全过（含新加的 Gap1 集成测试）
+
+- **High-1 降级不修（反馈对话框未展示 reasoning）**：
+  - 原因：reasoning 在 VisionRecognitionResult 内存层，写库时丢失（meal_log/pending_recognition 都没存 reasoning 字段）
+  - 展示需要 schema 迁移（meal_log 加 reasoning 字段），成本高
+  - reasoning 主要价值在校准页已展示（Phase 2.5 Gap2 修复），反馈页是事后纠正，reasoning 已过期
+  - 记录待后续评估是否值得 schema 迁移
+
+- **Medium 修复（食物搜索不支持品牌名）**：
+  - 文件：food_item_repository.dart L355-366 searchByName
+  - 问题：原只 `name.like`，搜品牌名找不到
+  - 修复：加 `aliasesJson.like`（brand 通过 upsertAiRecognized 写入 aliasesJson，搜品牌名能命中别名）
+  - 注意：food_item 表无 brand 字段（brand 在内存层），但 brand 会通过 upsertAiRecognized 的 brandAlias 逻辑写入 aliasesJson
+
+- **Medium 降级不修（weight_page PopScope）**：
+  - 原因：weight_page 输入框有"记录"按钮主动保存，用户输入后通常会点按钮；加 PopScope 需加 _dirty 状态跟踪，ROI 低
+  - 且 weight_page 嵌入 dashboard tab 时无 AppBar，PopScope 在 tab 页面无意义
+
+- **Medium 降级不修（food_item 表无 CHECK 约束）**：
+  - 原因：DB 层加 CHECK 需 schema 迁移，应用层已有 FoodCategoryDefaults.calibrate clamp 兜底（AI 兜底路径）+ UI 层 double.tryParse（手动录入）
+  - 实际触发概率低，记录待后续评估
+
+- **Low 修复（_aiFallbackNutrition mid>0 守卫）**：
+  - 文件：recognize_controller.dart L496-499
+  - 修复：`if (per100 != null && r.estimatedWeightGMid > 0)` 防 mid=0 时 actualCal 被误清零
+
+- **Low 修复（三路径 estimatedProteinG 传参统一）**：
+  - 文件：recognize_page.dart L268-272 / multi_dish_page.dart L424-428
+  - 修复：三元死代码 `n.proteinG == 0 ? result.estimatedProteinG : n.proteinG` 简化为直传 `result.estimatedProteinG`（哨兵分支 n 来自 _aiFallbackNutrition，n.proteinG 恒等于 r.estimatedProteinG ?? 0）
+
+- Phase 2.6 验证（2026-07-04 沙箱实测）：
+  - ✅ `flutter analyze` → No issues found
+  - ✅ `flutter test` → 426 passed / 3 skipped / 1 failed（T48 原有日期 bug）
+  - 新增 1 个集成测试（offline_queue_composite_test Gap1）
+
+**Phase 2.6 已知未修复项（待后续评估）**：
+- 反馈页 reasoning 展示（需 schema 迁移，High-1 降级）
+- weight_page PopScope（ROI 低，Medium 降级）
+- food_item 表 CHECK 约束（需 schema 迁移，Medium 降级）
+- T48 日期敏感测试（pre-existing，待改用相对日期）
+- multi_dish_page widget test 缺失（无回归保护，待补）
+- 版本号硬编码 settings_page L333 / me_page L216（待改用 package_info_plus）
 
 **Phase 3 调研结论（2026-07-04，决策：不推荐实施）**：
 

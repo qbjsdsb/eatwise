@@ -493,9 +493,9 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         estimatedFatG: r.estimatedFatG,
         estimatedCarbsG: r.estimatedCarbsG,
       );
-      if (per100 != null) {
-        final mid = r.estimatedWeightGMid;
-        actualCal = per100.$1 * mid / 100;
+      // v1.9 修复：mid>0 守卫，防 mid=0 时 actualCal 被误清零（丢失 AI 估算）
+      if (per100 != null && r.estimatedWeightGMid > 0) {
+        actualCal = per100.$1 * r.estimatedWeightGMid / 100;
       }
     }
     return NutritionResult(

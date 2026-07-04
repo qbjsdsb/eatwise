@@ -352,10 +352,14 @@ class FoodItemRepository {
     return [...existingAliases, newAlias];
   }
 
-  /// 模糊搜索食物（名称 LIKE，MVP 够用，数据量 ≤3000 条）
+  /// 模糊搜索食物（名称 + 别名 LIKE，v1.9 支持品牌名搜索）
+  /// food_item 表无 brand 字段（brand 在 VisionRecognitionResult 内存层），
+  /// 但 brand 会通过 upsertAiRecognized 写入 aliasesJson（别名存品牌名），
+  /// 所以搜品牌名能命中别名。例：搜"农夫山泉"能找到 aliases 含"农夫山泉"的食物。
   Future<List<FoodItem>> searchByName(String keyword, {int limit = 50}) {
+    final kw = '%$keyword%';
     return (_db.foodItems.select()
-          ..where((f) => f.name.like('%$keyword%'))
+          ..where((f) => f.name.like(kw) | f.aliasesJson.like(kw))
           ..orderBy([(f) => OrderingTerm.asc(f.name)])
           ..limit(limit))
         .get();
