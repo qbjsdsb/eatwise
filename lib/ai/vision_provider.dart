@@ -209,6 +209,16 @@ class VisionRecognitionResult {
     double? estimatedWeightGHigh,
     String? foodCategory,
     String? reasoning,
+    // M6 修复：补全 v1.9/v1.10 新增 9 个 package_* 字段，允许调用方修改
+    String? packageNutritionTableOcr,
+    double? packageServingG,
+    double? packageServingKj,
+    double? packageServingKcal,
+    double? packageServingProteinG,
+    double? packageServingFatG,
+    double? packageServingCarbsG,
+    double? packageTotalG,
+    double? packageServingsPerPack,
   }) {
     return VisionRecognitionResult(
       dishName: dishName ?? this.dishName,
@@ -232,15 +242,16 @@ class VisionRecognitionResult {
       weightSource: weightSource,
       foodCategory: foodCategory ?? this.foodCategory,
       reasoning: reasoning ?? this.reasoning,
-      packageNutritionTableOcr: packageNutritionTableOcr,
-      packageServingG: packageServingG,
-      packageServingKj: packageServingKj,
-      packageServingKcal: packageServingKcal,
-      packageServingProteinG: packageServingProteinG,
-      packageServingFatG: packageServingFatG,
-      packageServingCarbsG: packageServingCarbsG,
-      packageTotalG: packageTotalG,
-      packageServingsPerPack: packageServingsPerPack,
+      // M6 修复：package_* 字段支持 copyWith 修改
+      packageNutritionTableOcr: packageNutritionTableOcr ?? this.packageNutritionTableOcr,
+      packageServingG: packageServingG ?? this.packageServingG,
+      packageServingKj: packageServingKj ?? this.packageServingKj,
+      packageServingKcal: packageServingKcal ?? this.packageServingKcal,
+      packageServingProteinG: packageServingProteinG ?? this.packageServingProteinG,
+      packageServingFatG: packageServingFatG ?? this.packageServingFatG,
+      packageServingCarbsG: packageServingCarbsG ?? this.packageServingCarbsG,
+      packageTotalG: packageTotalG ?? this.packageTotalG,
+      packageServingsPerPack: packageServingsPerPack ?? this.packageServingsPerPack,
     );
   }
 

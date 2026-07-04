@@ -1284,4 +1284,85 @@ void main() {
       expect(result.computePackageNutritionPer100g(), isNotNull);
     });
   });
+
+  group('M6: copyWith 支持修改 v1.9/v1.10 新增 package_* 字段', () {
+    VisionRecognitionResult buildOriginal() => VisionRecognitionResult(
+          dishName: '测试',
+          estimatedWeightGLow: 90,
+          estimatedWeightGMid: 100,
+          estimatedWeightGHigh: 110,
+          foodComponents: const [],
+          cookingMethod: 'raw',
+          isSingleItem: true,
+          confidence: 0.9,
+          promptVersion: 'v1.10',
+          packageNutritionTableOcr: '原始 OCR',
+          packageServingG: 100,
+          packageServingKj: 418,
+          packageServingKcal: 100,
+          packageServingProteinG: 3,
+          packageServingFatG: 1,
+          packageServingCarbsG: 20,
+          packageTotalG: 500,
+          packageServingsPerPack: 5,
+        );
+
+    test('copyWith 可修改 packageNutritionTableOcr', () {
+      final copied = buildOriginal().copyWith(packageNutritionTableOcr: '修正后 OCR');
+      expect(copied.packageNutritionTableOcr, '修正后 OCR');
+    });
+
+    test('copyWith 可修改 packageServingG', () {
+      final copied = buildOriginal().copyWith(packageServingG: 200);
+      expect(copied.packageServingG, 200);
+    });
+
+    test('copyWith 可修改 packageServingKj', () {
+      final copied = buildOriginal().copyWith(packageServingKj: 836);
+      expect(copied.packageServingKj, 836);
+    });
+
+    test('copyWith 可修改 packageServingKcal', () {
+      final copied = buildOriginal().copyWith(packageServingKcal: 200);
+      expect(copied.packageServingKcal, 200);
+    });
+
+    test('copyWith 可修改 packageServingProteinG', () {
+      final copied = buildOriginal().copyWith(packageServingProteinG: 6);
+      expect(copied.packageServingProteinG, 6);
+    });
+
+    test('copyWith 可修改 packageServingFatG', () {
+      final copied = buildOriginal().copyWith(packageServingFatG: 2);
+      expect(copied.packageServingFatG, 2);
+    });
+
+    test('copyWith 可修改 packageServingCarbsG', () {
+      final copied = buildOriginal().copyWith(packageServingCarbsG: 40);
+      expect(copied.packageServingCarbsG, 40);
+    });
+
+    test('copyWith 可修改 packageTotalG', () {
+      final copied = buildOriginal().copyWith(packageTotalG: 1000);
+      expect(copied.packageTotalG, 1000);
+    });
+
+    test('copyWith 可修改 packageServingsPerPack', () {
+      final copied = buildOriginal().copyWith(packageServingsPerPack: 10);
+      expect(copied.packageServingsPerPack, 10);
+    });
+
+    test('copyWith 修改一个 package_* 字段时其他字段保持不变', () {
+      final original = buildOriginal();
+      final copied = original.copyWith(packageServingG: 200);
+      expect(copied.packageNutritionTableOcr, '原始 OCR');
+      expect(copied.packageServingKj, 418);
+      expect(copied.packageServingKcal, 100);
+      expect(copied.packageServingProteinG, 3);
+      expect(copied.packageServingFatG, 1);
+      expect(copied.packageServingCarbsG, 20);
+      expect(copied.packageTotalG, 500);
+      expect(copied.packageServingsPerPack, 5);
+    });
+  });
 }
