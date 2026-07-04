@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-04
 
-**工作区状态**：v0.15.0 release 已 push 远程（commit 4b35dcb + tag v0.15.0）；v0.15.0 审计修复已 push（commit c13143b）；Phase 2.11 图标重设计 + 拍照识别页改造 + 推荐算法 v4 用户偏好学习（待 commit）
-**当前分支**：trae/agent-wX1X6Q（HEAD = c13143b；v0.15.0 tag 指向 4b35dcb；v0.14.0 tag 指向 8bccee4）
+**工作区状态**：v0.15.0 release 已 push 远程（commit 4b35dcb + tag v0.15.0）；v0.15.0 审计修复已 push（commit c13143b）；Phase 2.11 图标重设计 + 拍照识别页改造 + 推荐算法 v4 用户偏好学习已 push（commit 1dd3087）
+**当前分支**：trae/agent-wX1X6Q（HEAD = 1dd3087；v0.15.0 tag 指向 4b35dcb；v0.14.0 tag 指向 8bccee4）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
@@ -350,7 +350,7 @@
 - ✅ `flutter analyze` → No issues found
 - ✅ `flutter test` → 610 passed / 3 skipped / 1 failed（T48 pre-existing 日期漂移，与本次改动无关）
 
-**Phase 2.11 图标重设计 + 拍照识别页改造 + 推荐算法 v4 用户偏好学习（2026-07-04，待 commit）**：
+**Phase 2.11 图标重设计 + 拍照识别页改造 + 推荐算法 v4 用户偏好学习（2026-07-04，commit 1dd3087）**：
 
 用户反馈"图标还是太丑，希望更谷歌味道、精致、温馨大方"+"拍照识别界面非常丑陋，大面空白"+"智能推荐完全不智能，可以根据每个人的饮食习惯自己学习，多维度（材质/价格/口味/风格）"。三项全部完成 + 顺手修复一个 pre-existing 日期漂移测试。
 
