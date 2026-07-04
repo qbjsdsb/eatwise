@@ -9,7 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// 验证 InsightPage 周热量折线图渲染。
 /// meal_log 表 loggedAt 必填，foodItemId 是 FK → 需先插 food_item。
-/// 测试种子今天 + 昨天的 meal_log（落在 InsightPage 硬编码的 monday-sunday 本周内）。
+/// 测试种子今天 + 昨天的 meal_log（落在 v1.11 滚动窗口 today-6 ~ today 内）。
 void main() {
   testWidgets('周热量折线图渲染', (tester) async {
     final db = EatWiseDatabase(NativeDatabase.memory());
