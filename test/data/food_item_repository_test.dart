@@ -516,5 +516,79 @@ void main() {
       expect(item!.caloriesPer100g, lessThanOrEqualTo(900),
           reason: '热量 >900 的脏数据应被跳过');
     });
+
+    // M16.4 P2-3：优先级 3/4 contains 匹配加脏数据过滤
+    // （M16.3 只给 1/2 精确匹配加了过滤，3/4 contains 未加，脏数据可能通过 contains 命中返回）
+    test('优先级 3 name contains 命中脏数据时跳过，返回正常条目', () async {
+      // 脏数据 name="米粉"（carbs=450）—— 先插入（rowid 更小，优先级 1 会先遇到）
+      await seedDirtyFood('米粉', carbs: 450);
+      // 正常条目 name="米粉汤"（carbs=80）—— contains "米粉" diff=1
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+        name: '米粉汤',
+        defaultServingG: 100,
+        caloriesPer100g: 100,
+        proteinPer100g: 2.0,
+        fatPer100g: 0.5,
+        carbsPer100g: 80,
+        source: 'china_fct',
+        sourceVersion: 'v1',
+        createdAt: 0,
+      ));
+
+      // 搜索"米粉"：
+      // 优先级 1 name 精确：脏数据"米粉"==query，但 M16.3 已加过滤跳过
+      // 优先级 3 name contains：
+      //   旧行为：选 diff=0 脏数据"米粉"（carbs=450）→ 失败
+      //   新行为：跳过脏数据，选 diff=1 正常"米粉汤"（carbs=80）→ 通过
+      final item = await repo.findByNameOrAlias('米粉');
+      expect(item, isNotNull);
+      expect(item!.name, '米粉汤',
+          reason: '优先级 3 name contains 应跳过脏数据"米粉"，命中正常条目"米粉汤"');
+      expect(item.carbsPer100g, lessThanOrEqualTo(100),
+          reason: '不应返回脏数据 carbs=450');
+    });
+
+    test('优先级 4 alias contains 命中脏数据时跳过，返回正常条目', () async {
+      // 脏数据 name="脏X" alias="米粉"（carbs=450）—— 先插入
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+        name: '脏X',
+        defaultServingG: 100,
+        caloriesPer100g: 30,
+        proteinPer100g: 1.5,
+        fatPer100g: 0,
+        carbsPer100g: 450, // 脏数据
+        aliasesJson: Value('[${jsonEncode("米粉")}]'),
+        source: 'china_fct',
+        sourceVersion: 'v1',
+        createdAt: 0,
+      ));
+      // 正常条目 name="正常Y" alias="米粉汤"（carbs=80）—— 后插入
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+        name: '正常Y',
+        defaultServingG: 100,
+        caloriesPer100g: 100,
+        proteinPer100g: 2.0,
+        fatPer100g: 0.5,
+        carbsPer100g: 80,
+        aliasesJson: Value('[${jsonEncode("米粉汤")}]'),
+        source: 'china_fct',
+        sourceVersion: 'v1',
+        createdAt: 0,
+      ));
+
+      // 搜索"米粉"：
+      // 优先级 1 name 精确：无（"脏X"/"正常Y" != "米粉"）
+      // 优先级 2 alias 精确：脏数据 alias="米粉"==query，M16.3 已加过滤跳过
+      // 优先级 3 name contains：无（"脏X"/"正常Y" 不 contains "米粉"）
+      // 优先级 4 alias contains：
+      //   旧行为：脏数据 alias="米粉" contains 命中 → 返回脏数据 → 失败
+      //   新行为：跳过脏数据 → 正常条目 alias="米粉汤" contains 命中 → 通过
+      final item = await repo.findByNameOrAlias('米粉');
+      expect(item, isNotNull);
+      expect(item!.name, '正常Y',
+          reason: '优先级 4 alias contains 应跳过脏数据，命中正常条目"正常Y"');
+      expect(item.carbsPer100g, lessThanOrEqualTo(100),
+          reason: '不应返回脏数据 carbs=450');
+    });
   });
 }

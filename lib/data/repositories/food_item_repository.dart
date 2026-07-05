@@ -18,13 +18,15 @@ class FoodItemRepository {
   /// 跳过，避免同名脏条目（如"米粉（贝因美）"CHO=450 经 _cleanName 后与 FCT"米粉"
   /// 撞名）被优先命中污染复合菜营养计算。脏数据通过 migration v4 已清理入库的，
   /// 此过滤是双保险防新脏数据。
+  /// M16.4 P2-3：优先级 3/4 contains 匹配同样加脏数据过滤，与 1/2 一致双保险，
+  /// 防脏数据通过 contains 命中返回（如脏数据"米粉"被搜"米粉"contains 命中）。
   ///
   /// 6 级优先级（防假阳性，逐级降级）：
   /// 0. brand+name 精确（仅 brand 非空时，命中连锁品牌库条目）
   /// 1. name 精确（归一化后，跳过脏数据）
   /// 2. alias 精确（归一化后，跳过脏数据）
-  /// 3. name 双向 contains + 长度约束（防"可乐"误命中"可乐鸡翅"）
-  /// 4. alias 双向 contains + 长度约束
+  /// 3. name 双向 contains + 长度约束（防"可乐"误命中"可乐鸡翅"，跳过脏数据）
+  /// 4. alias 双向 contains + 长度约束（跳过脏数据）
   /// 5. name 编辑距离 ≤1（仅短名 ≤8 字，typo 容错，如"可东"→"可乐"）
   ///
   /// 归一化：去空白 + 小写（中文不受影响）。1714 条全表遍历 <50ms。
@@ -66,9 +68,11 @@ class FoodItemRepository {
       }
     }
     // 优先级 3：name 双向 contains（取长度差最小者）
+    // M16.4 P2-3：跳过脏数据条目，与优先级 1/2 一致（双保险防 contains 命中脏数据）
     FoodItem? containsHit;
     int containsDiff = 1 << 30;
     for (final item in all) {
+      if (_isDirtyFoodItem(item)) continue;
       final n = _normalize(item.name);
       final diff = _containsLenDiff(query, n);
       if (diff != null && diff < containsDiff) {
@@ -78,7 +82,9 @@ class FoodItemRepository {
     }
     if (containsHit != null) return containsHit;
     // 优先级 4：alias 双向 contains（首个命中即可）
+    // M16.4 P2-3：跳过脏数据条目，与优先级 1/2 一致（双保险防 contains 命中脏数据）
     for (final item in all) {
+      if (_isDirtyFoodItem(item)) continue;
       for (final a in _decodeAliases(item.aliasesJson)) {
         if (_containsLenDiff(query, _normalize(a)) != null) return item;
       }
