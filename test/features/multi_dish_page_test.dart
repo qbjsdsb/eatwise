@@ -540,12 +540,22 @@ void main() {
     expect(meals.first.actualCarbsG, closeTo(5, 0.5),
         reason: 'actualCarbsG 用 AI 估算值');
 
-    // 复合菜 food_item 应通过 upsertAiRecognized 创建，per100g=0 占位（不更新库）
+    // M18：复合菜 food_item 通过 upsertAiRecognized 创建，per100g 用 AI 反算值
+    // （M16.9 时为 0 占位；M18 改为 AI 反算值让 AI 估算进入食物库供未来查库复用）
+    // AI 估算：calories=500, protein=35, fat=20, carbs=5，mid=200
+    // per100g = AI 估算 * 100 / mid
     final food = await (db.foodItems.select()
           ..where((f) => f.name.equals('宫保鸡丁') & f.source.equals('ai_recognized')))
         .getSingle();
-    expect(food.caloriesPer100g, 0,
-        reason: '复合菜 per100g 保持 0 占位，不更新库（M16.9 不更新复合菜 per100g）');
+    expect(food.caloriesPer100g, closeTo(250, 0.5),
+        reason: 'M18: 复合菜 per100g 用 AI 反算值（500 * 100 / 200 = 250），'
+            '不再 0 占位');
+    expect(food.proteinPer100g, closeTo(17.5, 0.5),
+        reason: 'M18: proteinPer100g = 35 * 100 / 200 = 17.5');
+    expect(food.fatPer100g, closeTo(10, 0.5),
+        reason: 'M18: fatPer100g = 20 * 100 / 200 = 10');
+    expect(food.carbsPer100g, closeTo(2.5, 0.5),
+        reason: 'M18: carbsPer100g = 5 * 100 / 200 = 2.5');
   });
 
   // M16.9：复合菜 AI 整菜估算离谱（per100g > 900）时用组分累加库值兜底

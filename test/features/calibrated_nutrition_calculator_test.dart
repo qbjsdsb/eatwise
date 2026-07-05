@@ -723,4 +723,172 @@ void main() {
       expect(result.shouldUpdateFoodItem, isFalse, reason: '库值 0 + AI 0 无需更新');
     });
   });
+
+  group('CalibratedNutritionCalculator.computeCompositeLookupHit M18', () {
+    // M18：抽取复合菜 AI 优先逻辑为公共方法 + 提高 AI 优先值
+    // 复合菜 AI 有效时 per100g 从 0 占位改为 AI 反算值，让 AI 估算进入食物库
+    NutritionResult aiFallback500({
+      double calories = 500,
+      double proteinG = 20,
+      double fatG = 15,
+      double carbsG = 50,
+    }) =>
+        NutritionResult(
+          foodItemId: 0,
+          calories: calories,
+          proteinG: proteinG,
+          fatG: fatG,
+          carbsG: carbsG,
+          oilG: 0,
+          source: NutritionSource.aiEstimate,
+        );
+
+    test('M18: AI 有效时返回 AI 估算值 + per100g 存 AI 反算值（非 0 占位）', () {
+      // aiFallback.calories=500, mid=200, servingG=200
+      // aiPer100 = 500 * 100 / 200 = 250（有效 ∈ [0, 900]）
+      // per100Ratio = 100 / 200 = 0.5
+      // caloriesPer100g = 500 * 0.5 = 250（非 0 占位）
+      // actualCalories = 500 * 200/200 = 500
+      final result = CalibratedNutritionCalculator.computeCompositeLookupHit(
+        aiFallback: aiFallback500(),
+        servingG: 200,
+        mid: 200,
+      );
+      expect(result, isNotNull, reason: 'AI 有效应返回非 null');
+      expect(result!.actualCalories, closeTo(500, 0.01),
+          reason: 'actualCalories 用 AI 估算值');
+      expect(result.caloriesPer100g, closeTo(250, 0.01),
+          reason: 'M18: per100g 存 AI 反算值（非 0 占位）');
+      expect(result.proteinPer100g, closeTo(10, 0.01),
+          reason: 'protein per100g = 20 * 100 / 200 = 10');
+      expect(result.shouldUpdateFoodItem, isTrue,
+          reason: 'M18: 始终写库，让 AI 值进入食物库');
+    });
+
+    test('M18: AI 离谱（per100g>900）时返回 null（调用方走原 ratio 兜底）', () {
+      // aiFallback.calories=2000, mid=200 → aiPer100 = 1000 > 900 离谱
+      final result = CalibratedNutritionCalculator.computeCompositeLookupHit(
+        aiFallback: aiFallback500(calories: 2000),
+        servingG: 200,
+        mid: 200,
+      );
+      expect(result, isNull, reason: 'AI 离谱时返回 null，调用方走原 ratio 兜底');
+    });
+
+    test('M18: mid=0 时返回 null（防除零）', () {
+      final result = CalibratedNutritionCalculator.computeCompositeLookupHit(
+        aiFallback: aiFallback500(),
+        servingG: 200,
+        mid: 0,
+      );
+      expect(result, isNull, reason: 'mid=0 防除零返回 null');
+    });
+
+    test('M18: actualXxx 按 serving/mid 比例缩放', () {
+      // aiFallback.calories=500, mid=200, servingG=100
+      // ratio = 100 / 200 = 0.5
+      // actualCalories = 500 * 0.5 = 250
+      final result = CalibratedNutritionCalculator.computeCompositeLookupHit(
+        aiFallback: aiFallback500(),
+        servingG: 100,
+        mid: 200,
+      );
+      expect(result, isNotNull);
+      expect(result!.actualCalories, closeTo(250, 0.01),
+          reason: '500 × 100/200 = 250');
+      expect(result.actualProteinG, closeTo(10, 0.01),
+          reason: '20 × 100/200 = 10');
+    });
+  });
+
+  group('CalibratedNutritionCalculator.compute M18: 提高 AI 优先值', () {
+    // M18：单品查库命中 shouldUpdateFoodItem 从 diffRatio > 5% 改为 > 0
+    // 让 AI 估算持续纠正库，库值始终跟随 AI
+
+    VisionRecognitionResult baseResult({
+      required double estimatedCalories,
+      double mid = 200,
+    }) =>
+        VisionRecognitionResult(
+          dishName: '番茄炒蛋',
+          estimatedWeightGLow: 180,
+          estimatedWeightGMid: mid,
+          estimatedWeightGHigh: 220,
+          estimatedCalories: estimatedCalories,
+          estimatedProteinG: 6,
+          estimatedFatG: 10,
+          estimatedCarbsG: 12,
+          foodComponents: const [],
+          cookingMethod: 'stir_fry',
+          isSingleItem: true,
+          confidence: 0.9,
+          promptVersion: 'v1.0',
+        );
+
+    test('M18: AI 有效 + diffRatio=2% 时 shouldUpdateFoodItem=true（始终写库）', () {
+      // 库 per100g=100（lookupHit.calories=200, mid=200 → dbPer100=100）
+      // AI 估 204kcal（aiPer100=102, dbPer100=100, diffRatio=2% < 5%）
+      // M16.9: shouldUpdateFoodItem=false（2% < 5%）
+      // M18: shouldUpdateFoodItem=true（2% > 0，始终写库）
+      final r = baseResult(estimatedCalories: 204);
+      final aiFallback = NutritionResult(
+        foodItemId: 0,
+        calories: 204,
+        proteinG: 6,
+        fatG: 10,
+        carbsG: 12,
+        oilG: 0,
+        source: NutritionSource.aiEstimate,
+      );
+      final lookupHit = NutritionResult(
+        foodItemId: 1,
+        calories: 200, // dbPer100 = 200 * 100 / 200 = 100
+        proteinG: 6,
+        fatG: 10,
+        carbsG: 12,
+        oilG: 0,
+      );
+      final result = CalibratedNutritionCalculator.compute(
+        recognitionResult: r,
+        aiFallback: aiFallback,
+        servingG: 200,
+        lookupHitNutrition: lookupHit,
+      );
+      expect(result.shouldUpdateFoodItem, isTrue,
+          reason: 'M18: diffRatio=2% > 0，始终写库（原 M16.9 为 false，5% 阈值已移除）');
+      expect(result.caloriesPer100g, closeTo(102, 0.1),
+          reason: 'AI 反算 per100g = 204 * 100 / 200 = 102');
+    });
+
+    test('M18: AI 有效 + diffRatio=0% 时 shouldUpdateFoodItem=false（完全一致不写库）', () {
+      // 库 per100g=100，AI 估 200kcal（aiPer100=100, dbPer100=100, diffRatio=0%）
+      // M18: shouldUpdateFoodItem=false（0 不 > 0，完全一致无需写库）
+      final r = baseResult(estimatedCalories: 200);
+      final aiSameAsDb = NutritionResult(
+        foodItemId: 0,
+        calories: 200,
+        proteinG: 6,
+        fatG: 10,
+        carbsG: 12,
+        oilG: 0,
+        source: NutritionSource.aiEstimate,
+      );
+      final lookupHit = NutritionResult(
+        foodItemId: 1,
+        calories: 200,
+        proteinG: 6,
+        fatG: 10,
+        carbsG: 12,
+        oilG: 0,
+      );
+      final result = CalibratedNutritionCalculator.compute(
+        recognitionResult: r,
+        aiFallback: aiSameAsDb,
+        servingG: 200,
+        lookupHitNutrition: lookupHit,
+      );
+      expect(result.shouldUpdateFoodItem, isFalse,
+          reason: 'M18: diffRatio=0% 不 > 0，完全一致不写库（与 M16.9 一致）');
+    });
+  });
 }

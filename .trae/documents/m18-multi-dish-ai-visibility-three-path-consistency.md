@@ -85,9 +85,11 @@
 
 ---
 
-### Task 1: 抽取复合菜 AI 优先逻辑为 CalibratedNutritionCalculator.computeCompositeLookupHit
+### Task 1: 抽取复合菜 AI 优先逻辑 + 提高 AI 优先值（复合菜 per100g 存 AI 反算值 + 单品 shouldUpdateFoodItem 始终 true）
 
-**目标**：让 multi_dish_page 和 offline_queue 共用同一套复合菜 AI 差异检测逻辑，消除三路径不一致。
+**目标**：
+1. 让 multi_dish_page 和 offline_queue 共用同一套复合菜 AI 差异检测逻辑，消除三路径不一致
+2. **提高 AI 优先值**：复合菜 AI 有效时 per100g 从 0 占位改为 AI 反算值（让 AI 进入食物库）；单品查库命中时 shouldUpdateFoodItem 从 diffRatio > 5% 改为 > 0（让 AI 持续纠正库）
 
 **文件**：
 - 修改：`lib/features/recognize/calibrated_nutrition_calculator.dart`（新增 `computeCompositeLookupHit` 静态方法）
@@ -98,10 +100,10 @@
 
 **文件**：`test/features/calibrated_nutrition_calculator_test.dart`（追加）
 
-新增 4 个测试：
-1. `computeCompositeLookupHit: AI 有效时返回 AI 估算值 + per100g=0 占位`
-   - 输入：aiFallback.calories=500, mid=200, composite.calories=314
-   - 期望：返回 CalibratedNutrition（actualCalories=500, caloriesPer100g=0, shouldUpdateFoodItem=false）
+新增 6 个测试（4 个复合菜 + 2 个单品 shouldUpdateFoodItem 改进）：
+1. `computeCompositeLookupHit: AI 有效时返回 AI 估算值 + per100g 存 AI 反算值（非 0）`
+   - 输入：aiFallback.calories=500, mid=200, servingG=200
+   - 期望：返回 CalibratedNutrition（actualCalories=500, **caloriesPer100g=250**（=500*100/200，非 0 占位）, shouldUpdateFoodItem=true）
 2. `computeCompositeLookupHit: AI 离谱（per100g>900）时返回 null`
    - 输入：aiFallback.calories=2000, mid=200（per100g=1000>900）
    - 期望：返回 null（调用方走原 ratio 兜底）
@@ -111,31 +113,53 @@
 4. `computeCompositeLookupHit: actualXxx 按 serving/mid 比例缩放`
    - 输入：aiFallback.calories=500, mid=200, servingG=100
    - 期望：actualCalories=250（500 × 100/200）
+5. `compute (单品查库命中): AI 有效 + diffRatio=2% 时 shouldUpdateFoodItem=true（M18 改进）`
+   - 输入：aiPer100Calories=102, dbPer100Calories=100（diffRatio=2% < 5%）
+   - 期望：shouldUpdateFoodItem=true（M18 改进：始终写库，原 M16.9 为 false）
+6. `compute (单品查库命中): AI 有效 + diffRatio=0% 时 shouldUpdateFoodItem=false（完全一致不写库）`
+   - 输入：aiPer100Calories=100, dbPer100Calories=100（diffRatio=0%）
+   - 期望：shouldUpdateFoodItem=false（完全一致无需写库）
 
 #### TDD Step 2: Verify RED
 
 ```bash
 cd /workspace && export PATH=/tmp/flutter/bin:$PATH && flutter test test/features/calibrated_nutrition_calculator_test.dart
 ```
-**预期**：4 个新测试失败（方法不存在），原有测试保持 green。
+**预期**：6 个新测试失败（方法不存在 + shouldUpdateFoodItem 逻辑未改），原有测试保持 green。
 
 #### TDD Step 3: GREEN - 最小实现
 
-**`calibrated_nutrition_calculator.dart` 新增方法**：
+**`calibrated_nutrition_calculator.dart` 改动**：
 
+1. **调整 `compute` 单品查库命中分支的 shouldUpdateFoodItem**（L91-104）：
 ```dart
-/// 复合菜查库命中 + AI 整菜估算的差异检测（M18：三路径统一）
+// M18：提高 AI 优先值——shouldUpdateFoodItem 改为 diffRatio > 0 即写库
+// 原 M16.9：diffRatio > 5% 才写库（避免无意义写库）
+// M18 改进：让 AI 估算持续纠正库，库值始终跟随 AI
+final diffRatio = dbPer100Calories > 0
+    ? (aiPer100Calories - dbPer100Calories).abs() / dbPer100Calories
+    : (aiPer100Calories > 0 ? 1.0 : 0.0);
+return CalibratedNutrition(
+  ...
+  shouldUpdateFoodItem: diffRatio > 0, // M18：原 > 0.05，改为 > 0
+);
+```
+
+2. **新增 `computeCompositeLookupHit` 静态方法**：
+```dart
+/// 复合菜查库命中 + AI 整菜估算的差异检测（M18：三路径统一 + 提高 AI 优先值）
 ///
 /// 抽取自 multi_dish_page._computeCompositeLookupHitCalibrated，
 /// 让 offline_queue_controller 复用，消除三路径不一致。
 ///
-/// 策略（与单品查库命中分支一致，M16.9 AI 绝对优先）：
-/// - AI 有效（per100g ∈ [0, 900]）：用 AI 整菜估算记 meal_log，per100g=0 占位不更新库
-/// - AI 无效（null / 负 / >900 / mid=0）：返回 null，调用方走原 ratio 兜底
+/// M18 改进（提高 AI 优先值）：
+/// - 复合菜 AI 有效时，per100g 从 0 占位改为 AI 反算值（aiFallback.calories * 100 / mid）
+///   让 AI 估算进入食物库，未来查库可复用
+/// - shouldUpdateFoodItem 始终 true（与单品路径一致）
 ///
-/// [aiFallback] AI 整菜估算（foodItemId=0，calories 对应 mid 份量）
-/// [servingG] 用户调整后的份量（前台）或 AI mid（后台）
-/// [mid] AI 估算重量中位数（per100g 反算基准，硬约束 #4）
+/// 安全网不变：
+/// - AI 无效（null / 负 / >900 / mid=0）：返回 null，调用方走原 ratio 兜底
+/// - 复合菜查库时 lookupSingleItem 已过滤 componentsJson != null，不会污染单品查库
 static CalibratedNutrition? computeCompositeLookupHit({
   required NutritionResult aiFallback,
   required double servingG,
@@ -146,19 +170,20 @@ static CalibratedNutrition? computeCompositeLookupHit({
   final aiValid = aiPer100 >= 0 && aiPer100 <= 900;
   if (!aiValid) return null; // AI 离谱，调用方走原 ratio 兜底
 
-  // AI 优先：actualXxx 按 serving/mid 比例缩放
+  // M18：per100g 存 AI 反算值（非 0 占位），让 AI 估算进入食物库
+  final per100Ratio = 100.0 / mid;
   final ratio = servingG / mid;
   return CalibratedNutrition(
-    caloriesPer100g: 0, // 复合菜 per100g=0 占位，不更新库
-    proteinPer100g: 0,
-    fatPer100g: 0,
-    carbsPer100g: 0,
+    caloriesPer100g: aiFallback.calories * per100Ratio,
+    proteinPer100g: aiFallback.proteinG * per100Ratio,
+    fatPer100g: aiFallback.fatG * per100Ratio,
+    carbsPer100g: aiFallback.carbsG * per100Ratio,
     actualCalories: aiFallback.calories * ratio,
     actualProteinG: aiFallback.proteinG * ratio,
     actualFatG: aiFallback.fatG * ratio,
     actualCarbsG: aiFallback.carbsG * ratio,
     foodItemId: 0, // 调用方 upsertAiRecognized 替换
-    shouldUpdateFoodItem: false, // 复合菜不更新库 per100g
+    shouldUpdateFoodItem: true, // M18：始终写库，让 AI 值进入食物库
   );
 }
 ```
@@ -202,14 +227,14 @@ CalibratedNutrition? _computeCompositeLookupHitCalibrated(
     mid: mid,
   );
   if (calibrated != null) {
-    // AI 有效：用 AI 整菜估算记 meal_log，per100g=0 占位
+    // M18: AI 有效——per100g 用 AI 反算值（非 0 占位），让 AI 估算进入食物库
     foodItemId = await foodItemRepo.upsertAiRecognized(
       name: result.dishName,
       brand: result.brand,
-      caloriesPer100g: 0,
-      proteinPer100g: 0,
-      fatPer100g: 0,
-      carbsPer100g: 0,
+      caloriesPer100g: calibrated.caloriesPer100g, // M18：原 0，改为 AI 反算值
+      proteinPer100g: calibrated.proteinPer100g,
+      fatPer100g: calibrated.fatPer100g,
+      carbsPer100g: calibrated.carbsPer100g,
       confidence: result.confidence,
       componentsJson: componentsJson,
     );
@@ -233,7 +258,9 @@ flutter test test/features/calibrated_nutrition_calculator_test.dart
 flutter test test/features/multi_dish_page_test.dart
 flutter test test/features/offline_queue_composite_test.dart
 ```
-**预期**：4 个新测试通过 + 原有 8+4+N 个测试保持 green。
+**预期**：6 个新测试通过 + 原有测试保持 green。
+
+**注意**：原 M16.9 测试"一致不写库"（diffRatio=0 期望 shouldUpdateFoodItem=false）仍保持 green（M18 改为 diffRatio > 0 即写库，diffRatio=0 仍 false）。但原"偏差小用 AI 值"测试若断言 shouldUpdateFoodItem=false（diffRatio=2%），TDD 红灯会暴露，更新断言为 true 即可——这是 M18 行为变化。
 
 #### TDD Step 5: REFACTOR
 
@@ -609,7 +636,8 @@ git ls-remote --tags origin v0.19.0
 - ✅ "没有 AI 推理的过程" → Task 2 reasoning 折叠面板
 - ✅ "精准度我也有一定程度的怀疑" → Task 2 AI vs 库值对比行 + source badge 标明数据来源
 - ✅ "是不是正确安装 AI 的计算提交并且显示的" → Task 1+3 三路径统一保证提交一致 + Task 2 显示让用户验证
-- ✅ "希望还能继续改进，严谨仔细，一定不能出问题" → 严格 TDD（12 个新测试 Red-Green-Refactor）+ 全量回归 + 6 硬约束复检
+- ✅ "希望还能继续改进，严谨仔细，一定不能出问题" → 严格 TDD（14 个新测试 Red-Green-Refactor）+ 全量回归 + 6 硬约束复检
+- ✅ "提高 AI 的优先值，严谨一点进行改进" → Task 1 复合菜 per100g 存 AI 反算值（原 0 占位）+ 单品 shouldUpdateFoodItem 改为 diffRatio > 0（原 > 5%），让 AI 估算真正进入并持续纠正食物库；安全网（per100g ∈ [0,900] + mid>0）不放宽，严谨不破坏
 
 ### 2. 风险评估
 - **风险 1**：offline_queue_controller 改造破坏现有后台回补行为

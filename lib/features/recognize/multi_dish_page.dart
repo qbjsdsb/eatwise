@@ -377,10 +377,9 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
   }
 
   /// M16.9：复合菜查库命中 + AI 整菜估算 → AI 绝对优先
-  /// 比较 compositeNutrition.calories（组分累加库值）vs aiFallback.calories（AI 整菜估算）
-  /// AI 有效（per100g ∈ [0, 900]）时用 AI 整菜估算记 meal_log
-  /// （不更新库 per100g，复合菜 per100g=0 占位）
-  /// AI 无效时返回 null，调用方走原 ratio 兜底（组分累加库值）
+  /// M18：抽取为 CalibratedNutritionCalculator.computeCompositeLookupHit 公共方法
+  /// 三路径（recognize_page / multi_dish_page / offline_queue_controller）共用
+  /// per100g 从 0 占位改为 AI 反算值，让 AI 估算进入食物库
   CalibratedNutrition? _computeCompositeLookupHitCalibrated(
       int index, VisionRecognitionResult dish, double serving) {
     // 包装营养表优先（精确值，不走差异检测）
@@ -389,26 +388,11 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
     if (composite == null) return null;
     final aiFallback = _getAiFallback(index);
     if (aiFallback == null) return null;
-    // 复合菜 lookupCompositeDish 返回的 calories 已是组分累加值（对应 mid 份量）
-    // AI aiFallback.calories 也是整菜估算（对应 mid 份量）
-    // sanity check：AI per100g 有效区间 [0, 900]（与单品分支一致）
-    final mid = dish.estimatedWeightGMid;
-    final aiPer100 = mid > 0 ? aiFallback.calories * 100 / mid : aiFallback.calories;
-    final aiValid = aiPer100 >= 0 && aiPer100 <= 900;
-    if (!aiValid) return null; // AI 无效，返回 null 让调用方走原 ratio 兜底
-    // AI 绝对优先：用 AI 整菜估算记 meal_log（actualXxx 按 serving 比例缩放）
-    final ratio = mid > 0 ? serving / mid : 1.0;
-    return CalibratedNutrition(
-      caloriesPer100g: 0, // 复合菜 per100g 保持 0 占位
-      proteinPer100g: 0,
-      fatPer100g: 0,
-      carbsPer100g: 0,
-      actualCalories: aiFallback.calories * ratio,
-      actualProteinG: aiFallback.proteinG * ratio,
-      actualFatG: aiFallback.fatG * ratio,
-      actualCarbsG: aiFallback.carbsG * ratio,
-      foodItemId: 0, // 复合菜 foodItemId 由 _recordAll 的 upsertAiRecognized 处理
-      shouldUpdateFoodItem: false, // 复合菜不更新库 per100g
+    // 委托公共方法：AI 有效返回 per100g=AI 反算值 + actualXxx；AI 无效返回 null
+    return CalibratedNutritionCalculator.computeCompositeLookupHit(
+      aiFallback: aiFallback,
+      servingG: serving,
+      mid: dish.estimatedWeightGMid,
     );
   }
 
@@ -727,6 +711,9 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
             // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），per100g 用包装换算值（替代 0）
             // v1.10：包装换算宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ per100g 用 0 占位，
             //   避免写入库的 food_item 宏量全 0 误导未来查库（与 offline_queue 复合菜全命中路径一致）
+            // M18：AI 有效（compositeCalibrated != null，必然无包装）时 per100g 用 AI 反算值
+            //   替代 0 占位，让 AI 估算进入食物库供未来查库复用
+            //   AI 无效（compositeCalibrated == null）时保持原逻辑（包装换算 / 0 占位）
             final packagePer100 = dish.hasPackageNutrition
                 ? dish.computePackageNutritionPer100g(
                     estimatedProteinG: dish.estimatedProteinG,
@@ -739,23 +726,31 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
                 packagePer100.$2 == 0 &&
                 packagePer100.$3 == 0 &&
                 packagePer100.$4 == 0;
+            // M18：AI 有效时 per100g 用 AI 反算值；否则按原包装/0 占位逻辑
+            final useAiPer100 = compositeCalibrated != null;
             foodItemId = await foodRepo.upsertAiRecognized(
               name: effectiveName,
               brand: dish.brand,
-              caloriesPer100g:
-                  (packagePer100 != null && !packageMacrosAllZero)
+              caloriesPer100g: useAiPer100
+                  ? compositeCalibrated.caloriesPer100g
+                  : (packagePer100 != null && !packageMacrosAllZero)
                       ? packagePer100.$1
                       : 0,
-              proteinPer100g:
-                  (packagePer100 != null && !packageMacrosAllZero)
+              proteinPer100g: useAiPer100
+                  ? compositeCalibrated.proteinPer100g
+                  : (packagePer100 != null && !packageMacrosAllZero)
                       ? packagePer100.$2
                       : 0,
-              fatPer100g: (packagePer100 != null && !packageMacrosAllZero)
-                  ? packagePer100.$3
-                  : 0,
-              carbsPer100g: (packagePer100 != null && !packageMacrosAllZero)
-                  ? packagePer100.$4
-                  : 0,
+              fatPer100g: useAiPer100
+                  ? compositeCalibrated.fatPer100g
+                  : (packagePer100 != null && !packageMacrosAllZero)
+                      ? packagePer100.$3
+                      : 0,
+              carbsPer100g: useAiPer100
+                  ? compositeCalibrated.carbsPer100g
+                  : (packagePer100 != null && !packageMacrosAllZero)
+                      ? packagePer100.$4
+                      : 0,
               confidence: dish.confidence,
               componentsJson: componentsSnapshot,
             );

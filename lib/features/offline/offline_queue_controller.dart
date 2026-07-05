@@ -373,21 +373,60 @@ class OfflineQueueController {
                 actualFatG = packagePer100.$3 * actualServingG / 100;
                 actualCarbsG = packagePer100.$4 * actualServingG / 100;
               } else {
-                // 无包装 / 包装换算宏量全 0 → 组分累加（原逻辑）
-                foodItemId = await foodItemRepo.upsertAiRecognized(
-                  name: result.dishName,
-                  brand: result.brand,
-                  caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储
-                  proteinPer100g: 0,
-                  fatPer100g: 0,
-                  carbsPer100g: 0,
-                  confidence: result.confidence,
-                  componentsJson: componentsJson,
-                );
-                actualCalories = composite.calories;
-                actualProteinG = composite.proteinG;
-                actualFatG = composite.fatG;
-                actualCarbsG = composite.carbsG;
+                // 无包装 / 包装换算宏量全 0 → M18：AI 优先 + 兜底组分累加
+                // M18 三路径一致性：调用公共方法 computeCompositeLookupHit
+                // AI 有效（per100g ∈ [0, 900]）时 per100g 用 AI 反算值 + actualXxx 用 AI 估算
+                // AI 离谱（per100g>900）/ mid=0 / 无 AI 估算 → 走原组分累加（per100g=0，actual=composite）
+                final hasAiEstimate = result.estimatedCalories != null &&
+                    result.estimatedCalories! > 0;
+                final aiCalibrated = hasAiEstimate
+                    ? CalibratedNutritionCalculator.computeCompositeLookupHit(
+                        aiFallback: NutritionResult(
+                          foodItemId: 0,
+                          calories: result.estimatedCalories!,
+                          proteinG: result.estimatedProteinG ?? 0,
+                          fatG: result.estimatedFatG ?? 0,
+                          carbsG: result.estimatedCarbsG ?? 0,
+                          oilG: 0,
+                          source: NutritionSource.aiEstimate,
+                        ),
+                        servingG: actualServingG,
+                        mid: result.estimatedWeightGMid,
+                      )
+                    : null;
+                if (aiCalibrated != null) {
+                  // M18：AI 有效，per100g 用 AI 反算值写库 + AI 估算记 meal_log
+                  foodItemId = await foodItemRepo.upsertAiRecognized(
+                    name: result.dishName,
+                    brand: result.brand,
+                    caloriesPer100g: aiCalibrated.caloriesPer100g,
+                    proteinPer100g: aiCalibrated.proteinPer100g,
+                    fatPer100g: aiCalibrated.fatPer100g,
+                    carbsPer100g: aiCalibrated.carbsPer100g,
+                    confidence: result.confidence,
+                    componentsJson: componentsJson,
+                  );
+                  actualCalories = aiCalibrated.actualCalories;
+                  actualProteinG = aiCalibrated.actualProteinG;
+                  actualFatG = aiCalibrated.actualFatG;
+                  actualCarbsG = aiCalibrated.actualCarbsG;
+                } else {
+                  // AI 离谱 / mid=0 / 无 AI 估算：走原组分累加路径
+                  foodItemId = await foodItemRepo.upsertAiRecognized(
+                    name: result.dishName,
+                    brand: result.brand,
+                    caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储
+                    proteinPer100g: 0,
+                    fatPer100g: 0,
+                    carbsPer100g: 0,
+                    confidence: result.confidence,
+                    componentsJson: componentsJson,
+                  );
+                  actualCalories = composite.calories;
+                  actualProteinG = composite.proteinG;
+                  actualFatG = composite.fatG;
+                  actualCarbsG = composite.carbsG;
+                }
               }
             }
           }

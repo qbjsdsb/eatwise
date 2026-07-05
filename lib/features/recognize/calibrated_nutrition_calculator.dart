@@ -87,7 +87,9 @@ class CalibratedNutritionCalculator {
       }
 
       // AI 绝对优先：始终用 AI 反算 per100g 写库 + 用 AI 值记 meal_log
-      // shouldUpdateFoodItem：仅当 AI 与库有 > 5% 差异时才写库（避免无意义写库）
+      // M18：shouldUpdateFoodItem 从 diffRatio > 5% 改为 > 0
+      // 让 AI 估算持续纠正库（即便 2% 差异也写库），库值始终跟随 AI
+      // diffRatio=0%（完全一致）时仍为 false，避免无意义写库
       final diffRatio = dbPer100Calories > 0
           ? (aiPer100Calories - dbPer100Calories).abs() / dbPer100Calories
           : (aiPer100Calories > 0 ? 1.0 : 0.0);
@@ -101,7 +103,7 @@ class CalibratedNutritionCalculator {
         actualFatG: aiPer100Fat * servingG / 100,
         actualCarbsG: aiPer100Carbs * servingG / 100,
         foodItemId: lookupHitNutrition.foodItemId,
-        shouldUpdateFoodItem: diffRatio > 0.05,
+        shouldUpdateFoodItem: diffRatio > 0,
       );
     }
 
@@ -148,6 +150,58 @@ class CalibratedNutritionCalculator {
       actualCarbsG: carbsPer100g * servingG / 100,
       foodItemId: 0, // 哨兵，调用方需 upsertAiRecognized 替换为真实 id
       shouldUpdateFoodItem: false, // 哨兵分支由 upsertAiRecognized 处理
+    );
+  }
+
+  /// 复合菜 AI 优先公共方法（M18：从 multi_dish_page 抽取）
+  ///
+  /// 三路径（recognize_page / multi_dish_page / offline_queue_controller）共用，
+  /// 保证复合菜 actualCalories 与 AI 估算一致 + per100g 进入食物库。
+  ///
+  /// 与单品 [compute] 区别：复合菜无品类校准（组分累加 + AI 估算），
+  /// per100g 直接用 AI 反算值（M16.9 时为 0 占位，M18 改为 AI 反算值让 AI 进入库）。
+  ///
+  /// 参数：
+  /// - [aiFallback] 复合菜 AI 估算（foodItemId=0，calories 对应 mid 份量）
+  /// - [servingG] 用户调整后的份量（前台）或 AI mid（后台）
+  /// - [mid] AI 视觉识别重量中位数，per100g 反算基准
+  ///
+  /// 返回：
+  /// - 非 null：AI 有效，调用方应用 per100g 写库 + actualXxx 记 meal_log
+  /// - null：AI 离谱（per100g > 900）或 mid=0，调用方走原 ratio 兜底
+  static CalibratedNutrition? computeCompositeLookupHit({
+    required NutritionResult aiFallback,
+    required double servingG,
+    required double mid,
+  }) {
+    if (mid <= 0) return null; // 防除零
+
+    final per100Ratio = 100.0 / mid;
+    // AI 估算 per100g = aiFallback.xxx * 100 / mid
+    final aiPer100Calories = aiFallback.calories * per100Ratio;
+    final aiPer100Protein = aiFallback.proteinG * per100Ratio;
+    final aiPer100Fat = aiFallback.fatG * per100Ratio;
+    final aiPer100Carbs = aiFallback.carbsG * per100Ratio;
+
+    // sanity check：AI per100g 有效区间 [0, 900]
+    // 上限 900：纯脂肪油 889，solid clamp 上限 900（food_category_defaults.dart）
+    // AI per100g > 900 视为离谱，返回 null 让调用方走原 ratio 兜底
+    final aiValid = aiPer100Calories >= 0 && aiPer100Calories <= 900;
+    if (!aiValid) return null;
+
+    // M18：per100g 用 AI 反算值（M16.9 时为 0 占位）
+    // shouldUpdateFoodItem 始终 true：让 AI 值进入食物库
+    return CalibratedNutrition(
+      caloriesPer100g: aiPer100Calories,
+      proteinPer100g: aiPer100Protein,
+      fatPer100g: aiPer100Fat,
+      carbsPer100g: aiPer100Carbs,
+      actualCalories: aiPer100Calories * servingG / 100,
+      actualProteinG: aiPer100Protein * servingG / 100,
+      actualFatG: aiPer100Fat * servingG / 100,
+      actualCarbsG: aiPer100Carbs * servingG / 100,
+      foodItemId: 0, // 哨兵，调用方需 upsertAiRecognized 替换为真实 id
+      shouldUpdateFoodItem: true, // M18：始终写库，让 AI 值进入食物库
     );
   }
 }
