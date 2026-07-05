@@ -38,7 +38,7 @@
 - [x] Task 7: 发布准备
   - [x] SubTask 7.1: bump pubspec.yaml 版本号 0.18.4+23 → 0.18.5+24
   - [x] SubTask 7.2: 更新 HANDOFF.md 第 2 节当前状态 + 新增 M16.6 章节
-  - [ ] SubTask 7.3: commit + push + tag v0.18.5 触发 GitHub Actions build APK
+  - [x] SubTask 7.3: commit + push + tag v0.18.5 触发 GitHub Actions build APK
 
 # Task Dependencies
 

@@ -16,4 +16,4 @@
 - [x] M16.2/M16.3/M16.4/M16.5 修复区域无回归
 - [x] pubspec.yaml 版本号 bump 到 0.18.5+24
 - [x] HANDOFF.md 第 2 节当前状态更新 + M16.6 章节回填
-- [ ] commit + push + tag v0.18.5 触发 GitHub Actions build APK
+- [x] commit + push + tag v0.18.5 触发 GitHub Actions build APK
