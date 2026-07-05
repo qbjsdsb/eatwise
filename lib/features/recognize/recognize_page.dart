@@ -20,6 +20,7 @@ import 'dish_name_editor.dart';
 import 'multi_dish_page.dart';
 import 'providers.dart';
 import 'recognize_controller.dart';
+import 'recognize_progress_card.dart';
 
 class RecognizePage extends ConsumerStatefulWidget {
   const RecognizePage({super.key});
@@ -356,24 +357,14 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
               ],
             ),
           ),
-          // 识别中遮罩：用 cs.scrim（MD3 spec 遮罩色）替代硬编码 Colors.black54
+          // M20：识别中遮罩升级为 4 阶段进度卡片（选图→压缩→AI 推理→查库回填）
+          // 用 cs.scrim（MD3 spec 遮罩色）替代硬编码 Colors.black54
           if (_isRecognizing)
             Container(
               color: cs.scrim.withValues(alpha: 0.54),
               child: Center(
-                child: Card(
-                  elevation: 3,
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        CircularProgressIndicator(),
-                        SizedBox(height: 16),
-                        Text('识别中…'),
-                      ],
-                    ),
-                  ),
+                child: RecognizeProgressCard(
+                  currentState: _currentRecognizeState,
                 ),
               ),
             ),
@@ -390,22 +381,21 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
       _currentRecognizeState = RecognizeState.pickingImage;
     });
     // M20：监听 controller.state 变化，实时更新进度卡片 UI
-    void onStateChanged() {
+    // StateNotifier.addListener 接受 Listener<RecognizeUiState>（带 state 参数）
+    void onStateChanged(RecognizeUiState state) {
       if (!mounted) return;
-      final c = _controller;
-      if (c == null) return;
       setState(() {
-        _currentRecognizeState = c.current.state;
+        _currentRecognizeState = state.state;
       });
     }
 
     try {
       final controller = await _ensureController();
-      controller.addListener(onStateChanged);
+      final removeListener = controller.addListener(onStateChanged);
       try {
         await controller.pickAndRecognize(source, mealType: _mealType);
       } finally {
-        controller.removeListener(onStateChanged);
+        removeListener();
       }
 
       // 监听状态变化跳转校准页
@@ -570,7 +560,12 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
         showAppToast(context, state.errorMessage ?? '已加入离线队列');
       }
     } finally {
-      if (mounted) setState(() => _isRecognizing = false);
+      if (mounted) {
+        setState(() {
+          _isRecognizing = false;
+          _currentRecognizeState = RecognizeState.idle;
+        });
+      }
     }
   }
 
