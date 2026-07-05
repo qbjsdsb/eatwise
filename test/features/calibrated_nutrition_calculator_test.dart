@@ -381,4 +381,198 @@ void main() {
       });
     });
   });
+
+  group('CalibratedNutritionCalculator.compute 查库命中分支 M16.8', () {
+    test('查库命中 + AI 与库偏差 > 50%：用 AI 反算 per100g + 标记更新库', () {
+      // 库有"番茄炒蛋" per100g=80（脏数据），AI 估 200g/250kcal/10g蛋白/15g脂肪/20g碳水
+      // 库值 = 80 * 200 / 100 = 160 kcal
+      // AI 估算 = 250 kcal
+      // 偏差 = |250-160|/160 = 56% > 50% → 用 AI 反算 per100g
+      // AI per100g = 250 * 100 / 200 = 125 kcal/100g
+      // servingG = mid = 200
+      // actualCalories = 125 * 200 / 100 = 250
+      final r = VisionRecognitionResult(
+        dishName: '番茄炒蛋',
+        estimatedWeightGLow: 180,
+        estimatedWeightGMid: 200,
+        estimatedWeightGHigh: 220,
+        estimatedCalories: 250,
+        estimatedProteinG: 10,
+        estimatedFatG: 15,
+        estimatedCarbsG: 20,
+        foodComponents: const [],
+        cookingMethod: 'stir_fry',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.0',
+      );
+      final aiFallback = NutritionResult(
+        foodItemId: 0,
+        calories: 250,
+        proteinG: 10,
+        fatG: 15,
+        carbsG: 20,
+        oilG: 0,
+        source: NutritionSource.aiEstimate,
+      );
+      final lookupHit = NutritionResult(
+        foodItemId: 1, // 库命中
+        calories: 160, // 80 * 200 / 100
+        proteinG: 6,
+        fatG: 10,
+        carbsG: 12,
+        oilG: 0,
+      );
+      final result = CalibratedNutritionCalculator.compute(
+        recognitionResult: r,
+        aiFallback: aiFallback,
+        servingG: 200,
+        lookupHitNutrition: lookupHit, // 新参数
+      );
+      expect(result.caloriesPer100g, closeTo(125, 0.1),
+          reason: 'AI 反算 per100g = 250*100/200');
+      expect(result.actualCalories, closeTo(250, 0.1), reason: '用 AI 估算值记录');
+      expect(result.shouldUpdateFoodItem, isTrue, reason: '偏差大时应更新库 per100g');
+      expect(result.foodItemId, 1, reason: '保留库命中的 foodItemId');
+    });
+
+    test('查库命中 + AI 与库偏差 ≤ 50%：用库 per100g + 不更新库', () {
+      // 库 per100g=80, AI 估 200g/170kcal（库值 160 vs AI 170，偏差 6% < 50%）
+      // 用库值：actualCalories = 80 * 200 / 100 = 160
+      final r = VisionRecognitionResult(
+        dishName: '番茄炒蛋',
+        estimatedWeightGLow: 180,
+        estimatedWeightGMid: 200,
+        estimatedWeightGHigh: 220,
+        estimatedCalories: 170,
+        estimatedProteinG: 7,
+        estimatedFatG: 10,
+        estimatedCarbsG: 13,
+        foodComponents: const [],
+        cookingMethod: 'stir_fry',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.0',
+      );
+      final aiFallback = NutritionResult(
+        foodItemId: 0,
+        calories: 170,
+        proteinG: 7,
+        fatG: 10,
+        carbsG: 13,
+        oilG: 0,
+        source: NutritionSource.aiEstimate,
+      );
+      final lookupHit = NutritionResult(
+        foodItemId: 1,
+        calories: 160, // 80 * 200 / 100
+        proteinG: 6,
+        fatG: 10,
+        carbsG: 12,
+        oilG: 0,
+      );
+      final result = CalibratedNutritionCalculator.compute(
+        recognitionResult: r,
+        aiFallback: aiFallback,
+        servingG: 200,
+        lookupHitNutrition: lookupHit,
+      );
+      expect(result.caloriesPer100g, closeTo(80, 0.1), reason: '用库 per100g');
+      expect(result.actualCalories, closeTo(160, 0.1), reason: '用库值记录');
+      expect(result.shouldUpdateFoodItem, isFalse, reason: '偏差小不更新库');
+      expect(result.foodItemId, 1);
+    });
+
+    test('查库命中 + 用户调整滑块：actualXxx 按新 servingG 缩放', () {
+      // 库 per100g=80, AI 估 200g/250kcal（偏差大用 AI 反算 per100g=125）
+      // 用户调滑块 servingG=100
+      // actualCalories = 125 * 100 / 100 = 125
+      final r = VisionRecognitionResult(
+        dishName: '番茄炒蛋',
+        estimatedWeightGLow: 180,
+        estimatedWeightGMid: 200,
+        estimatedWeightGHigh: 220,
+        estimatedCalories: 250,
+        estimatedProteinG: 10,
+        estimatedFatG: 15,
+        estimatedCarbsG: 20,
+        foodComponents: const [],
+        cookingMethod: 'stir_fry',
+        isSingleItem: true,
+        confidence: 0.9,
+        promptVersion: 'v1.0',
+      );
+      final aiFallback = NutritionResult(
+        foodItemId: 0,
+        calories: 250,
+        proteinG: 10,
+        fatG: 15,
+        carbsG: 20,
+        oilG: 0,
+        source: NutritionSource.aiEstimate,
+      );
+      final lookupHit = NutritionResult(
+        foodItemId: 1,
+        calories: 160,
+        proteinG: 6,
+        fatG: 10,
+        carbsG: 12,
+        oilG: 0,
+      );
+      final result = CalibratedNutritionCalculator.compute(
+        recognitionResult: r,
+        aiFallback: aiFallback,
+        servingG: 100, // 用户调小
+        lookupHitNutrition: lookupHit,
+      );
+      expect(result.caloriesPer100g, closeTo(125, 0.1));
+      expect(result.actualCalories, closeTo(125, 0.1),
+          reason: '125 * 100 / 100 = 125');
+      expect(result.actualProteinG, closeTo(5, 0.1),
+          reason: '10 * 100 / 200 = 5 (AI 蛋白反算)');
+    });
+
+    test('查库命中 + AI 与库都为 0：用库值 0 + 不更新库', () {
+      // 库 per100g=0（water）, AI 估 0 kcal
+      final r = VisionRecognitionResult(
+        dishName: '水',
+        estimatedWeightGLow: 200,
+        estimatedWeightGMid: 250,
+        estimatedWeightGHigh: 300,
+        estimatedCalories: 0,
+        foodComponents: const [],
+        cookingMethod: 'raw',
+        isSingleItem: true,
+        confidence: 0.95,
+        promptVersion: 'v1.0',
+        foodCategory: 'water',
+      );
+      final aiFallback = NutritionResult(
+        foodItemId: 0,
+        calories: 0,
+        proteinG: 0,
+        fatG: 0,
+        carbsG: 0,
+        oilG: 0,
+        source: NutritionSource.aiEstimate,
+      );
+      final lookupHit = NutritionResult(
+        foodItemId: 1,
+        calories: 0,
+        proteinG: 0,
+        fatG: 0,
+        carbsG: 0,
+        oilG: 0,
+      );
+      final result = CalibratedNutritionCalculator.compute(
+        recognitionResult: r,
+        aiFallback: aiFallback,
+        servingG: 250,
+        lookupHitNutrition: lookupHit,
+      );
+      expect(result.caloriesPer100g, 0);
+      expect(result.actualCalories, 0);
+      expect(result.shouldUpdateFoodItem, isFalse, reason: '库值 0 + AI 0 无需更新');
+    });
+  });
 }
