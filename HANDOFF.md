@@ -69,9 +69,9 @@ C1 验证（反复检查后发现并修复 1 处遗漏）：recognize_page L224 
 - 文件行数全部达标：multi_dish_page 542 < 600 / dashboard_page 304 < 600 / `_pickAndRecognize` 26 < 50 / `processPending` 29 < 80
 - 哨兵检查数零回归：`foodItemId == 0` 检查 M24 前后总数 3 = 3（recognize_page 1 + multi_dish_page 主文件 1 + multi_dish/ai_estimate_card 1，最后 1 处在 B4 拆分时移到子文件）
 
-**工作区状态**：v0.22.0+34 待发布（M24 全部 13 项 P1 清零完成）。M22 已 push + tag v0.21.0（commit 13701c5）；M23 全面细致审查完成（4 维度报告 67 项发现）；**M24 P1 清零已完成（待 push + tag v0.22.0，详见上方"M24 全部完成"段；用户指令"好的，按照建议来，严谨仔细，反复检查"；1032 全量测试通过 + 22 新测试 + analyze No issues + 6 硬约束全部满足 + 0 回归）**。远端 main 已 force push 覆盖旧 v0.8.0 线为 v0.20.x 主线（M20 期间执行）。v0.18.x 及之前版本历史见 git log + tag 列表。
+**工作区状态**：v0.22.0+34 已发布（M24 全部 13 项 P1 清零完成 + commit + push + tag）。M22 已 push + tag v0.21.0（commit 13701c5）；M23 全面细致审查完成（4 维度报告 67 项发现）；**M24 P1 清零已 commit d5b7483 + push origin/trae/agent-wX1X6Q + tag v0.22.0（详见上方"M24 全部完成"段；用户指令"好的，按照建议来，严谨仔细，反复检查"；1032 全量测试通过 + 22 新测试 + analyze No issues + 6 硬约束全部满足 + 0 回归）**。远端 main 已 force push 覆盖旧 v0.8.0 线为 v0.20.x 主线（M20 期间执行）。v0.18.x 及之前版本历史见 git log + tag 列表。
 
-**当前分支**：trae/agent-wX1X6Q（本地 HEAD = M22 commit b7955c5 + 工作区 M24 全部改动未 commit；远端 origin/main HEAD = b7955c5（v0.21.0）；tag v0.21.0 指向 13701c5，v0.22.0 待创建；**待用户确认后 commit + push + tag v0.22.0**）
+**当前分支**：trae/agent-wX1X6Q（本地 HEAD = M24 commit d5b7483；远端 origin/trae/agent-wX1X6Q HEAD = d5b7483；origin/main HEAD = b7955c5（v0.21.0，待合并 M24 到 main）；tag v0.21.0 → 13701c5，tag v0.22.0 → d5b7483；**M24 已 push + tag，下一步待用户决定是否合并到 main + GitHub Release**）
 
 **待用户执行的收尾项**（沙箱无法完成）：
 1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）
