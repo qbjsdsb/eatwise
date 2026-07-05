@@ -124,10 +124,17 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
           TextButton.icon(
             onPressed: _isRecording
                 ? null
-                : () => Navigator.of(context).pushReplacement(
+                : () async {
+                    // M16.7: dirty 状态下转手动应确认（避免静默丢失未保存滑块改动）
+                    if (_dirty && !(await confirmDiscardChanges(context))) {
+                      return; // 用户取消
+                    }
+                    if (!context.mounted) return;
+                    Navigator.of(context).pushReplacement(
                       MaterialPageRoute(
                           builder: (_) => const ManualEntryPage()),
-                    ),
+                    );
+                  },
             icon: const Icon(Icons.edit_outlined),
             label: const Text('转手动'),
           ),
@@ -156,10 +163,19 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
             child: Column(
               children: [
                 Text('本餐合计：${totalCal.toStringAsFixed(0)} kcal',
-                    style: Theme.of(context).textTheme.titleMedium),
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(
+                            fontFeatures: const [
+                              FontFeature.tabularFigures()
+                            ])),
                 Text(
-                    '蛋白质 ${totalProtein.toStringAsFixed(1)}g · 脂肪 ${totalFat.toStringAsFixed(0)}g · 碳水 ${totalCarbs.toStringAsFixed(0)}g',
+                    '蛋白质 ${totalProtein.toStringAsFixed(1)} g · 脂肪 ${totalFat.toStringAsFixed(0)} g · 碳水 ${totalCarbs.toStringAsFixed(0)} g',
                     style: TextStyle(
+                        fontFeatures: const [
+                          FontFeature.tabularFigures()
+                        ],
                         color: Theme.of(context)
                             .colorScheme
                             .onSurfaceVariant)),
@@ -246,10 +262,11 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
                         ? null
                         : () => _handleRename(index),
                     tooltip: '改菜名',
-                    visualDensity: VisualDensity.compact,
+                    // 触控目标 ≥48dp（Material 3 可访问性标准）；
+                    // 保留 padding: EdgeInsets.zero 维持紧凑视觉，仅放大 constraints
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(
-                        minWidth: 32, minHeight: 32),
+                        minWidth: 48, minHeight: 48),
                   ),
               ],
             ),
@@ -277,8 +294,11 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
               // v1.3：数量步进器（仅单品命中 + perUnitG > 0 显示）
               _buildQuantityStepper(index, dish),
               Text(
-                  '${cal.toStringAsFixed(0)} kcal · 蛋白 ${p.toStringAsFixed(1)}g · 脂肪 ${f.toStringAsFixed(0)}g · 碳水 ${c.toStringAsFixed(0)}g',
+                  '${cal.toStringAsFixed(0)} kcal · 蛋白 ${p.toStringAsFixed(1)} g · 脂肪 ${f.toStringAsFixed(0)} g · 碳水 ${c.toStringAsFixed(0)} g',
                   style: TextStyle(
+                      fontFeatures: const [
+                        FontFeature.tabularFigures()
+                      ],
                       fontSize: 12,
                       color: Theme.of(context)
                           .colorScheme
@@ -333,6 +353,7 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
         children: [
           IconButton(
             icon: const Icon(Icons.remove_circle_outline),
+            tooltip: '减少数量',
             onPressed: _quantities[index] > 1
                 ? () => _onQuantityChanged(index, _quantities[index] - 1, dish)
                 : null,
@@ -341,13 +362,17 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
               style: Theme.of(context).textTheme.bodyMedium),
           IconButton(
             icon: const Icon(Icons.add_circle_outline),
+            tooltip: '增加数量',
             onPressed: _quantities[index] < 20
                 ? () => _onQuantityChanged(index, _quantities[index] + 1, dish)
                 : null,
           ),
           const SizedBox(width: 8),
-          Text('（每${dish.unit} ${dish.perUnitG.toStringAsFixed(0)}g）',
+          Text('（每${dish.unit} ${dish.perUnitG.toStringAsFixed(0)} g）',
               style: TextStyle(
+                  fontFeatures: const [
+                    FontFeature.tabularFigures()
+                  ],
                   fontSize: 11,
                   color: Theme.of(context)
                       .colorScheme

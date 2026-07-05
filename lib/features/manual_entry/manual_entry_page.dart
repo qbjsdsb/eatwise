@@ -97,9 +97,10 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                 title: Text(_selected?.name ?? '点击选择食物'),
                 subtitle: _selected != null
                     ? Text(
-                        '${_selected!.caloriesPer100g.toStringAsFixed(0)} kcal/100g')
+                        '${_selected!.caloriesPer100g.toStringAsFixed(0)} kcal/100 g')
                     : null,
-                trailing: const Icon(Icons.chevron_right),
+                trailing: const ExcludeSemantics(
+                    child: Icon(Icons.chevron_right)),
                 onTap: () async {
                   final result = await Navigator.of(context).push<FoodItem>(
                     MaterialPageRoute(
@@ -118,7 +119,9 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
               const SizedBox(height: 16),
               TextField(
                   controller: _servingCtrl,
-                  keyboardType: TextInputType.number,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  autocorrect: false,
+                  enableSuggestions: false,
                   decoration: const InputDecoration(labelText: '份量 (g)')),
               const SizedBox(height: 24),
               FilledButton(
@@ -152,13 +155,15 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                     const SizedBox(height: 12),
                     TextField(
                         controller: _servingCtrl,
-                        keyboardType: TextInputType.number,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        autocorrect: false,
+                        enableSuggestions: false,
                         decoration: const InputDecoration(labelText: '份量 (g)')),
                   ],
                 ),
               ),
             ),
-            SectionTitle('营养素（每 100g）'),
+            SectionTitle('营养素（每 100 g）'),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -166,22 +171,30 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                   children: [
                     TextField(
                         controller: _calCtrl,
-                        keyboardType: TextInputType.number,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        autocorrect: false,
+                        enableSuggestions: false,
                         decoration: const InputDecoration(labelText: '热量 (kcal)')),
                     const SizedBox(height: 12),
                     TextField(
                         controller: _proteinCtrl,
-                        keyboardType: TextInputType.number,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        autocorrect: false,
+                        enableSuggestions: false,
                         decoration: const InputDecoration(labelText: '蛋白质 (g)')),
                     const SizedBox(height: 12),
                     TextField(
                         controller: _fatCtrl,
-                        keyboardType: TextInputType.number,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        autocorrect: false,
+                        enableSuggestions: false,
                         decoration: const InputDecoration(labelText: '脂肪 (g)')),
                     const SizedBox(height: 12),
                     TextField(
                         controller: _carbsCtrl,
-                        keyboardType: TextInputType.number,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        autocorrect: false,
+                        enableSuggestions: false,
                         decoration: const InputDecoration(labelText: '碳水 (g)')),
                   ],
                 ),
@@ -236,7 +249,7 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
       );
       if (mounted) {
         showAppToast(context,
-            '已记录 ${_selected!.name} ${serving.toStringAsFixed(0)}g');
+            '已记录 ${_selected!.name} ${serving.toStringAsFixed(0)} g');
         _dirty = false; // 保存成功，允许返回不弹确认
         Navigator.of(context).pop();
       }

@@ -23,8 +23,8 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.18.5+24（pubspec.yaml）—— 已发布 v0.18.5 GitHub Release（待 push + tag 后生效）
-- **当前分支**：trae/agent-wX1X6Q（HEAD = f00333e 已 push；tag v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
+- **当前版本**：0.18.6+25（pubspec.yaml）—— 已发布 v0.18.6 GitHub Release（待 push + tag 后生效）
+- **当前分支**：trae/agent-wX1X6Q（HEAD = d37cd4e 已 push；tag v0.18.5 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
   - `android/app/build.gradle.kts` 必须保持 `isMinifyEnabled=false` + `isShrinkResources=false`（否则 R8 剥掉 sentry/workmanager 反射类致启动崩溃）
@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-05
 
-**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复已 push（commit 221d319，4 层修复详见下方"M16.3"章节）；M16.4 深度审查修复已发布 v0.18.3 GitHub Release（8 个 commit 93528fe~85e8c64，4 P1 + 4 P2 + 3 P3 共 11 个修复，详见下方"M16.4"章节；876 全量测试通过，新增 20 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3 修复区域无回归；GitHub Actions workflow 自动 build APK 并上传 release，run id 28733040721 conclusion=success；app-release.apk 78.55 MB + app-debug.apk 175.10 MB）；M16.5 复合菜 UI 全 0 修复已 push（commit f00333e，P0 修复 lookupCompositeDish 命中 0 值条目致 UI 全 0，详见下方"M16.5"章节；881 全量测试通过，新增 5 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4 修复区域无回归）；**M16.6 营养数值一致性修复已完成（待 commit + push + tag v0.18.5，详见下方"M16.6"章节；895 全量测试通过，新增 15 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4/M16.5 修复区域无回归）**。仓库已改 public，匿名访问 GitHub API 200 OK，smoke test 2/2 通过（M16.6 期间 GitHub API 匿名限流致 smoke test 1/2 失败，环境问题非回归）。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
-**当前分支**：trae/agent-wX1X6Q（HEAD = f00333e 已 push 远端；远端 origin/trae/agent-wX1X6Q 已同步；tag v0.18.3 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
+**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复已 push（commit 221d319，4 层修复详见下方"M16.3"章节）；M16.4 深度审查修复已发布 v0.18.3 GitHub Release（8 个 commit 93528fe~85e8c64，4 P1 + 4 P2 + 3 P3 共 11 个修复，详见下方"M16.4"章节；876 全量测试通过，新增 20 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3 修复区域无回归；GitHub Actions workflow 自动 build APK 并上传 release，run id 28733040721 conclusion=success；app-release.apk 78.55 MB + app-debug.apk 175.10 MB）；M16.5 复合菜 UI 全 0 修复已 push（commit f00333e，P0 修复 lookupCompositeDish 命中 0 值条目致 UI 全 0，详见下方"M16.5"章节；881 全量测试通过，新增 5 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4 修复区域无回归）；M16.6 营养数值一致性修复已 push（commit d37cd4e，tag v0.18.5，三路径 actualCalories 计算统一，详见下方"M16.6"章节；895 全量测试通过，新增 15 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4/M16.5 修复区域无回归）；**M16.7 Web Interface Guidelines 全 UI 审查修复已完成（待 commit + push + tag v0.18.6，详见下方"M16.7"章节；911 全量测试通过，新增 15 个 TDD 测试 + 1 个源码扫描测试；6 条硬约束全部满足；M16.2~M16.6 修复区域无回归）**。仓库已改 public，匿名访问 GitHub API 200 OK，smoke test 2/2 通过（M16.6 期间 GitHub API 匿名限流致 smoke test 1/2 失败，环境问题非回归）。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
+**当前分支**：trae/agent-wX1X6Q（HEAD = d37cd4e 已 push 远端；远端 origin/trae/agent-wX1X6Q 已同步；tag v0.18.5 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
 
 **待用户执行的收尾项**（沙箱无法完成）：
 1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）
@@ -1454,6 +1454,101 @@ AI 兜底哨兵路径（foodItemId=0）下，三条识别路径对 `meal_log.act
 1. 装 v0.18.5 APK 验证啤酒等 AI 离谱估算场景：预览值 = 记录值 = 校准后值（如 beer 43 * servingG / 100，非 AI 估算的 600）
 2. 验证二次查库命中时热量一致（首次记录 129，二次查库命中也是 129，不再"数值乱跳"）
 3. 验证包装食品仍走包装换算（不走品类校准，CalibratedNutritionCalculator 内部已处理）
+
+---
+
+## M16.7 Web Interface Guidelines 全 UI 审查修复（2026-07-05）—— v0.18.6 全 17 个 UI 文件对照 Vercel Web Interface Guidelines 修复 195 个问题
+
+**触发**：用户要求"Use Skill: web-design-guidelines 检查整体界面有没有问题，反复检查，一定要仔细"+ "Use Skill: test-driven-development，严谨认真"。
+
+**审查范围**：lib/features/ 下全部 17 个 UI 文件（recognize × 3 + dashboard × 3 + settings/me/profile/weight/update/records × 6 + backup/food_library/food_edit/insight/manual_entry × 5），对照 Vercel Web Interface Guidelines 适配 Flutter 的规则。
+
+**审查发现**：195 个问题，分 6 类：
+- P0（功能性 bug）：TextInputType.number 不支持小数（15 处，iOS 用户无法输入小数点）
+- P1（可访问性硬伤）：IconButton 缺 tooltip（4 处步进器 ± 按钮）、触控目标 <48dp（2 处：32dp 步进器 / 40dp 主题色块）
+- P1（破坏性操作）：转手动 pushReplacement 绕过 PopScope dirty 检查（2 处）
+- P2（排版）：ASCII "..." 应为 "…" 单字符省略号（7 处）
+- P2（数值稳定性 + 一致性 + 语义）：数字列缺 FontFeature.tabularFigures / Latin 单位前缺空格 / 装饰性图标缺 ExcludeSemantics（跨 14 文件，~50 处）
+- P2（输入属性）：TextField 缺 autocorrect=false / keyboardType（7 处非数字字段：API Key/URL/DSN/JSON）
+
+### 修复（按 TDD 严格流程，每组先 RED 后 GREEN）
+
+#### P0: TextInputType.number → numberWithOptions(decimal: true)（TDD）
+- 涉及文件：profile_page.dart / weight_page.dart / food_edit_page.dart / manual_entry_page.dart
+- 修复：15 处 `TextInputType.number` → `const TextInputType.numberWithOptions(decimal: true)` + `autocorrect: false` + `enableSuggestions: false`
+- 新增测试：`test/features/decimal_input_keyboard_test.dart` 6 个 widget test（按 labelText 定位 TextField，断言 keyboardType.decimal == true）
+- 关键决策：年龄字段保留 `TextInputType.number`（纯整数，validator 用 int.tryParse）；weight_page 主输入框与同页编辑 dialog 不一致是核心 bug（主页面用 number，dialog 用 numberWithOptions，已统一）
+
+#### P1: IconButton tooltip + 触控目标 ≥48dp（TDD）
+- 涉及文件：multi_dish_page.dart / calibration_page.dart / settings_page.dart
+- 修复：
+  - 4 处步进器 ± IconButton 加 `tooltip: '减少数量' / '增加数量'`
+  - multi_dish_page 改菜名按钮：移除 `visualDensity: VisualDensity.compact`，constraints 从 32×32 改 48×48（保留 padding: EdgeInsets.zero 紧凑视觉）
+  - settings_page _colorDot 主题色块：Container 尺寸从 40×40 改 48×48
+- 新增测试：`test/features/icon_button_accessibility_test.dart` 4 个 widget test（find.byTooltip + tester.getSize 验证 ≥48dp）
+
+#### P1: 转手动破坏性操作确认 dialog（TDD）
+- 涉及文件：multi_dish_page.dart / calibration_page.dart
+- 修复：两处"转手动" `TextButton.icon` 的 `onPressed` 从同步 `() => Navigator.pushReplacement(...)` 改为 async 闭包，dirty 状态下先调 `confirmDiscardChanges(context)`，用户取消则 return，确认后才 pushReplacement；async gap 后检查 `context.mounted`
+- 复用现有 `confirmDiscardChanges` helper（m3_widgets.dart L251，文案"放弃修改？"+"继续编辑"/"放弃"），未新写 dialog
+- 新增测试：`test/features/manual_switch_confirmation_test.dart` 4 个 widget test（dirty 状态弹 dialog / 非 dirty 直接跳转 × 2 页面）
+
+#### P2: ASCII "..." → "…" 省略号统一（TDD）
+- 涉及文件：update_page.dart / settings_page.dart / me_page.dart / dashboard_page.dart / food_library_page.dart / backup_page.dart
+- 修复：7 处 "..." → "…" + 缺省略号补上（如 '生成中' → '生成中…'、hintText '搜索食物' → '搜索食物…'）
+- 未改：URL 类 hintText（不应加省略号）、完整规格说明（如 '减脂建议 0.3-0.7'）、spread operator `...[`（代码语法）
+- 新增测试：`test/features/typography_ellipsis_test.dart` 源码扫描式测试（正则检测字符串字面量中的 "..."，跳过注释行，比 widget pump 稳健）
+
+#### P2: tabularFigures + 单位空格 + ExcludeSemantics 批量修复
+- 涉及文件：14 个 UI 文件
+- 修复：
+  - **FontFeature.tabularFigures()**：所有显示数值的 Text（热量/份量/宏量/进度/费用/轴刻度）加 `style: TextStyle(fontFeatures: const [FontFeature.tabularFigures()])`，避免滑块拖动时数字宽度跳动
+  - **Latin 单位前空格**：`${value}g` → `${value} g`、`kcal/100g` → `kcal/100 g`、`170cm` → `170 cm`、`70.0kg` → `70.0 kg`（中文单位如 次/元/档案 不加空格）
+  - **ExcludeSemantics**：装饰性图标（ListTile trailing chevron / 状态卡片大图标 / 提示卡 info / hero 圆形图标 / Dismissible 背景 delete）用 `ExcludeSemantics(child: Icon(...))` 包裹，避免屏幕阅读器重复朗读。功能性图标（IconButton 有 tooltip、占位图 broken_image）保留语义
+- 同步更新 2 个测试文件断言：decimal_input_keyboard_test（labelText `/100g` → `/100 g`）、estimation_range_ui_test（`62/98g` → `62/98 g`）
+
+#### P2: TextField autocorrect / keyboardType 批量修复
+- 涉及文件：settings_page.dart / backup_page.dart / insight_page.dart
+- 修复：7 处非数字 TextField：
+  - 敏感字段（API Key / DSN）：`autocorrect: false, enableSuggestions: false`
+  - URL 字段：`keyboardType: TextInputType.url, autocorrect: false`
+  - JSON 多行字段：`autocorrect: false, enableSuggestions: false, keyboardType: TextInputType.multiline`
+  - 自然语言字段（菜名/食物名/AI 汇总）：保留默认 autocorrect=true 不改
+- 清理 2 个预存测试警告：decimal_input_keyboard_test unnecessary_cast、icon_button_accessibility_test unused_import
+
+### 验证
+
+- `flutter analyze` → **No issues found!**（0 warnings 0 errors）
+- `flutter test` → **911 passed / 3 skipped / 0 failed**（M16.7 新增 15 个 TDD 测试 + 1 个源码扫描测试；原 895 + 16 = 911）
+- 6 条硬约束全部满足：
+  1. ✅ build.gradle.kts `isMinifyEnabled=false` + `isShrinkResources=false` 未变
+  2. ✅ meal_log.food_item_id 哨兵写库前调 upsertAiRecognized（未改动写库逻辑）
+  3. ✅ AI 兜底三路径全覆盖（未改动）
+  4. ✅ per100g 反算基于 estimatedWeightGMid（未改动）
+  5. ✅ SecureConfigStore 无 instance 静态属性（未改动）
+  6. ✅ initSentryAndRunApp 命名参数（未改动）
+- M16.2/M16.3/M16.4/M16.5/M16.6 修复区域无回归
+
+### 未处理的低优先级问题（记录待后续评估）
+
+- 错误信息含原始异常 `$e`（多处）：应给用户修复/下一步，但需逐个场景设计文案，工作量大
+- 手动日期格式化未用 intl（多处）：当前用 `todayYmd()` 等 helper，功能正常，intl 重构 ROI 低
+- 长文本缺 maxLines/ellipsis（多处）：长菜名/长食物名可能溢出，但实际场景罕见
+- InkWell+Text 伪装按钮（today_meals_page 日期选择 / meal_edit_dialog 换食物）：应改 TextButton 或加 Semantics(button: true)，但改动可能影响视觉
+- fl_chart 动画未检查 disableAnimations：图表库限制，应用层难干预
+- 触控目标 <48dp 残余（today_meals_page 日期 InkWell / meal_edit_dialog advanced 折叠）：需重设 padding，但可能影响紧凑布局
+
+### 待用户执行
+
+1. 装 v0.18.6 APK 验证：
+   - 数值输入框可输入小数点（体重 70.5kg / 体脂率 18.5% / 营养素 0.9g）
+   - 步进器 ± 按钮长按显示 tooltip（减少数量 / 增加数量）
+   - 改菜名按钮 / 主题色块触控目标≥48dp（不再难按）
+   - dirty 状态下点"转手动"弹确认 dialog（不再静默丢失滑块改动）
+   - 加载态文案用 "…"（正在检查… / 正在下载… / 生成中…）
+   - 数字列对齐稳定（滑块拖动时不再跳动）
+   - 屏幕阅读器不重复朗读装饰图标
+2. 验证 API Key / URL / DSN 输入框不自动纠错（敏感字段不被系统建议替换）
 
 ---
 

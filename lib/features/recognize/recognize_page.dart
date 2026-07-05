@@ -250,10 +250,12 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
                             color: cs.primaryContainer,
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(
-                            Icons.restaurant_menu_rounded,
-                            size: 48,
-                            color: cs.onPrimaryContainer,
+                          child: ExcludeSemantics(
+                            child: Icon(
+                              Icons.restaurant_menu_rounded,
+                              size: 48,
+                              color: cs.onPrimaryContainer,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 20),

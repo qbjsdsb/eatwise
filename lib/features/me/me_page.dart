@@ -81,8 +81,10 @@ class _MePageState extends ConsumerState<MePage> {
                             color: cs.onPrimaryContainer.withValues(alpha: 0.1),
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(Icons.person_rounded,
-                              color: cs.onPrimaryContainer),
+                          child: ExcludeSemantics(
+                            child: Icon(Icons.person_rounded,
+                                color: cs.onPrimaryContainer),
+                          ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
@@ -90,10 +92,13 @@ class _MePageState extends ConsumerState<MePage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                '${p.heightCm.toStringAsFixed(0)}cm · ${p.weightKg.toStringAsFixed(1)}kg · ${p.age}岁',
+                                '${p.heightCm.toStringAsFixed(0)} cm · ${p.weightKg.toStringAsFixed(1)} kg · ${p.age}岁',
                                 style: textTheme.titleMedium?.copyWith(
                                   color: cs.onPrimaryContainer,
                                   fontWeight: FontWeight.w600,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures()
+                                  ],
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -105,13 +110,19 @@ class _MePageState extends ConsumerState<MePage> {
                               const SizedBox(height: 4),
                               Text(
                                 '每日目标 ${p.dailyCalorieTarget} kcal',
-                                style: textTheme.bodySmall
-                                    ?.copyWith(color: cs.onPrimaryContainer),
+                                style: textTheme.bodySmall?.copyWith(
+                                    color: cs.onPrimaryContainer,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures()
+                                    ]),
                               ),
                             ],
                           ),
                         ),
-                        Icon(Icons.chevron_right, color: cs.onPrimaryContainer),
+                        ExcludeSemantics(
+                          child: Icon(Icons.chevron_right,
+                              color: cs.onPrimaryContainer),
+                        ),
                       ],
                     ),
                   ),
@@ -167,7 +178,7 @@ class _MePageState extends ConsumerState<MePage> {
     return ListTile(
       leading: LeadingIconContainer(icon),
       title: Text(title),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: const ExcludeSemantics(child: Icon(Icons.chevron_right)),
       onTap: onTap,
     );
   }
@@ -188,7 +199,7 @@ class _MePageState extends ConsumerState<MePage> {
     // M13：版本号从 appVersionProvider 动态读取（替代硬编码 '0.16.0'）
     final version = ref.read(appVersionProvider).maybeWhen(
           data: (v) => v,
-          orElse: () => '...',
+          orElse: () => '…',
         );
     showAboutDialog(
       context: context,

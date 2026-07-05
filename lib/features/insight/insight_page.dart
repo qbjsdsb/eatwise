@@ -323,7 +323,11 @@ class _InsightPageState extends ConsumerState<InsightPage> {
           content: TextField(
             controller: ctrl,
             maxLines: 10,
-            decoration: const InputDecoration(),
+            // 自然语言汇总文本：保留默认 autocorrect/enabledSuggestions
+            keyboardType: TextInputType.multiline,
+            decoration: const InputDecoration(
+              hintText: '编辑 AI 汇总文本…',
+            ),
           ),
           actions: [
             TextButton(
@@ -430,9 +434,12 @@ class _InsightPageState extends ConsumerState<InsightPage> {
               padding: const EdgeInsets.only(bottom: 12),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline,
-                      size: 16,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  ExcludeSemantics(
+                    child: Icon(Icons.info_outline,
+                        size: 16,
+                        color:
+                            Theme.of(context).colorScheme.onSurfaceVariant),
+                  ),
                   const SizedBox(width: 6),
                   Expanded(
                     child: Text(
@@ -440,8 +447,12 @@ class _InsightPageState extends ConsumerState<InsightPage> {
                       '（${(_recordedDays * 100 / _totalDays).round()}%），'
                       '数据不完整时建议仅供参考',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color:
-                              Theme.of(context).colorScheme.onSurfaceVariant),
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant,
+                          fontFeatures: const [
+                            FontFeature.tabularFigures()
+                          ]),
                     ),
                   ),
                 ],
@@ -457,8 +468,11 @@ class _InsightPageState extends ConsumerState<InsightPage> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.error_outline,
-                        color: Theme.of(context).colorScheme.onErrorContainer),
+                    ExcludeSemantics(
+                      child: Icon(Icons.error_outline,
+                          color:
+                              Theme.of(context).colorScheme.onErrorContainer),
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(_error!,

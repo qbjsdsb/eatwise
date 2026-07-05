@@ -113,7 +113,9 @@ class WeightPageState extends ConsumerState<WeightPage> {
                 Expanded(
                   child: TextField(
                     controller: _weightCtrl,
-                    keyboardType: TextInputType.number,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    autocorrect: false,
+                    enableSuggestions: false,
                     decoration: const InputDecoration(labelText: '今日体重 (kg)'),
                   ),
                 ),
@@ -243,8 +245,11 @@ class WeightPageState extends ConsumerState<WeightPage> {
                     // 0 不显示（避免和 X 轴标签挤）
                     if (value == 0) return const SizedBox.shrink();
                     return Text('${value.round()}',
-                        style: textTheme.labelSmall
-                            ?.copyWith(color: cs.onSurfaceVariant));
+                        style: textTheme.labelSmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                            fontFeatures: const [
+                              FontFeature.tabularFigures()
+                            ]));
                   },
                 ),
               ),
@@ -265,8 +270,11 @@ class WeightPageState extends ConsumerState<WeightPage> {
                     final ratio = value / calRange;
                     final w = wMin + (wMax - wMin) * ratio;
                     return Text(w.toStringAsFixed(1),
-                        style: textTheme.labelSmall
-                            ?.copyWith(color: cs.onSurfaceVariant));
+                        style: textTheme.labelSmall?.copyWith(
+                            color: cs.onSurfaceVariant,
+                            fontFeatures: const [
+                              FontFeature.tabularFigures()
+                            ]));
                   },
                 ),
               ),
@@ -438,7 +446,8 @@ class WeightPageState extends ConsumerState<WeightPage> {
         color: cs.errorContainer,
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
-        child: Icon(Icons.delete, color: cs.onErrorContainer),
+        child: ExcludeSemantics(
+            child: Icon(Icons.delete, color: cs.onErrorContainer)),
       ),
       // 滑删确认：避免误删（体重记录通常较少，二次确认成本可接受）
       confirmDismiss: (_) => confirmAction(
@@ -451,9 +460,11 @@ class WeightPageState extends ConsumerState<WeightPage> {
       onDismissed: (_) => _deleteWeight(log),
       child: ListTile(
         leading: const LeadingIconContainer(Icons.monitor_weight_outlined),
-        title: Text('${log.weightKg.toStringAsFixed(1)} kg'),
+        title: Text('${log.weightKg.toStringAsFixed(1)} kg',
+            style: TextStyle(
+                fontFeatures: const [FontFeature.tabularFigures()])),
         subtitle: Text(log.date),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: const ExcludeSemantics(child: Icon(Icons.chevron_right)),
         onTap: () => _showEditWeightDialog(log),
       ),
     );
@@ -491,9 +502,12 @@ class WeightPageState extends ConsumerState<WeightPage> {
                 // 日期选择器：点击行触发 DatePicker
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.calendar_today_outlined),
+                  leading:
+                      const ExcludeSemantics(
+                          child: Icon(Icons.calendar_today_outlined)),
                   title: Text(formatYmd(selectedDate)),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing:
+                      const ExcludeSemantics(child: Icon(Icons.chevron_right)),
                   onTap: () async {
                     final picked = await showDatePicker(
                       context: ctx,

@@ -114,7 +114,7 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
             padding: const EdgeInsets.all(16),
             child: SearchBar(
               controller: _searchCtrl,
-              hintText: '搜索食物',
+              hintText: '搜索食物…',
               leading: const Icon(Icons.search),
               onChanged: _search,
             ),
@@ -146,9 +146,14 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
                               f.name.trim().isEmpty ? '未命名食物' : f.name,
                             ),
                             subtitle: Text(
-                                '${f.caloriesPer100g.toStringAsFixed(0)} kcal/100g · ${foodSourceLabel(f.source)}'),
+                                '${f.caloriesPer100g.toStringAsFixed(0)} kcal/100 g · ${foodSourceLabel(f.source)}',
+                                style: TextStyle(
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures()
+                                    ])),
                             // 可跳转编辑页，加 chevron 提示（与 me/settings/dashboard 全局约定一致）
-                            trailing: const Icon(Icons.chevron_right),
+                            trailing: const ExcludeSemantics(
+                                child: Icon(Icons.chevron_right)),
                             onTap: () async {
                               if (widget.pickForReuse) {
                                 Navigator.of(context).pop(f);
@@ -179,7 +184,9 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.search_off_rounded, size: 40, color: cs.onSurfaceVariant),
+              ExcludeSemantics(
+                  child: Icon(Icons.search_off_rounded,
+                      size: 40, color: cs.onSurfaceVariant)),
               const SizedBox(height: 8),
               Text('未找到相关食物',
                   style: textTheme.bodyMedium

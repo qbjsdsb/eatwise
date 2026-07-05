@@ -83,7 +83,7 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
               padding: const EdgeInsets.all(12),
               child: Row(
                 children: [
-                  const Icon(Icons.source_outlined),
+                  const ExcludeSemantics(child: Icon(Icons.source_outlined)),
                   const SizedBox(width: 8),
                   Text('数据来源：${foodSourceLabel(f.source)} ${f.sourceVersion}'),
                 ],
@@ -93,28 +93,38 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
           const SizedBox(height: 16),
           TextField(
               controller: _servingCtrl,
-              keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              autocorrect: false,
+              enableSuggestions: false,
               decoration: const InputDecoration(labelText: '默认份量 (g)')),
           TextField(
               controller: _calCtrl,
-              keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              autocorrect: false,
+              enableSuggestions: false,
               enabled: editable,
-              decoration: const InputDecoration(labelText: '热量 /100g (kcal)')),
+              decoration: const InputDecoration(labelText: '热量 /100 g (kcal)')),
           TextField(
               controller: _proteinCtrl,
-              keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              autocorrect: false,
+              enableSuggestions: false,
               enabled: editable,
-              decoration: const InputDecoration(labelText: '蛋白质 /100g (g)')),
+              decoration: const InputDecoration(labelText: '蛋白质 /100 g (g)')),
           TextField(
               controller: _fatCtrl,
-              keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              autocorrect: false,
+              enableSuggestions: false,
               enabled: editable,
-              decoration: const InputDecoration(labelText: '脂肪 /100g (g)')),
+              decoration: const InputDecoration(labelText: '脂肪 /100 g (g)')),
           TextField(
               controller: _carbsCtrl,
-              keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              autocorrect: false,
+              enableSuggestions: false,
               enabled: editable,
-              decoration: const InputDecoration(labelText: '碳水 /100g (g)')),
+              decoration: const InputDecoration(labelText: '碳水 /100 g (g)')),
           const SizedBox(height: 24),
           if (editable)
             FilledButton(

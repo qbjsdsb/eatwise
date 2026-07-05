@@ -154,7 +154,9 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
     switch (_state) {
       case _UpdateState.idle:
         return [
-          Icon(Icons.system_update_alt, size: 64, color: cs.primary),
+          ExcludeSemantics(
+              child: Icon(Icons.system_update_alt,
+                  size: 64, color: cs.primary)),
           const SizedBox(height: 16),
           Text('点击下方按钮检查是否有新版本',
               textAlign: TextAlign.center, style: tt.bodyMedium),
@@ -167,12 +169,14 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
         ];
       case _UpdateState.checking:
         return [
-          const LoadingState(label: '正在检查...'),
+          const LoadingState(label: '正在检查…'),
         ];
       case _UpdateState.upToDate:
         final r = _result as UpToDate;
         return [
-          Icon(Icons.check_circle, size: 64, color: cs.primary),
+          ExcludeSemantics(
+              child: Icon(Icons.check_circle,
+                  size: 64, color: cs.primary)),
           const SizedBox(height: 16),
           Text('已是最新版本', style: tt.titleMedium),
           const SizedBox(height: 8),
@@ -188,7 +192,9 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
       case _UpdateState.updateAvailable:
         final r = _result as UpdateAvailable;
         return [
-          Icon(Icons.system_update, size: 64, color: cs.primary),
+          ExcludeSemantics(
+              child: Icon(Icons.system_update,
+                  size: 64, color: cs.primary)),
           const SizedBox(height: 16),
           Text('发现新版本：${r.release.version}',
               textAlign: TextAlign.center, style: tt.titleMedium),
@@ -212,7 +218,9 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
             const SizedBox(height: 16),
           ],
           Text('大小：${(r.release.apkSize / 1024 / 1024).toStringAsFixed(1)} MB',
-              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+              style: tt.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontFeatures: const [FontFeature.tabularFigures()])),
           const SizedBox(height: 24),
           FilledButton.icon(
             onPressed: _busy ? null : _download,
@@ -233,14 +241,17 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
           Text(
             fraction > 0
                 ? '${(fraction * 100).toStringAsFixed(0)}%  ($receivedKb KB / $totalKb KB)'
-                : '正在下载...',
+                : '正在下载…',
             textAlign: TextAlign.center,
-            style: tt.bodySmall,
+            style: tt.bodySmall?.copyWith(
+                fontFeatures: const [FontFeature.tabularFigures()]),
           ),
         ];
       case _UpdateState.readyToInstall:
         return [
-          Icon(Icons.download_done, size: 64, color: cs.primary),
+          ExcludeSemantics(
+              child: Icon(Icons.download_done,
+                  size: 64, color: cs.primary)),
           const SizedBox(height: 16),
           Text('下载完成', style: tt.titleMedium),
           const SizedBox(height: 8),
@@ -256,7 +267,8 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
         ];
       case _UpdateState.error:
         return [
-          Icon(Icons.error_outline, size: 64, color: cs.error),
+          ExcludeSemantics(
+              child: Icon(Icons.error_outline, size: 64, color: cs.error)),
           const SizedBox(height: 16),
           Text('出错了', style: tt.titleMedium?.copyWith(color: cs.error)),
           const SizedBox(height: 8),

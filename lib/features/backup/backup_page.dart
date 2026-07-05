@@ -49,8 +49,10 @@ class _BackupPageState extends ConsumerState<BackupPage> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.info_outline_rounded,
-                          color: cs.onSurfaceVariant, size: 20),
+                      ExcludeSemantics(
+                        child: Icon(Icons.info_outline_rounded,
+                            color: cs.onSurfaceVariant, size: 20),
+                      ),
                       const SizedBox(width: 12),
                       Expanded(
                         child: Text(
@@ -125,8 +127,12 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           content: TextField(
             controller: ctrl,
             maxLines: 12,
+            // JSON 文本：禁用自动纠错与建议，避免破坏 JSON 结构
+            autocorrect: false,
+            enableSuggestions: false,
+            keyboardType: TextInputType.multiline,
             decoration: const InputDecoration(
-              hintText: '粘贴之前导出的 JSON 文本',
+              hintText: '粘贴之前导出的 JSON 文本…',
             ),
           ),
           actions: [

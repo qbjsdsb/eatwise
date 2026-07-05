@@ -120,7 +120,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     TextFormField(
                       controller: _heightCtrl,
                       decoration: const InputDecoration(labelText: '身高 (cm)'),
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      autocorrect: false,
+                      enableSuggestions: false,
                       validator: (v) {
                         if (v == null || v.isEmpty) return '必填';
                         if (double.tryParse(v) == null) return '请输入有效数字';
@@ -131,7 +133,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     TextFormField(
                       controller: _weightCtrl,
                       decoration: const InputDecoration(labelText: '体重 (kg)'),
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      autocorrect: false,
+                      enableSuggestions: false,
                       validator: (v) {
                         if (v == null || v.isEmpty) return '必填';
                         if (double.tryParse(v) == null) return '请输入有效数字';
@@ -168,7 +172,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       controller: _bodyFatCtrl,
                       decoration: const InputDecoration(
                           labelText: '体脂率 % (可选，填了可用 Katch 公式)'),
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      autocorrect: false,
+                      enableSuggestions: false,
                       validator: (v) {
                         if (v == null || v.isEmpty) return null; // 可选字段
                         if (double.tryParse(v) == null) return '请输入有效数字';

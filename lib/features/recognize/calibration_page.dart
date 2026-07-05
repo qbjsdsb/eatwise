@@ -170,10 +170,17 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
           TextButton.icon(
             onPressed: _isRecording
                 ? null
-                : () => Navigator.of(context).pushReplacement(
+                : () async {
+                    // M16.7: dirty 状态下转手动应确认（避免静默丢失未保存滑块改动）
+                    if (_dirty && !(await confirmDiscardChanges(context))) {
+                      return; // 用户取消
+                    }
+                    if (!context.mounted) return;
+                    Navigator.of(context).pushReplacement(
                       MaterialPageRoute(
                           builder: (_) => const ManualEntryPage()),
-                    ),
+                    );
+                  },
             icon: const Icon(Icons.edit_outlined),
             label: const Text('转手动'),
           ),
@@ -198,15 +205,21 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
                         padding: const EdgeInsets.only(top: 4),
                         child: _sourceBadge(_currentNutrition!.source),
                       ),
-                    Text('置信度：${(widget.recognitionResult.confidence * 100).toStringAsFixed(0)}%'),
+                    Text('置信度：${(widget.recognitionResult.confidence * 100).toStringAsFixed(0)}%',
+                        style: const TextStyle(
+                            fontFeatures: [
+                              FontFeature.tabularFigures()
+                            ])),
                     if (isLowConfidence)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: Row(
                           children: [
-                            Icon(Icons.warning_amber_rounded,
-                                size: 16,
-                                color: Theme.of(context).colorScheme.error),
+                            ExcludeSemantics(
+                              child: Icon(Icons.warning_amber_rounded,
+                                  size: 16,
+                                  color: Theme.of(context).colorScheme.error),
+                            ),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text('待确认（置信度低，请仔细校准）',
@@ -230,11 +243,13 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
                               const EdgeInsets.symmetric(horizontal: 12),
                           title: Row(
                             children: [
-                              Icon(Icons.psychology_outlined,
-                                  size: 18,
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .primary),
+                              ExcludeSemantics(
+                                child: Icon(Icons.psychology_outlined,
+                                    size: 18,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary),
+                              ),
                               const SizedBox(width: 8),
                               Text('AI 推理过程',
                                   style: Theme.of(context)
@@ -278,11 +293,13 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Icon(Icons.inventory_2_outlined,
-                                size: 20,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onTertiaryContainer),
+                            ExcludeSemantics(
+                              child: Icon(Icons.inventory_2_outlined,
+                                  size: 20,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onTertiaryContainer),
+                            ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Column(
@@ -317,7 +334,11 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
                     // 改菜名后 _currentNutrition 仍非空，滑块继续显示
                     if (_currentNutrition != null) ...[
                       Text('份量：${_servingG.toStringAsFixed(0)} g'
-                          ' (估算 ${widget.recognitionResult.estimatedWeightGLow.toStringAsFixed(0)}-${widget.recognitionResult.estimatedWeightGHigh.toStringAsFixed(0)} g)'),
+                          ' (估算 ${widget.recognitionResult.estimatedWeightGLow.toStringAsFixed(0)}-${widget.recognitionResult.estimatedWeightGHigh.toStringAsFixed(0)} g)',
+                          style: const TextStyle(
+                              fontFeatures: [
+                                FontFeature.tabularFigures()
+                              ])),
                       if (_usedHistoryServing)
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
@@ -471,7 +492,11 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
               children: [
                 Text(cal.toStringAsFixed(0),
                     style: tt.headlineMedium?.copyWith(
-                        color: cs.primary, fontWeight: FontWeight.w600)),
+                        color: cs.primary,
+                        fontWeight: FontWeight.w600,
+                        fontFeatures: const [
+                          FontFeature.tabularFigures()
+                        ])),
                 const SizedBox(width: 4),
                 Text('kcal',
                     style: tt.labelLarge
@@ -511,8 +536,10 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
               style: tt.labelMedium?.copyWith(color: cs.onSurfaceVariant)),
           const SizedBox(height: 4),
           Text('${value.toStringAsFixed(0)} g',
-              style: tt.titleMedium
-                  ?.copyWith(color: color, fontWeight: FontWeight.w600)),
+              style: tt.titleMedium?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: const [FontFeature.tabularFigures()])),
         ],
       ),
     );
@@ -531,8 +558,10 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
           const SizedBox(height: 8),
           Row(
             children: [
-              Icon(Icons.warning_amber_rounded,
-                  size: 16, color: Theme.of(context).colorScheme.error),
+              ExcludeSemantics(
+                child: Icon(Icons.warning_amber_rounded,
+                    size: 16, color: Theme.of(context).colorScheme.error),
+              ),
               const SizedBox(width: 6),
               Text('待确认组分（未在食物库找到）：',
                   style: TextStyle(
@@ -551,7 +580,8 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
         ],
         const SizedBox(height: 16),
         Text('用油量：${_oilG.toStringAsFixed(0)} g',
-            style: Theme.of(context).textTheme.titleSmall),
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                fontFeatures: const [FontFeature.tabularFigures()])),
         Slider(
           value: _oilG,
           min: 0,
@@ -572,7 +602,9 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('${hit.name}：${serving.toStringAsFixed(0)} g'),
+        Text('${hit.name}：${serving.toStringAsFixed(0)} g',
+            style: const TextStyle(
+                fontFeatures: [FontFeature.tabularFigures()])),
         Slider(
           value: serving,
           min: 0,
@@ -601,6 +633,7 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
         children: [
           IconButton(
             icon: const Icon(Icons.remove_circle_outline),
+            tooltip: '减少数量',
             onPressed: _quantity > 1
                 ? () => _onQuantityChanged(_quantity - 1)
                 : null,
@@ -609,14 +642,18 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
               style: Theme.of(context).textTheme.titleMedium),
           IconButton(
             icon: const Icon(Icons.add_circle_outline),
+            tooltip: '增加数量',
             onPressed: _quantity < 20
                 ? () => _onQuantityChanged(_quantity + 1)
                 : null,
           ),
           const SizedBox(width: 8),
           Text(
-              '（每${widget.recognitionResult.unit} ${_perUnitG.toStringAsFixed(0)}g）',
+              '（每${widget.recognitionResult.unit} ${_perUnitG.toStringAsFixed(0)} g）',
               style: TextStyle(
+                  fontFeatures: const [
+                    FontFeature.tabularFigures()
+                  ],
                   fontSize: 12,
                   color: Theme.of(context)
                       .colorScheme

@@ -308,7 +308,9 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
     return SectionTitle(
       label,
       trailing: Text('${sum.toStringAsFixed(0)} kcal',
-          style: TextStyle(color: cs.onSurfaceVariant)),
+          style: TextStyle(
+              color: cs.onSurfaceVariant,
+              fontFeatures: const [FontFeature.tabularFigures()])),
     );
   }
 
@@ -321,7 +323,8 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
           color: cs.errorContainer,
           alignment: Alignment.centerRight,
           padding: const EdgeInsets.only(right: 20),
-          child: Icon(Icons.delete, color: cs.onErrorContainer)),
+          child: ExcludeSemantics(
+              child: Icon(Icons.delete, color: cs.onErrorContainer))),
       onDismissed: (_) async {
         // Undo 模式：先从 UI 移除（乐观），显示撤销 SnackBar；
         // 若 4s 内未撤销则实际从 DB 删除。避免误删后无回头路。
@@ -486,11 +489,13 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: fg),
+          ExcludeSemantics(child: Icon(icon, size: 12, color: fg)),
           const SizedBox(width: 3),
           Text(text,
-              style: textTheme.labelSmall
-                  ?.copyWith(color: fg, fontWeight: FontWeight.w500)),
+              style: textTheme.labelSmall?.copyWith(
+                  color: fg,
+                  fontWeight: FontWeight.w500,
+                  fontFeatures: const [FontFeature.tabularFigures()])),
         ],
       ),
     );
@@ -508,9 +513,10 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
         const SizedBox(width: 3),
-        Text('$label ${g.toStringAsFixed(1)}g',
-            style: textTheme.labelSmall
-                ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        Text('$label ${g.toStringAsFixed(1)} g',
+            style: textTheme.labelSmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontFeatures: const [FontFeature.tabularFigures()])),
       ],
     );
   }

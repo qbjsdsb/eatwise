@@ -133,9 +133,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   decoration: const InputDecoration(
                       labelText: 'Qwen API Key', border: InputBorder.none),
                   obscureText: true,
+                  // 敏感凭证：禁用自动纠错与建议，避免键盘记录/泄漏
+                  autocorrect: false,
+                  enableSuggestions: false,
                 ),
                 TextField(
                   controller: _qwenUrlCtrl,
+                  keyboardType: TextInputType.url,
+                  // URL：禁用自动纠错，避免被改成自然语言
+                  autocorrect: false,
                   decoration: InputDecoration(
                       labelText: 'Qwen Base URL (留空用默认)',
                       hintText: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
@@ -146,9 +152,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   decoration: const InputDecoration(
                       labelText: 'GLM API Key', border: InputBorder.none),
                   obscureText: true,
+                  // 敏感凭证：禁用自动纠错与建议
+                  autocorrect: false,
+                  enableSuggestions: false,
                 ),
                 TextField(
                   controller: _glmUrlCtrl,
+                  keyboardType: TextInputType.url,
+                  // URL：禁用自动纠错
+                  autocorrect: false,
                   decoration: InputDecoration(
                       labelText: 'GLM Base URL (留空用默认)',
                       hintText: 'https://open.bigmodel.cn/api/paas/v4',
@@ -179,6 +191,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   controller: _sentryDsnCtrl,
                   decoration: const InputDecoration(
                       labelText: 'Sentry DSN', border: InputBorder.none),
+                  // 技术标识符（DSN）：禁用自动纠错与建议，避免被改成自然语言
+                  autocorrect: false,
+                  enableSuggestions: false,
                 ),
               ]),
               SectionTitle('图片管理'),
@@ -209,13 +224,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ListTile(
                   leading: const LeadingIconContainer(Icons.analytics_outlined),
                   title: const Text('本月识别次数'),
-                  trailing: Text('$_monthlyCount 次'),
+                  trailing: Text('$_monthlyCount 次',
+                      style: const TextStyle(
+                          fontFeatures: [FontFeature.tabularFigures()])),
                 ),
                 GroupCard.divider(context),
                 ListTile(
                   leading: const LeadingIconContainer(Icons.payments_outlined),
                   title: const Text('估算花费'),
-                  trailing: Text('${_estimatedCost!.toStringAsFixed(3)} 元'),
+                  trailing: Text('${_estimatedCost!.toStringAsFixed(3)} 元',
+                      style: const TextStyle(
+                          fontFeatures: [FontFeature.tabularFigures()])),
                 ),
                 if (_estimatedCost! >= _costWarningThreshold)
                   WarningBanner(
@@ -238,7 +257,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   leading:
                       const LeadingIconContainer(Icons.system_update_alt),
                   title: const Text('检查更新'),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const ExcludeSemantics(
+                      child: Icon(Icons.chevron_right)),
                   onTap: () => Navigator.of(context, rootNavigator: true)
                       .push(MaterialPageRoute(
                           builder: (_) => const UpdatePage())),
@@ -246,13 +266,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ListTile(
                   leading: const LeadingIconContainer(Icons.info_outline_rounded),
                   title: const Text('关于慢慢吃'),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const ExcludeSemantics(
+                      child: Icon(Icons.chevron_right)),
                   onTap: _showAbout,
                 ),
                 ListTile(
                   leading: const LeadingIconContainer(Icons.privacy_tip_outlined),
                   title: const Text('隐私政策'),
-                  trailing: const Icon(Icons.chevron_right),
+                  trailing: const ExcludeSemantics(
+                      child: Icon(Icons.chevron_right)),
                   onTap: _showPrivacyPolicy,
                 ),
               ]),
@@ -336,7 +358,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     // M13：版本号从 appVersionProvider 动态读取（替代硬编码 '0.16.0'）
     final version = ref.read(appVersionProvider).maybeWhen(
           data: (v) => v,
-          orElse: () => '...',
+          orElse: () => '…',
         );
     await showDialog(
       context: context,
@@ -401,8 +423,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           onTap: onTap,
           customBorder: const CircleBorder(),
           child: Container(
-            width: 40,
-            height: 40,
+            // 触控目标 ≥48dp（Material 3 可访问性标准）
+            width: 48,
+            height: 48,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: selected
@@ -410,12 +433,13 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   : null,
             ),
             child: selected
-                ? Icon(Icons.check,
-                    // 浅色种子时白色 check 对比度不足，按色块亮度动态选黑/白（WCAG AA）
-                    color: color.computeLuminance() > 0.5
-                        ? Colors.black
-                        : Colors.white,
-                    size: 20)
+                ? ExcludeSemantics(
+                    child: Icon(Icons.check,
+                        // 浅色种子时白色 check 对比度不足，按色块亮度动态选黑/白（WCAG AA）
+                        color: color.computeLuminance() > 0.5
+                            ? Colors.black
+                            : Colors.white,
+                        size: 20))
                 : null,
           ),
         ),

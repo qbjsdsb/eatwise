@@ -97,9 +97,9 @@ void main() {
     );
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
-    // 验证宏量迷你进度条展示（新首页格式：value/goalg）
+    // 验证宏量迷你进度条展示（新首页格式：value/goal g，单位与数字间有空格）
     // 蛋白质 62g，目标 = proteinGPerKg(1.4) * weightKg(70) = 98g
     expect(find.text('蛋白'), findsOneWidget);
-    expect(find.textContaining('62/98g'), findsOneWidget);
+    expect(find.textContaining('62/98 g'), findsOneWidget);
   });
 }

@@ -303,8 +303,10 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           children: [
             Row(
               children: [
-                Icon(Icons.local_fire_department_rounded,
-                    color: cs.onPrimaryContainer, size: 20),
+                ExcludeSemantics(
+                  child: Icon(Icons.local_fire_department_rounded,
+                      color: cs.onPrimaryContainer, size: 20),
+                ),
                 const SizedBox(width: 8),
                 Text('今日还可摄入',
                     style: textTheme.labelLarge?.copyWith(
@@ -318,11 +320,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                 color: overflow ? cs.error : cs.onPrimaryContainer,
                 fontWeight: FontWeight.w400,
                 height: 1.1,
+                fontFeatures: const [FontFeature.tabularFigures()],
               ),
             ),
             Text('kcal · 已摄入 ${d.cal.toStringAsFixed(0)} / ${d.target}',
-                style: textTheme.bodySmall
-                    ?.copyWith(color: cs.onPrimaryContainer.withValues(alpha: 0.8))),
+                style: textTheme.bodySmall?.copyWith(
+                    color: cs.onPrimaryContainer.withValues(alpha: 0.8),
+                    fontFeatures: const [FontFeature.tabularFigures()])),
             const SizedBox(height: 12),
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
@@ -374,9 +378,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           SizedBox(
               width: 80,
               child: Text(
-                  '${value.toStringAsFixed(0)}/${goal.toStringAsFixed(0)}g',
+                  '${value.toStringAsFixed(0)}/${goal.toStringAsFixed(0)} g',
                   textAlign: TextAlign.right,
-                  style: textTheme.labelSmall?.copyWith(color: labelColor))),
+                  style: textTheme.labelSmall?.copyWith(
+                      color: labelColor,
+                      fontFeatures: const [FontFeature.tabularFigures()]))),
         ],
       ),
     );
@@ -406,12 +412,15 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                           alignment: Alignment.centerLeft,
                           child: Text(
                             proteinRemain > 5
-                                ? '今日还差 ${proteinRemain.toStringAsFixed(0)}g 蛋白质'
+                                ? '今日还差 ${proteinRemain.toStringAsFixed(0)} g 蛋白质'
                                 : remain > 0
                                     ? '今日还可摄入 ${remain.toStringAsFixed(0)} kcal'
                                     : '今日热量已达标，推荐低卡食物',
-                            style: textTheme.bodySmall
-                                ?.copyWith(color: cs.onSurfaceVariant),
+                            style: textTheme.bodySmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures()
+                                ]),
                           ),
                         ),
                       ),
@@ -500,7 +509,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
             )
           : const Icon(Icons.refresh_rounded, size: 18),
       label: Text(_aiRegenerating
-          ? '生成中'
+          ? '生成中…'
           : isRetry
               ? '重试'
               : '换一批'),
@@ -549,7 +558,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Row(
         children: [
-          Icon(Icons.info_outline_rounded, size: 14, color: cs.error),
+          ExcludeSemantics(
+            child: Icon(Icons.info_outline_rounded, size: 14, color: cs.error),
+          ),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
@@ -607,9 +618,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                 leading: const LeadingIconContainer(Icons.restaurant_rounded),
                 title: Text(rec.food.name),
                 subtitle: Text(
-                    '${rec.food.caloriesPer100g.toStringAsFixed(0)} kcal/100g · 蛋白 ${rec.food.proteinPer100g.toStringAsFixed(1)}g',
-                    style: tt.labelSmall),
-                trailing: const Icon(Icons.chevron_right),
+                    '${rec.food.caloriesPer100g.toStringAsFixed(0)} kcal/100 g · 蛋白 ${rec.food.proteinPer100g.toStringAsFixed(1)} g',
+                    style: tt.labelSmall?.copyWith(
+                        fontFeatures: const [
+                          FontFeature.tabularFigures()
+                        ])),
+                trailing: const ExcludeSemantics(
+                    child: Icon(Icons.chevron_right)),
                 onTap: () => _pushAndRefresh(
                     ManualEntryPage(initialName: rec.food.name)),
               ),
@@ -663,8 +678,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
                             '${_mealLabel(mt)} · ${_formatTime(m.loggedAt)}',
                             style: textTheme.labelSmall),
                         trailing: Text('${m.actualCalories.toStringAsFixed(0)} kcal',
-                            style: textTheme.bodyMedium
-                                ?.copyWith(color: cs.onSurfaceVariant)),
+                            style: textTheme.bodyMedium?.copyWith(
+                                color: cs.onSurfaceVariant,
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures()
+                                ])),
                       ),
                       // 只在非"最后一条记录"时显示分割线
                       if (!(m == groups[mt]!.last && mt == lastPresentMt))
@@ -798,7 +816,8 @@ class _AiRecItemState extends State<_AiRecItem> {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
         children: [
-          const LeadingIconContainer(Icons.auto_awesome_rounded),
+          const ExcludeSemantics(
+              child: LeadingIconContainer(Icons.auto_awesome_rounded)),
           Expanded(
             child: InkWell(
               onTap: widget.onTap,
@@ -814,7 +833,8 @@ class _AiRecItemState extends State<_AiRecItem> {
                               style: tt.titleSmall,
                               maxLines: 1, overflow: TextOverflow.ellipsis),
                         ),
-                        const Icon(Icons.chevron_right, size: 18),
+                        const ExcludeSemantics(
+                            child: Icon(Icons.chevron_right, size: 18)),
                       ],
                     ),
                     const SizedBox(height: 2),
@@ -826,9 +846,12 @@ class _AiRecItemState extends State<_AiRecItem> {
                     Row(
                       children: [
                         Text(
-                          '${rec.estimatedCalories.toStringAsFixed(0)} kcal · 蛋白 ${rec.estimatedProtein.toStringAsFixed(0)}g',
-                          style: tt.labelSmall
-                              ?.copyWith(color: cs.onSurfaceVariant),
+                          '${rec.estimatedCalories.toStringAsFixed(0)} kcal · 蛋白 ${rec.estimatedProtein.toStringAsFixed(0)} g',
+                          style: tt.labelSmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures()
+                              ]),
                         ),
                         // 已反馈时显示标签
                         if (_ratedRating != null) ...[
