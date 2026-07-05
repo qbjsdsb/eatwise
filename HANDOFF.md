@@ -23,8 +23,8 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.18.2+21（pubspec.yaml）
-- **当前分支**：trae/agent-wX1X6Q（HEAD = 待 commit 的 M16.3 修复；v0.18.1 tag 未打；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
+- **当前版本**：0.18.3+22（pubspec.yaml）
+- **当前分支**：trae/agent-wX1X6Q（HEAD = M16.4 修复待 push；v0.18.2 未打 tag；v0.18.1 tag 未打；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
   - `android/app/build.gradle.kts` 必须保持 `isMinifyEnabled=false` + `isShrinkResources=false`（否则 R8 剥掉 sentry/workmanager 反射类致启动崩溃）
@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-05
 
-**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复进行中（用户反馈"米粉汤碳水 991g 异常"，根因 sanotsu JSON 列错位 + _cleanName 撞名 + importFromAssetsFirstTime 无去重，4 层修复详见下方"M16.3 食物库脏数据污染修复"章节）；856 全量测试通过（含 M16.3 新增 12 个测试）。仓库已改 public，匿名访问 GitHub API 200 OK，smoke test 2/2 通过。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
-**当前分支**：trae/agent-wX1X6Q（HEAD = v0.18.1 release commit + 待 commit 的 M16.3 修复；远端 origin/trae/agent-wX1X6Q 已同步到 v0.18.1；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
+**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复已 push（commit 221d319，4 层修复详见下方"M16.3"章节）；**M16.4 深度审查修复已 commit 待 push（8 个 commit 93528fe~00d1ccf，4 P1 + 4 P2 + 3 P3 共 11 个修复，详见下方"M16.4"章节；876 全量测试通过，新增 20 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3 修复区域无回归）**。仓库已改 public，匿名访问 GitHub API 200 OK，smoke test 2/2 通过。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
+**当前分支**：trae/agent-wX1X6Q（HEAD = M16.4 修复待 push；远端 origin/trae/agent-wX1X6Q 已同步到 M16.3 commit 221d319；v0.18.2/v0.18.1 未打 tag；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
 
 **待用户执行的收尾项**（沙箱无法完成）：
 1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）
@@ -1240,6 +1240,94 @@
 1. 装 v0.18.2 APK（升级时 migration v3→v4 自动清理 DB 脏数据）
 2. 重新识别米粉汤验证碳水不再异常
 3. 关注其他含"米粉/米饭"组分的复合菜识别是否正常
+
+---
+
+## M16.4 深度审查修复（2026-07-05）—— v0.18.3 全代码深度审查 4 P1 + 4 P2 + 3 P3 修复
+
+用户指令："全面审查所有代码，不能放过任何问题，深度挖掘，仔细寻找并且严谨修复，确定完全没有问题后严谨发布"。Spec Mode + TDD + writing-plans + web-design-guidelines 三技能联动。
+
+**审查结论**：无 P0 阻断级问题；4 个 P1 集中在 OFF 云查路径 + 推荐算法（识别准确度剩余根因）；4 个 P2 是精度/可观测性/防御性补强；3 个 P3 是测试/注释/文档清理。M16.2/M16.3 修复区域无回归。6 条硬约束全部满足。
+
+**修复内容**（11 个独立修复 + 1 个收尾任务，8 个 commit）：
+
+### P1 修复（4 个，识别准确度根因）
+
+**P1-1 + P1-2 OFF User-Agent 动态版本号 + serving_size 支持 ml**（commit 93528fe，`lib/ai/off_provider.dart`）：
+- User-Agent 硬编码 "0.4.0" → `PackageInfo.fromPlatform()` 动态读取，与 `github_release_client.dart` 风格统一
+- serving_size 正则只匹配 g → 扩展 `r'(\d+(?:\.\d+)?)\s*(g|ml)'` 支持 ml（密度 1.0 兜底为 g）
+- 解决饮料（如 "330 ml"）按 100g 算的 5 倍偏差
+- 新增测试 6 个（UA 含版本号 / UA 格式 / pubspec bump 同步 / ml 解析 / g 行为不变 / 无单位回退）
+
+**P1-3 OFF 命中营养按 ediblePercent 调整**（commit 5b8886c，`lib/ai/nutrition_lookup.dart` + `off_provider.dart` + `food_item_repository.dart`）：
+- OFF 命中生鲜食品（edible<100%）营养素乘 `ediblePercent/100`，与 DB 命中路径 `_nutritionFromFood` 一致
+- 修复香蕉（edible=65%）系统性高估 35% 的问题
+- `OffResult` 加 `ediblePercent` 字段，`insertOff` 一起落库（保证下次 DB 命中行为一致）
+- 新增测试 4 个（edible=65% / 100% / null / range 区间路径）
+
+**P1-4 hasEnoughSamples 统计 4 维度**（commit bf63ebb，`lib/nutrition/user_preference_learner.dart`）：
+- `hasEnoughSamples` 漏算 `textureFreq` + `priceTierFreq`，仅统计 taste+style
+- 4 个维度全部纳入，修复仅有 texture/priceTier 标签时错误禁用偏好加权
+- 新增测试 3 个（仅 texture / 仅 priceTier / 4 维度回归）
+
+### P2 修复（4 个，精度/可观测性/防御性）
+
+**P2-1 getMedianServing 加 endDate 上界**（commit a87cd7b，`lib/data/repositories/meal_log_repository.dart`）：
+- 加 `date <= today` 过滤，与 H4 修复（getRecentMeals/getRecentFoodCounts/getMealTypeDistribution）一致
+- 防止预录未来餐次污染中位数
+- 新增测试 2 个（未来餐次不计入 / 回归）
+
+**P2-2 tdee_calibrator 用 round()**（commit 83bdbfa，`lib/nutrition/tdee_calibrator.dart`）：
+- `.toInt()` 截断丢精度（-99.7 → -99）→ `.round()` 保留 0.5 kcal 精度（-99.7 → -100）
+- 提取 `static int clampAndRound(double rawAdjustment)` 静态方法便于单元测试
+- 注：`deviationThresholdKgPerWeek = 0.3` 触发后 clamp 到 ±100，生产路径 toInt/round 结果相同，属纯防御性修复
+- 新增测试 4 个（负数 / 正数 / 半数 / 整数回归）
+
+**P2-3 findByNameOrAlias 优先级 3/4 加脏数据过滤**（commit 32e63d6，`lib/data/repositories/food_item_repository.dart`）：
+- 优先级 1/2 已加 `_isDirtyFoodItem` 过滤（M16.3），优先级 3/4（contains 匹配）未加
+- 加过滤与 1/2 一致，双保险防脏数据通过 contains 命中污染
+- 优先级 5（编辑距离）仍不过滤（兜底返回，避免 null）
+- 新增测试 2 个（优先级 3 contains / 优先级 4 alias contains）
+
+**P2-4 fire-and-forget processPending 上报 Sentry**（commit 00d1ccf，`lib/features/offline/offline_queue_controller.dart`）：
+- `processPending().catchError` 吞异常，无可观测性
+- 注入 `void Function(Object, StackTrace?)? onError` 回调，默认调 `Sentry.captureException`，便于测试 mock
+- 3 处调用点（2 个 catchError + 1 个 outer catch）同步上报，保留 fire-and-forget 语义
+- 新增测试 2 个（onError 被调 / 不传 onError 向后兼容）
+
+### P3 修复（3 个，清理）
+
+**P3-1 multi_dish_page_test 精确断言**（commit 193ae91，`test/features/multi_dish_page_test.dart`）：
+- OR 容错断言（`find.textContaining('命中') || find.textContaining('手动')`）→ 固定文案 `expect(find.text('未命中'), findsOneWidget)`
+
+**P3-2 _writeBootLog 空 catch 加注释**（commit 193ae91，`lib/main.dart`）：
+- 空 catch 块加注释 `// 写 boot_log 本身失败，无可记录介质，忽略`
+
+**P3-3 food_density densityOf 文档明确**（commit 193ae91，`lib/ai/food_density.dart`）：
+- densityOf 文档加"调用方应先 isLiquidCategory 判断；solid 返回 1.0 仅作占位，不应作为密度调整依据"
+
+### 不修复（需设计/UX 决策）
+
+- P1-2 prompts 规则冲突（需设计讨论）
+- P1-3 多菜 take(5) 截断（需 UX 决策）
+- P2 DB 加密评估（需评估 sqlite3mc/sqlcipher CI 兼容性）
+- P2-2 非 VisionRecognitionException 显示生涩 toString
+- P2-3 解码失败垃圾图直送 API
+- P2-4 mediaType 硬编码
+- P3 sentry 中文别名（白名单策略更严格，需独立设计）
+
+### 验证
+
+- `flutter analyze` → No issues found
+- `flutter test` → **876 passed / 3 skipped / 0 failed**（M16.4 新增 20 个测试：6 OFF + 4 ediblePercent + 3 hasEnoughSamples + 2 getMedianServing + 4 tdee round + 2 findByNameOrAlias + 2 processPending Sentry + 1 multi_dish 精确断言；原 856 + 20 = 876）
+- 6 条硬约束全部满足（build.gradle.kts isMinifyEnabled=false / SecureConfigStore 无 instance / initSentryAndRunApp 命名参数 / 等）
+- M16.2/M16.3 修复区域无回归（模糊检测 / 断路器 / 超时 / retryCount / image_picker / schemaVersion 4 / findByNameOrAlias 1-4 过滤 / food_seed_importer 校验 全部完好）
+
+### 待用户执行
+
+1. 装 v0.18.3 APK 验证 OFF 云查路径改善（饮料 ml 解析 + 生鲜 ediblePercent 调整）
+2. 验证推荐算法偏好加权在仅有 texture/priceTier 标签时启用
+3. 关注 Sentry 控制台是否收到 processPending 异常上报（如发生）
 
 ---
 
