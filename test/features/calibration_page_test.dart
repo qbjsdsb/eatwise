@@ -110,13 +110,15 @@ void main() {
     // 校准后 actualCalories = 43 * 200 / 100 = 86（不是 400）
     expect(capturedCalories, closeTo(86, 0.5),
         reason: 'onConfirm 应传入校准后 86 kcal，与预览一致');
-    // 校准后宏量：beer per100g (43, 0.5, 0, 3.1)，servingG=200
-    // actualProtein = 0.5 * 200 / 100 = 1.0
-    // actualFat = 0 * 200 / 100 = 0
-    // actualCarbs = 3.1 * 200 / 100 = 6.2
-    expect(capturedProtein, closeTo(1.0, 0.1));
-    expect(capturedFat, closeTo(0, 0.1));
-    expect(capturedCarbs, closeTo(6.2, 0.1));
+    // M16.8 Task 1：calibrate 只替换 calories，宏量保留 AI 值（带 clamp）
+    // beer AI per100g: protein=2*100/300=0.667, fat=1*100/300=0.333, carbs=15*100/300=5
+    // 触发校准（200/43=4.65 > 2）→ calories=43（默认），宏量保留 AI 值
+    // actualProtein = 0.667 * 200 / 100 = 1.333
+    // actualFat = 0.333 * 200 / 100 = 0.667
+    // actualCarbs = 5 * 200 / 100 = 10
+    expect(capturedProtein, closeTo(1.333, 0.05));
+    expect(capturedFat, closeTo(0.667, 0.05));
+    expect(capturedCarbs, closeTo(10, 0.1));
   });
 
   testWidgets(
@@ -214,5 +216,93 @@ void main() {
     // （DB per100g 已是校准值，无需再次校准，原 ratio 换算即正确）
     expect(capturedCalories, closeTo(86, 0.5),
         reason: '查库命中路径走原 ratio 逻辑，43 * 200 / 100 = 86');
+  });
+
+  // M16.8 Task 5：查库命中分支预览与 onConfirm 同步用差异检测。
+  //
+  // 库"番茄炒蛋" per100g=80（脏数据），AI 估 200g/250kcal（库值 160 vs AI 250，偏差 56% > 50%）。
+  // 期望：预览显示 250（AI 估算值，与 reasoning 一致），onConfirm 传 250（与预览一致），
+  // 不再走原 ratio 逻辑显示 160（库值，与 AI reasoning 脱节）。
+  testWidgets(
+      'M16.8: 查库命中 + AI 偏差大预览用 AI 估算值（与记录一致）', (tester) async {
+    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+          name: '番茄炒蛋',
+          defaultServingG: 100,
+          caloriesPer100g: 80,
+          proteinPer100g: 6,
+          fatPer100g: 10,
+          carbsPer100g: 12,
+          source: 'china_fct',
+          sourceVersion: 'test',
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+        ));
+    final food = await (db.select(db.foodItems)
+          ..where((t) => t.name.equals('番茄炒蛋')))
+        .getSingle();
+
+    final r = VisionRecognitionResult(
+      dishName: '番茄炒蛋',
+      estimatedWeightGLow: 180,
+      estimatedWeightGMid: 200,
+      estimatedWeightGHigh: 220,
+      estimatedCalories: 250,
+      estimatedProteinG: 10,
+      estimatedFatG: 15,
+      estimatedCarbsG: 20,
+      foodComponents: const [],
+      cookingMethod: 'stir_fry',
+      isSingleItem: true,
+      confidence: 0.9,
+      promptVersion: 'v1.10',
+    );
+    // 查库命中：foodItemId > 0，calories = 80 * 200 / 100 = 160
+    final lookupHit = NutritionResult(
+      foodItemId: food.id,
+      calories: 160,
+      proteinG: 6,
+      fatG: 10,
+      carbsG: 12,
+      oilG: 0,
+      source: NutritionSource.database,
+    );
+    // AI 兜底：foodItemId=0，calories 对应 mid=200 份量
+    final aiFallback = NutritionResult(
+      foodItemId: 0,
+      calories: 250,
+      proteinG: 10,
+      fatG: 15,
+      carbsG: 20,
+      oilG: 0,
+      source: NutritionSource.aiEstimate,
+    );
+
+    double? capturedCalories;
+    await tester.pumpWidget(MaterialApp(
+      home: CalibrationPage(
+        recognitionResult: r,
+        singleNutrition: lookupHit,
+        aiFallbackNutrition: aiFallback,
+        foodItemRepo: foodRepo,
+        // 用 suggestedServingG=200 锁定滑块初值，避开拖滑块精度问题
+        suggestedServingG: 200,
+        onConfirm: (servingG, calories, protein, fat, carbs,
+            {componentsSnapshot}) async {
+          capturedCalories = calories;
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // 预览应显示 250（AI 估算值，与 reasoning 一致），不是 160（库值 × ratio）
+    expect(find.text('250'), findsOneWidget,
+        reason: '查库命中 + AI 偏差大预览应显示 AI 估算值 250，而非库值 160');
+
+    // 点确认：onConfirm 传值应与预览一致
+    await tester.tap(find.text('确认记录'));
+    await tester.pumpAndSettle();
+
+    expect(capturedCalories, isNotNull);
+    expect(capturedCalories, closeTo(250, 0.5),
+        reason: 'onConfirm 传值应与预览一致（AI 估算 250，与记录同源）');
   });
 }

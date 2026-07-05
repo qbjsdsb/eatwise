@@ -27,6 +27,10 @@ class CalibrationPage extends StatefulWidget {
   // 改菜名→搜库→重算 用的 NutritionLookup 实例（recognize_page 注入）
   // null 时隐藏"改菜名"按钮（单品路径才有此按钮；复合菜改菜名语义复杂，跳过）
   final NutritionLookup? nutritionLookup;
+  // M16.8：AI 兜底营养（foodItemId=0，calories 对应 mid 份量），用于查库命中分支差异检测。
+  // 查库命中 + aiFallback 非空时，预览/确认走 CalibratedNutritionCalculator 差异检测，
+  // 与 recognize_page.writeCalibratedMealLog 写库一致；为 null 时查库命中分支保持原 ratio 逻辑。
+  final NutritionResult? aiFallbackNutrition;
 
   const CalibrationPage({
     super.key,
@@ -37,6 +41,7 @@ class CalibrationPage extends StatefulWidget {
     required this.onConfirm,
     this.suggestedServingG,
     this.nutritionLookup,
+    this.aiFallbackNutrition,
   });
 
   @override
@@ -414,16 +419,39 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
   /// M16.6 Task 5：AI 兜底哨兵路径（foodItemId=0）必须用品类校准后的 per100g 计算，
   /// 与 recognize_page 写食物库 per100g 逻辑一致（CalibratedNutritionCalculator），
   /// 否则预览/记录值与食物库 per100g 数据脱节，用户感知"数值乱跳"。
-  /// 查库命中路径（foodItemId>0）保持原 ratio 逻辑（DB per100g 已是真实值，无需校准）。
+  ///
+  /// M16.8 Task 5：查库命中路径（foodItemId>0）+ aiFallbackNutrition 非空时，
+  /// 走差异检测（CalibratedNutritionCalculator.compute 传 lookupHitNutrition），
+  /// 与 recognize_page.writeCalibratedMealLog 写库同源——AI 与库偏差 > 50% 用 AI 估算值
+  /// （与 reasoning 一致），偏差 ≤ 50% 用库值；保证预览/确认与记录值一致。
+  /// aiFallbackNutrition 为 null 时（旧调用方），查库命中保持原 ratio 逻辑。
   ///
   /// 预览（_buildNutritionPreview）和确认（_confirmWithServing）共用此方法，
   /// 保证显示值与记录值完全一致。
   (double, double, double, double) _computeSingleItemActual(double servingG) {
     final n = _currentNutrition!;
+    final r = widget.recognitionResult;
+
+    // M16.8：查库命中 + aiFallback 非空 → 差异检测（与 recognize_page 写库一致）
+    if (n.foodItemId > 0 && widget.aiFallbackNutrition != null) {
+      final calibrated = CalibratedNutritionCalculator.compute(
+        recognitionResult: r,
+        aiFallback: widget.aiFallbackNutrition!,
+        servingG: servingG,
+        lookupHitNutrition: n,
+      );
+      return (
+        calibrated.actualCalories,
+        calibrated.actualProteinG,
+        calibrated.actualFatG,
+        calibrated.actualCarbsG,
+      );
+    }
+
     if (n.foodItemId == 0) {
       // AI 兜底哨兵：用品类校准后的 per100g 反算 actualXxx（与 recognize_page 一致）
       final calibrated = CalibratedNutritionCalculator.compute(
-        recognitionResult: widget.recognitionResult,
+        recognitionResult: r,
         aiFallback: n,
         servingG: servingG,
       );
@@ -434,9 +462,9 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
         calibrated.actualCarbsG,
       );
     }
-    // 查库命中：DB per100g 已是真实值，按 servingG/mid 比例换算即可
+    // 查库命中但无 aiFallback（旧调用方）：DB per100g 已是真实值，按 servingG/mid 比例换算
     // 防除零：AI 返回 estimatedWeightGMid <= 0 时 ratio=1（用原值，不按比例换算）
-    final mid = widget.recognitionResult.estimatedWeightGMid;
+    final mid = r.estimatedWeightGMid;
     final ratio = mid > 0 ? servingG / mid : 1.0;
     return (
       n.calories * ratio,
