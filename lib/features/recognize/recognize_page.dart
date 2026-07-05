@@ -32,6 +32,12 @@ class RecognizePage extends ConsumerStatefulWidget {
   /// 抽成静态方法便于单测（M16.6 Task 3）：验证 AI 兜底哨兵路径（foodItemId=0）
   /// 下 meal_log.actualCalories 与 food_item.caloriesPer100g 数据一致。
   ///
+  /// M16.8 Task 4：查库命中分支（singleNutrition.foodItemId > 0）+ 传入
+  /// [aiFallbackNutrition] 时，走 CalibratedNutritionCalculator 差异检测——
+  /// AI 与库 per100g 偏差 > 50% 用 AI 反算 per100g 写库 + 用 AI 值记 meal_log
+  /// （修复 reasoning 与记录脱节）；偏差 ≤ 50% 用库值不更新库。未传
+  /// [aiFallbackNutrition] 时保持原行为（用 onConfirm 传入值，已基于 DB per100g）。
+  ///
   /// 返回 actualCalories（用于 toast 显示）；返回 null 表示无营养数据未记录。
   @visibleForTesting
   static Future<double?> writeCalibratedMealLog({
@@ -48,6 +54,7 @@ class RecognizePage extends ConsumerStatefulWidget {
     required double carbs,
     String? componentsSnapshot,
     String? imagePath,
+    NutritionResult? aiFallbackNutrition,
   }) async {
     // 获取 foodItemId：单品用查库命中，复合菜创建 ai_recognized 记录
     // 必须有有效 food_item_id（meal_log.food_item_id 是非空 FK，
@@ -105,6 +112,33 @@ class RecognizePage extends ConsumerStatefulWidget {
         actualCarbsG = calibrated.actualCarbsG;
       } else {
         foodItemId = n.foodItemId;
+        // M16.8 Task 4：查库命中 + 有 AI 兜底估算 → 差异检测决定信任 AI 还是库
+        // 偏差 > 50% 用 AI 反算 per100g 写库 + 用 AI 值记 meal_log
+        // （修复 reasoning 显示 AI 估算但记录用库值致脱节）
+        // 偏差 ≤ 50% 用库值（actualXxx 保持 onConfirm 传入值，已基于 DB per100g）
+        // 未传 aiFallbackNutrition 时保持原行为（向后兼容）
+        if (aiFallbackNutrition != null) {
+          final calibrated = CalibratedNutritionCalculator.compute(
+            recognitionResult: result,
+            aiFallback: aiFallbackNutrition,
+            servingG: servingG,
+            lookupHitNutrition: n,
+          );
+          actualCalories = calibrated.actualCalories;
+          actualProteinG = calibrated.actualProteinG;
+          actualFatG = calibrated.actualFatG;
+          actualCarbsG = calibrated.actualCarbsG;
+          // 偏差大时用 AI 反算 per100g 纠正脏库
+          if (calibrated.shouldUpdateFoodItem) {
+            await foodRepo.updatePer100g(
+              foodItemId: calibrated.foodItemId,
+              caloriesPer100g: calibrated.caloriesPer100g,
+              proteinPer100g: calibrated.proteinPer100g,
+              fatPer100g: calibrated.fatPer100g,
+              carbsPer100g: calibrated.carbsPer100g,
+            );
+          }
+        }
       }
     } else if (compositeNutrition != null) {
       // 复合菜：存入 food_item（source=ai_recognized，components_json 存组分快照）
