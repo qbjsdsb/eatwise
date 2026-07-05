@@ -343,6 +343,82 @@ void main() {
           reason: '3 条 pending 全部成功应计数 +3');
     });
   });
+
+  // M16.8 Task 7：离线回补查库命中 + AI 偏差大时与前台一致——
+  // 用 AI 反算 per100g 更新库 + meal_log 记 AI 估算值。
+  // 原实现：查库命中分支直接用 nutrition.* 原值（库 per100g × mid / 100），
+  // 忽略 AI 估算，前后台行为分叉。
+  test('M16.8: 离线回补查库命中 + AI 偏差大时用 AI 估算 + 更新库 per100g', () async {
+    // 库"番茄炒蛋" per100g=80（脏数据），AI 估 200g/250kcal
+    // 离线回补应与前台一致：actualCalories=250, food_item.caloriesPer100g=125
+    await db.into(db.foodItems).insert(
+          FoodItemsCompanion.insert(
+            name: '番茄炒蛋',
+            defaultServingG: 100,
+            caloriesPer100g: 80, // 脏库
+            proteinPer100g: 6,
+            fatPer100g: 10,
+            carbsPer100g: 12,
+            source: 'china_fct',
+            sourceVersion: 'test',
+            createdAt: 0,
+          ),
+        );
+    final imgPath = await writeFakeImage('m168_tomato_egg');
+    await pendingRepo.enqueue(
+        imagePath: imgPath, mealType: 'lunch', date: '2026-07-02');
+
+    final controller = OfflineQueueController(
+      db: db,
+      visionProvider: _FakeTomatoEggProvider(),
+      nutritionLookup: NutritionLookup(FoodItemRepository(db)),
+    );
+    await controller.processPending();
+
+    // pending 应清空（回补成功）
+    expect(await pendingRepo.countPending(), 0);
+
+    // M16.8 关键断言 1：meal_log 记 AI 估算值 250（不是库值 160）
+    final meals = await db.mealLogs.select().get();
+    expect(meals.length, 1);
+    expect(meals.first.actualCalories, closeTo(250, 0.5),
+        reason: '查库命中 + AI 偏差大时 meal_log 应记 AI 估算值（与前台一致）');
+
+    // M16.8 关键断言 2：库 per100g 应被 AI 反算值 125 更新
+    final food = await (db.foodItems.select()
+          ..where((f) => f.name.equals('番茄炒蛋')))
+        .getSingle();
+    expect(food.caloriesPer100g, closeTo(125, 0.5),
+        reason: '库 per100g 应被 AI 反算值更新（纠正脏库）');
+  });
+}
+
+/// M16.8 测试用：模拟识别"番茄炒蛋"（200g/250kcal），库 per100g=80 偏差大
+class _FakeTomatoEggProvider implements VisionProvider {
+  @override
+  String get name => 'FakeTomatoEgg';
+
+  @override
+  String get promptVersion => 'v1.0';
+
+  @override
+  Future<VisionRecognitionResult> recognize(String imageBase64) async {
+    return const VisionRecognitionResult(
+      dishName: '番茄炒蛋',
+      estimatedWeightGLow: 180,
+      estimatedWeightGMid: 200,
+      estimatedWeightGHigh: 220,
+      estimatedCalories: 250,
+      estimatedProteinG: 10,
+      estimatedFatG: 15,
+      estimatedCarbsG: 20,
+      foodComponents: [],
+      cookingMethod: 'stir-fry',
+      isSingleItem: true,
+      confidence: 0.9,
+      promptVersion: 'v1.0',
+    );
+  }
 }
 
 /// 模拟识别苹果的 Provider（单品，查库命中）
