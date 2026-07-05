@@ -323,18 +323,109 @@ void main() {
     // 啤酒 food_item.caloriesPer100g 应为校准后的 43（不是 AI 估算的 200）
     expect(beerFoodItem!.caloriesPer100g, closeTo(43, 0.5),
         reason: 'food_item.caloriesPer100g 应用品类校准为 beer 默认值 43');
-    expect(beerFoodItem.proteinPer100g, closeTo(0.5, 0.01));
-    expect(beerFoodItem.fatPer100g, closeTo(0, 0.01));
-    expect(beerFoodItem.carbsPer100g, closeTo(3.1, 0.01));
+    // M16.8 Task 1：宏量保留 AI 值（带 clamp），不再替换为品类默认值
+    // AI per100g = aiG * 100 / mid：蛋白 2*100/300≈0.667 / 脂肪 1*100/300≈0.333 / 碳水 15*100/300=5.0
+    expect(beerFoodItem.proteinPer100g, closeTo(2 * 100 / 300, 0.01));
+    expect(beerFoodItem.fatPer100g, closeTo(1 * 100 / 300, 0.01));
+    expect(beerFoodItem.carbsPer100g, closeTo(15 * 100 / 300, 0.01));
 
     // 啤酒 meal_log.actualCalories 应 = 43 * 300 / 100 = 129（不是未校准的 600）
     expect(beerMeal.actualCalories, closeTo(129, 0.5),
         reason: 'meal_log.actualCalories 应基于校准后 per100g 计算，与 food_item 一致');
-    // actualMacros 也用校准后 per100g * servingG / 100
-    expect(beerMeal.actualProteinG, closeTo(0.5 * 300 / 100, 0.01)); // 1.5
-    expect(beerMeal.actualFatG, closeTo(0 * 300 / 100, 0.01)); // 0
-    expect(beerMeal.actualCarbsG, closeTo(3.1 * 300 / 100, 0.01)); // 9.3
+    // actualMacros 也用校准后 per100g * servingG / 100（宏量保留 AI 值反算）
+    // serving=mid=300，actualMacros = AI 估算原值（per100g * 300/100 = aiG * 100/mid * mid/100 = aiG）
+    expect(beerMeal.actualProteinG, closeTo(2, 0.01));
+    expect(beerMeal.actualFatG, closeTo(1, 0.01));
+    expect(beerMeal.actualCarbsG, closeTo(15, 0.01));
     // actualServingG 应 = 用户份量 300
     expect(beerMeal.actualServingG, closeTo(300, 0.01));
+  });
+
+  // M16.8 Task 6：查库命中分支接入差异检测
+  // 复现 bug：主菜"番茄炒蛋"查库命中（foodItemId>0），库 per100g=80（脏数据），
+  // AI 估 200g/250kcal（库值 160 vs AI 250，偏差 56% > 50%）。
+  // 修复前：查库命中分支用 n.calories * ratio = 160，忽略 AI 估算，与 reasoning 脱节。
+  // 修复后：偏差大时用 AI 反算 per100g=125，actualCalories=250，并更新库 per100g。
+  testWidgets(
+      'M16.8: 查库命中 + AI 偏差大时 actualCalories 用 AI 估算 + 更新库 per100g',
+      (tester) async {
+    // 用独立 db（只插番茄炒蛋，id=1），避免与 setUp 的番茄/米饭 id 冲突
+    final db = EatWiseDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+          name: '番茄炒蛋',
+          defaultServingG: 100,
+          caloriesPer100g: 80, // 脏数据
+          proteinPer100g: 6,
+          fatPer100g: 10,
+          carbsPer100g: 12,
+          source: 'china_fct',
+          sourceVersion: 'test',
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+        ));
+
+    final container = ProviderContainer(overrides: [
+      recognize.databaseProvider.overrideWith((ref) async => db),
+    ]);
+    addTearDown(container.dispose);
+
+    const r = VisionRecognitionResult(
+      dishName: '番茄炒蛋',
+      estimatedWeightGLow: 180,
+      estimatedWeightGMid: 200,
+      estimatedWeightGHigh: 220,
+      estimatedCalories: 250, // AI 估 250，库值 160，偏差 56% > 50%
+      estimatedProteinG: 10,
+      estimatedFatG: 15,
+      estimatedCarbsG: 20,
+      foodComponents: [],
+      cookingMethod: 'stir_fry',
+      isSingleItem: true,
+      confidence: 0.9,
+      promptVersion: 'v1.0',
+    );
+    final lookupHit = NutritionResult(
+      foodItemId: 1, // 库命中
+      calories: 160, // 80 * 200 / 100
+      proteinG: 6,
+      fatG: 10,
+      carbsG: 12,
+      oilG: 0,
+    );
+    final aiFallback = NutritionResult(
+      foodItemId: 0, // AI 兜底哨兵
+      calories: 250, // AI 估算整菜热量（对应 mid=200g）
+      proteinG: 10,
+      fatG: 15,
+      carbsG: 20,
+      oilG: 0,
+    );
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+          home: MultiDishPage(
+        mainDish: r,
+        mainSingle: lookupHit,
+        mainAiFallback: aiFallback, // 新参数（M16.8）
+        additionalItems: [],
+        mealType: 'lunch',
+      )),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('全部记录'));
+    await tester.pumpAndSettle();
+
+    final meals = await db.mealLogs.select().get();
+    expect(meals.length, 1);
+    expect(meals.first.actualCalories, closeTo(250, 0.5),
+        reason: '查库命中 + AI 偏差大时用 AI 估算值');
+
+    final food = await (db.foodItems.select()
+          ..where((f) => f.name.equals('番茄炒蛋')))
+        .getSingle();
+    expect(food.caloriesPer100g, closeTo(125, 0.5),
+        reason: '库 per100g 应被 AI 反算值更新（250*100/200=125）');
   });
 }

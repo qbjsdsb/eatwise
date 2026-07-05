@@ -402,13 +402,26 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
         // v1.2 一桌多菜：additionalItems 非空 → 跳多菜列表页（每菜可校准+合并记录）
         if (state.additionalItems.isNotEmpty) {
           if (!mounted) return;
+          // M16.8：为主菜 + 每个附加菜计算 AI 兜底估算，传给 MultiDishPage
+          // 查库命中时用于差异检测（偏差 > 50% 用 AI 反算 per100g 写库 + 用 AI 值记 meal_log）
+          final mainAiFallback =
+              controller.aiFallbackNutrition(state.recognitionResult!);
+          final additionalItemsWithFallback = state.additionalItems
+              .map((item) => MultiDishItem(
+                    dish: item.dish,
+                    singleNutrition: item.singleNutrition,
+                    compositeNutrition: item.compositeNutrition,
+                    aiFallback: controller.aiFallbackNutrition(item.dish),
+                  ))
+              .toList();
           Navigator.of(context).push(
             MaterialPageRoute(
               builder: (_) => MultiDishPage(
                 mainDish: state.recognitionResult!,
                 mainSingle: state.singleNutrition,
                 mainComposite: state.compositeNutrition,
-                additionalItems: state.additionalItems,
+                mainAiFallback: mainAiFallback,
+                additionalItems: additionalItemsWithFallback,
                 mealType: state.mealType,
                 imagePath: controller.current.imagePath,
               ),

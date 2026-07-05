@@ -21,6 +21,8 @@ class MultiDishPage extends ConsumerStatefulWidget {
   final VisionRecognitionResult mainDish;
   final NutritionResult? mainSingle;
   final CompositeNutritionResult? mainComposite;
+  /// M16.8：主菜 AI 兜底估算，查库命中时用于差异检测（偏差 > 50% 用 AI 反算 per100g）
+  final NutritionResult? mainAiFallback;
   final List<MultiDishItem> additionalItems;
   final String mealType;
   final String? imagePath;
@@ -30,6 +32,7 @@ class MultiDishPage extends ConsumerStatefulWidget {
     required this.mainDish,
     this.mainSingle,
     this.mainComposite,
+    this.mainAiFallback,
     required this.additionalItems,
     required this.mealType,
     this.imagePath,
@@ -341,6 +344,38 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
     return null;
   }
 
+  /// M16.8：获取某菜的 AI 兜底估算（查库命中时用于差异检测）
+  /// 主菜用 widget.mainAiFallback，附加菜用 additionalItems[i].aiFallback
+  NutritionResult? _getAiFallback(int index) {
+    if (index == 0) return widget.mainAiFallback;
+    if (index - 1 < widget.additionalItems.length) {
+      return widget.additionalItems[index - 1].aiFallback;
+    }
+    return null;
+  }
+
+  /// M16.8：查库命中分支差异检测计算（_calcNutrition 预览 + _recordAll 记录共用，
+  /// 保证预览=记录）。
+  ///
+  /// 条件：_currentSingles[index] 非空 + foodItemId > 0（查库命中）+ aiFallback 非空 +
+  ///       无包装营养表（包装是精确值，不走差异检测）。
+  /// 返回 null 表示不满足条件，调用方走原逻辑（n.* * ratio）。
+  CalibratedNutrition? _computeLookupHitCalibrated(
+      int index, VisionRecognitionResult dish, double serving) {
+    // 包装营养表优先（精确值，不走差异检测）
+    if (dish.hasPackageNutrition) return null;
+    final n = _currentSingles[index];
+    if (n == null || n.foodItemId <= 0) return null;
+    final aiFallback = _getAiFallback(index);
+    if (aiFallback == null) return null;
+    return CalibratedNutritionCalculator.compute(
+      recognitionResult: dish,
+      aiFallback: aiFallback,
+      servingG: serving,
+      lookupHitNutrition: n,
+    );
+  }
+
   /// v1.3：数量步进器（同物多份场景，仅单品命中 + perUnitG > 0 显示）
   /// − / 数量+单位 / + 三段式，范围 1-20；改数量时同步 _servings[index] = perUnitG × quantity
   Widget _buildQuantityStepper(int index, VisionRecognitionResult dish) {
@@ -420,6 +455,16 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
     }
     if (index == 0) {
       // 主菜
+      // M16.8：查库命中 + aiFallback → 差异检测（与 _recordAll 一致，保证预览=记录）
+      final calibrated = _computeLookupHitCalibrated(0, dish, serving);
+      if (calibrated != null) {
+        return (
+          calibrated.actualCalories,
+          calibrated.actualProteinG,
+          calibrated.actualFatG,
+          calibrated.actualCarbsG,
+        );
+      }
       // 改菜名后用 _currentSingles[0]（rename 后实时刷新）
       if (_currentSingles[0] != null) {
         final n = _currentSingles[0]!;
@@ -441,6 +486,16 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
       }
     } else {
       // additionalDishes（index-1 对应 additionalItems）
+      // M16.8：查库命中 + aiFallback → 差异检测（与 _recordAll 一致，保证预览=记录）
+      final calibrated = _computeLookupHitCalibrated(index, dish, serving);
+      if (calibrated != null) {
+        return (
+          calibrated.actualCalories,
+          calibrated.actualProteinG,
+          calibrated.actualFatG,
+          calibrated.actualCarbsG,
+        );
+      }
       // 改菜名后用 _currentSingles[index]（rename 后实时刷新）
       if (_currentSingles[index] != null) {
         final n = _currentSingles[index]!;
@@ -575,7 +630,31 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
               f = calibrated.actualFatG;
               c = calibrated.actualCarbsG;
             } else {
-              foodItemId = n.foodItemId;
+              // M16.8：查库命中 + aiFallback → 差异检测（与 _calcNutrition 一致，保证预览=记录）
+              // 偏差 > 50% 用 AI 反算 per100g 写库 + 用 AI 值记 meal_log
+              // （修复 reasoning 显示 AI 估算但记录用库值致脱节）
+              // 偏差 ≤ 50% 用库值（cal/p/f/c 保持 _calcNutrition 返回值，已基于 DB per100g）
+              // 无 aiFallback / 有包装营养表时保持原行为（foodItemId = n.foodItemId）
+              final calibrated = _computeLookupHitCalibrated(i, dish, serving);
+              if (calibrated != null) {
+                foodItemId = calibrated.foodItemId;
+                cal = calibrated.actualCalories;
+                p = calibrated.actualProteinG;
+                f = calibrated.actualFatG;
+                c = calibrated.actualCarbsG;
+                // 偏差大时用 AI 反算 per100g 纠正脏库
+                if (calibrated.shouldUpdateFoodItem) {
+                  await foodRepo.updatePer100g(
+                    foodItemId: calibrated.foodItemId,
+                    caloriesPer100g: calibrated.caloriesPer100g,
+                    proteinPer100g: calibrated.proteinPer100g,
+                    fatPer100g: calibrated.fatPer100g,
+                    carbsPer100g: calibrated.carbsPer100g,
+                  );
+                }
+              } else {
+                foodItemId = n.foodItemId;
+              }
             }
           } else if (composite != null) {
             final oilG = composite.oilG;

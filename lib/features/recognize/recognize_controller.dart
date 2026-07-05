@@ -71,11 +71,16 @@ class MultiDishItem {
   final VisionRecognitionResult dish;
   final NutritionResult? singleNutrition;
   final CompositeNutritionResult? compositeNutrition;
+  /// M16.8：AI 兜底估算（foodItemId=0），查库命中时用于差异检测。
+  /// 查库命中（singleNutrition.foodItemId > 0）+ aiFallback 非空时，
+  /// _recordAll/_calcNutrition 走 CalibratedNutritionCalculator 差异检测。
+  final NutritionResult? aiFallback;
 
   const MultiDishItem({
     required this.dish,
     this.singleNutrition,
     this.compositeNutrition,
+    this.aiFallback,
   });
 }
 
@@ -506,6 +511,13 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   ///   包装换算宏量全 0（含糖饮料 AI 漏填宏量）→ 宏量用 AI 估算原值（PostProcessor 已反推填充）
   @visibleForTesting
   NutritionResult? aiFallbackNutritionForTest(VisionRecognitionResult r) =>
+      _aiFallbackNutrition(r);
+
+  /// M16.8：计算 AI 兜底营养估算（公开接口）。
+  /// 供 recognize_page 在跳转 MultiDishPage 时为每个菜品计算 aiFallback，
+  /// 用于查库命中分支的差异检测（偏差 > 50% 时用 AI 反算 per100g）。
+  /// 内部逻辑同 _aiFallbackNutrition，仅暴露为公开方法供 page 层调用。
+  NutritionResult? aiFallbackNutrition(VisionRecognitionResult r) =>
       _aiFallbackNutrition(r);
 
   NutritionResult? _aiFallbackNutrition(VisionRecognitionResult r) {
