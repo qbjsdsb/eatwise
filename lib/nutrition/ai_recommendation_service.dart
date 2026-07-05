@@ -26,6 +26,7 @@ import 'package:eatwise/data/repositories/recommendation_feedback_repository.dar
 import 'package:flutter/foundation.dart';
 
 import 'ai_recommendation_prompt.dart';
+import 'dish_name_normalizer.dart';
 import 'recommendation_service.dart';
 
 /// AI 推荐请求参数（调用方聚合后传入）
@@ -187,17 +188,20 @@ class AiRecommendationService {
     final feedbacks = await feedbacksFuture;
 
     final foodMap = {for (final f in foods) f.id: f};
-    // 近 3 天已吃食物名：从 14 天 recentMeals 内存过滤（避免重复查 3 次 DB）
+    // 近 7 天已吃食物名（M19：3→7 天）：从 14 天 recentMeals 内存过滤（避免重复查 DB）
+    // 归一化后存入（M19：让"炒鸡胸肉"和"鸡胸肉"在去重时被视为同一道菜）
     final now = DateTime.now();
     final recentFoodNames = <String>{};
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < 7; i++) {
       final d = now.subtract(Duration(days: i));
       final ymd =
           '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
       for (final m in recentMeals) {
         if (m.date == ymd) {
           final food = foodMap[m.foodItemId];
-          if (food != null) recentFoodNames.add(food.name);
+          if (food != null) {
+            recentFoodNames.add(normalizeDishName(food.name));
+          }
         }
       }
     }
@@ -225,9 +229,36 @@ class AiRecommendationService {
       const Duration(seconds: 30),
     );
 
-    // 4. 解析 JSON（最多 5 条，避免 AI 返回过多）
+    // 4. 解析 JSON + 后处理去重（M19：AI 内部去重 + 与近 7 天已吃食物归一化去重）
     final all = _parseRecommendations(raw);
-    return all.take(5).toList();
+    final deduped = _deduplicateAgainstHistory(all, recentFoodNames);
+    return deduped.take(5).toList();
+  }
+
+  /// 后处理去重（M19）：AI 返回内部去重 + 与近 7 天已吃食物归一化去重
+  ///
+  /// 策略：
+  /// 1. AI 返回内部去重：同一归一化菜名出现多次，只保留首次
+  /// 2. 历史去重：归一化菜名 ∈ recentFoodNames（已归一化）则剔除
+  ///
+  /// 返回去重后的列表（可能少于 5 道，调用方 take(5) 安全）
+  /// 少于 5 道时不补足（避免再调 AI 的成本 + v4 兜底已混合展示）
+  static List<AiRecommendation> _deduplicateAgainstHistory(
+    List<AiRecommendation> recs,
+    Set<String> recentFoodNames,
+  ) {
+    final seen = <String>{}; // AI 返回内部已见归一化菜名
+    final result = <AiRecommendation>[];
+    for (final rec in recs) {
+      final normalized = normalizeDishName(rec.name);
+      // AI 内部去重
+      if (seen.contains(normalized)) continue;
+      // 历史去重
+      if (recentFoodNames.contains(normalized)) continue;
+      seen.add(normalized);
+      result.add(rec);
+    }
+    return result;
   }
 
   /// 调 GLM-4-Flash（封装以便测试 mock）
@@ -237,7 +268,7 @@ class AiRecommendationService {
       return await _provider.createChatCompletion(
         systemPrompt: AiRecommendationPrompt.systemPrompt,
         userPrompt: userPrompt,
-        temperature: 0.8, // 推荐需一定随机性，避免每次都推相同的 5 道菜
+        temperature: 0.85, // M19：略提随机性增加多样性（0.8→0.85，保守避免破坏 JSON 格式）
       );
     } catch (e) {
       final s = e.toString();
@@ -254,7 +285,7 @@ class AiRecommendationService {
       return _provider.createChatCompletion(
         systemPrompt: AiRecommendationPrompt.systemPrompt,
         userPrompt: userPrompt,
-        temperature: 0.8,
+        temperature: 0.85,
       );
     }
   }

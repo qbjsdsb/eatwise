@@ -375,6 +375,252 @@ void main() {
           reason: '401 应保持原有"API Key 无效"文案');
     });
   });
+
+  group('M19 后处理去重', () {
+    // 用今天日期预置 meal_log，与 service 内部 DateTime.now() 一致
+    final now = DateTime.now();
+    final today =
+        '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+    test('AI 返回含 recentFoodNames 精确重名 → 被过滤', () async {
+      // 预置：今天吃了鸡胸肉
+      final chickenId = await foodRepo.insertManual(
+        name: '鸡胸肉',
+        caloriesPer100g: 167,
+        proteinPer100g: 19,
+        fatPer100g: 9,
+        carbsPer100g: 0,
+      );
+      await mealRepo.insertMealLog(
+        date: today,
+        mealType: 'lunch',
+        foodItemId: chickenId,
+        actualServingG: 100,
+        actualCalories: 167,
+        actualProteinG: 19,
+        actualFatG: 9,
+        actualCarbsG: 0,
+      );
+      // mock AI 返回鸡胸肉 + 牛肉
+      const json = '{"recommendations":['
+          '{"name":"鸡胸肉","reason":"高蛋白","estimatedCalories":167,"estimatedProtein":19},'
+          '{"name":"牛肉","reason":"补铁","estimatedCalories":250,"estimatedProtein":26}'
+          ']}';
+      final service = AiRecommendationService(
+        _FakeGlmProvider(json),
+        profileRepo,
+        mealRepo,
+        foodRepo,
+        feedbackRepo,
+      );
+      final r = await service.recommend(
+        AiRecommendationRequest(todayDate: today, mealType: 'lunch'),
+      );
+      expect(r.recommendations.where((rec) => rec.name == '鸡胸肉'), isEmpty,
+          reason: '鸡胸肉是今天吃过的，应被去重过滤');
+      expect(r.recommendations.any((rec) => rec.name == '牛肉'), true,
+          reason: '牛肉未吃过，应保留');
+    });
+
+    test('AI 返回含 recentFoodNames 归一化重名 → 被过滤', () async {
+      // 预置：今天吃了"鸡胸肉"（无前缀）
+      final chickenId = await foodRepo.insertManual(
+        name: '鸡胸肉',
+        caloriesPer100g: 167,
+        proteinPer100g: 19,
+        fatPer100g: 9,
+        carbsPer100g: 0,
+      );
+      await mealRepo.insertMealLog(
+        date: today,
+        mealType: 'lunch',
+        foodItemId: chickenId,
+        actualServingG: 100,
+        actualCalories: 167,
+        actualProteinG: 19,
+        actualFatG: 9,
+        actualCarbsG: 0,
+      );
+      // mock AI 返回"炒鸡胸肉"（归一化后="鸡胸肉"，应被过滤）+ 牛肉
+      const json = '{"recommendations":['
+          '{"name":"炒鸡胸肉","reason":"高蛋白","estimatedCalories":200,"estimatedProtein":19},'
+          '{"name":"牛肉","reason":"补铁","estimatedCalories":250,"estimatedProtein":26}'
+          ']}';
+      final service = AiRecommendationService(
+        _FakeGlmProvider(json),
+        profileRepo,
+        mealRepo,
+        foodRepo,
+        feedbackRepo,
+      );
+      final r = await service.recommend(
+        AiRecommendationRequest(todayDate: today, mealType: 'lunch'),
+      );
+      expect(r.recommendations.where((rec) => rec.name == '炒鸡胸肉'), isEmpty,
+          reason: '炒鸡胸肉归一化后=鸡胸肉（今天吃过），应被过滤');
+      expect(r.recommendations.any((rec) => rec.name == '牛肉'), true,
+          reason: '牛肉未吃过，应保留');
+    });
+
+    test('AI 返回内部重复（同一菜名两次）→ 只留一个', () async {
+      // 不预置 meal_log（recentFoodNames 为空）
+      const json = '{"recommendations":['
+          '{"name":"牛肉","reason":"补铁","estimatedCalories":250,"estimatedProtein":26},'
+          '{"name":"牛肉","reason":"补铁2","estimatedCalories":260,"estimatedProtein":27}'
+          ']}';
+      final service = AiRecommendationService(
+        _FakeGlmProvider(json),
+        profileRepo,
+        mealRepo,
+        foodRepo,
+        feedbackRepo,
+      );
+      final r = await service.recommend(
+        AiRecommendationRequest(todayDate: today, mealType: 'lunch'),
+      );
+      expect(r.recommendations.length, 1,
+          reason: 'AI 返回内部重复（牛肉×2）应只留一个');
+      expect(r.recommendations.first.name, '牛肉');
+    });
+
+    test('AI 返回全部命中 recentFoodNames → 返回空列表', () async {
+      // 预置：今天吃了鸡胸肉 + 牛肉
+      final chickenId = await foodRepo.insertManual(
+        name: '鸡胸肉',
+        caloriesPer100g: 167,
+        proteinPer100g: 19,
+        fatPer100g: 9,
+        carbsPer100g: 0,
+      );
+      final beefId = await foodRepo.insertManual(
+        name: '牛肉',
+        caloriesPer100g: 250,
+        proteinPer100g: 26,
+        fatPer100g: 15,
+        carbsPer100g: 0,
+      );
+      await mealRepo.insertMealLog(
+        date: today,
+        mealType: 'lunch',
+        foodItemId: chickenId,
+        actualServingG: 100,
+        actualCalories: 167,
+        actualProteinG: 19,
+        actualFatG: 9,
+        actualCarbsG: 0,
+      );
+      await mealRepo.insertMealLog(
+        date: today,
+        mealType: 'lunch',
+        foodItemId: beefId,
+        actualServingG: 100,
+        actualCalories: 250,
+        actualProteinG: 26,
+        actualFatG: 15,
+        actualCarbsG: 0,
+      );
+      // mock AI 返回鸡胸肉 + 牛肉（全部命中）
+      const json = '{"recommendations":['
+          '{"name":"鸡胸肉","reason":"高蛋白","estimatedCalories":167,"estimatedProtein":19},'
+          '{"name":"牛肉","reason":"补铁","estimatedCalories":250,"estimatedProtein":26}'
+          ']}';
+      final service = AiRecommendationService(
+        _FakeGlmProvider(json),
+        profileRepo,
+        mealRepo,
+        foodRepo,
+        feedbackRepo,
+      );
+      final r = await service.recommend(
+        AiRecommendationRequest(todayDate: today, mealType: 'lunch'),
+      );
+      // 全部命中 → 返回空（注意：空结果不缓存，error 非 null）
+      expect(r.recommendations, isEmpty,
+          reason: 'AI 返回全部命中近 7 天已吃，应返回空列表');
+    });
+
+    test('AI 返回 5 道菜，2 道命中 → 返回 3 道', () async {
+      // 预置：今天吃了鸡胸肉 + 牛肉
+      final chickenId = await foodRepo.insertManual(
+        name: '鸡胸肉',
+        caloriesPer100g: 167,
+        proteinPer100g: 19,
+        fatPer100g: 9,
+        carbsPer100g: 0,
+      );
+      final beefId = await foodRepo.insertManual(
+        name: '牛肉',
+        caloriesPer100g: 250,
+        proteinPer100g: 26,
+        fatPer100g: 15,
+        carbsPer100g: 0,
+      );
+      await mealRepo.insertMealLog(
+        date: today,
+        mealType: 'lunch',
+        foodItemId: chickenId,
+        actualServingG: 100,
+        actualCalories: 167,
+        actualProteinG: 19,
+        actualFatG: 9,
+        actualCarbsG: 0,
+      );
+      await mealRepo.insertMealLog(
+        date: today,
+        mealType: 'lunch',
+        foodItemId: beefId,
+        actualServingG: 100,
+        actualCalories: 250,
+        actualProteinG: 26,
+        actualFatG: 15,
+        actualCarbsG: 0,
+      );
+      // mock AI 返回 5 道，含鸡胸肉+牛肉+3其他
+      const json = '{"recommendations":['
+          '{"name":"鸡胸肉","reason":"1","estimatedCalories":167,"estimatedProtein":19},'
+          '{"name":"牛肉","reason":"2","estimatedCalories":250,"estimatedProtein":26},'
+          '{"name":"鲈鱼","reason":"3","estimatedCalories":200,"estimatedProtein":20},'
+          '{"name":"豆腐","reason":"4","estimatedCalories":150,"estimatedProtein":12},'
+          '{"name":"菠菜","reason":"5","estimatedCalories":40,"estimatedProtein":3}'
+          ']}';
+      final service = AiRecommendationService(
+        _FakeGlmProvider(json),
+        profileRepo,
+        mealRepo,
+        foodRepo,
+        feedbackRepo,
+      );
+      final r = await service.recommend(
+        AiRecommendationRequest(todayDate: today, mealType: 'lunch'),
+      );
+      expect(r.recommendations.length, 3,
+          reason: '5 道中 2 道命中近 7 天已吃，应返回 3 道');
+      expect(r.recommendations.map((rec) => rec.name).toList(),
+          ['鲈鱼', '豆腐', '菠菜'],
+          reason: '应保留未吃过的 3 道，顺序与 AI 返回一致');
+    });
+
+    test('recentFoodNames 为空 → 不过滤', () async {
+      // 不预置 meal_log（recentFoodNames 为空）
+      const json = '{"recommendations":['
+          '{"name":"鸡胸肉","reason":"1","estimatedCalories":167,"estimatedProtein":19},'
+          '{"name":"牛肉","reason":"2","estimatedCalories":250,"estimatedProtein":26},'
+          '{"name":"鲈鱼","reason":"3","estimatedCalories":200,"estimatedProtein":20}'
+          ']}';
+      final service = AiRecommendationService(
+        _FakeGlmProvider(json),
+        profileRepo,
+        mealRepo,
+        foodRepo,
+        feedbackRepo,
+      );
+      final r = await service.recommend(
+        AiRecommendationRequest(todayDate: today, mealType: 'lunch'),
+      );
+      expect(r.recommendations.length, 3,
+          reason: 'recentFoodNames 为空时不应过滤，应返回全部 3 道');
+    });
+  });
 }
 
 /// 假 GlmFlashProvider：返回固定响应（不实际调 API）
