@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-05
 
-**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复已 push（commit 221d319，4 层修复详见下方"M16.3"章节）；M16.4 深度审查修复已发布 v0.18.3 GitHub Release（8 个 commit 93528fe~85e8c64，4 P1 + 4 P2 + 3 P3 共 11 个修复，详见下方"M16.4"章节；876 全量测试通过，新增 20 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3 修复区域无回归；GitHub Actions workflow 自动 build APK 并上传 release，run id 28733040721 conclusion=success；app-release.apk 78.55 MB + app-debug.apk 175.10 MB）；M16.5 复合菜 UI 全 0 修复已 push（commit f00333e，P0 修复 lookupCompositeDish 命中 0 值条目致 UI 全 0，详见下方"M16.5"章节；881 全量测试通过，新增 5 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4 修复区域无回归）；M16.6 营养数值一致性修复已 push（commit d37cd4e，tag v0.18.5，三路径 actualCalories 计算统一，详见下方"M16.6"章节；895 全量测试通过，新增 15 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4/M16.5 修复区域无回归）；M16.7 Web Interface Guidelines 全 UI 审查修复已发布 v0.18.6（commit 4a4f7a7，tag v0.18.6，17 文件 195 问题修复，详见下方"M16.7"章节；911 全量测试通过，新增 15 个 TDD 测试 + 1 个源码扫描测试；6 条硬约束全部满足；M16.2~M16.6 修复区域无回归）；**M16.8 营养值不一致深度修复已完成（待 push + tag v0.18.7，详见下方"M16.8"章节；923 全量测试通过，新增 ~12 个 TDD 测试；6 条硬约束全部满足；M16.2~M16.7 修复区域无回归；根因 A 查库命中分支忽略 AI 估算 + 根因 B 品类校准 4 项全替换 + 根因 C 改菜名重试绕过统一写库，三个根因全部修复）**。仓库已改 public，匿名访问 GitHub API 200 OK（M16.8 期间 GitHub API 匿名限流致 smoke test 失败，环境问题非回归）。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
-**当前分支**：trae/agent-wX1X6Q（HEAD = 5df13ae 本地未 push；远端 origin/trae/agent-wX1X6Q 停在 d67aa75；M16.8 共 9 个 commit 待 push：3d9e947 / a1a5ea8 / ecca11a / 96a2b04 / ef6fb9b / d67aa75 / be0d50f / a5ab6ab / 5df13ae；tag v0.18.6 指向 4a4f7a7；v0.18.5 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb；**待用户确认后 push + tag v0.18.7**）
+**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复已 push（commit 221d319，4 层修复详见下方"M16.3"章节）；M16.4 深度审查修复已发布 v0.18.3 GitHub Release（8 个 commit 93528fe~85e8c64，4 P1 + 4 P2 + 3 P3 共 11 个修复，详见下方"M16.4"章节；876 全量测试通过，新增 20 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3 修复区域无回归；GitHub Actions workflow 自动 build APK 并上传 release，run id 28733040721 conclusion=success；app-release.apk 78.55 MB + app-debug.apk 175.10 MB）；M16.5 复合菜 UI 全 0 修复已 push（commit f00333e，P0 修复 lookupCompositeDish 命中 0 值条目致 UI 全 0，详见下方"M16.5"章节；881 全量测试通过，新增 5 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4 修复区域无回归）；M16.6 营养数值一致性修复已 push（commit d37cd4e，tag v0.18.5，三路径 actualCalories 计算统一，详见下方"M16.6"章节；895 全量测试通过，新增 15 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4/M16.5 修复区域无回归）；M16.7 Web Interface Guidelines 全 UI 审查修复已发布 v0.18.6（commit 4a4f7a7，tag v0.18.6，17 文件 195 问题修复，详见下方"M16.7"章节；911 全量测试通过，新增 15 个 TDD 测试 + 1 个源码扫描测试；6 条硬约束全部满足；M16.2~M16.6 修复区域无回归）；**M16.8 营养值不一致深度修复已完成（commit 499e820，bump v0.18.7+26 但未打 tag，详见下方"M16.8"章节；923 全量测试通过，新增 ~12 个 TDD 测试；6 条硬约束全部满足；M16.2~M16.7 修复区域无回归；根因 A 查库命中分支忽略 AI 估算 + 根因 B 品类校准 4 项全替换 + 根因 C 改菜名重试绕过统一写库，三个根因全部修复）**；**M16.9 减小库值重要性——AI 绝对优先已完成（待 push + tag v0.18.8，详见下方"M16.9"章节；928 全量测试通过，新增 6 个 TDD 测试；6 条硬约束全部满足；M16.2~M16.8 修复区域无回归；用户要求"把库值在这个项目中的重要性占比减小很多"，查库命中分支重写为 AI 绝对优先 + sanity check 兜底，复合菜残留路径同步修复）**。仓库已改 public，匿名访问 GitHub API 200 OK（M16.8 期间 GitHub API 匿名限流致 smoke test 失败，环境问题非回归）。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
+**当前分支**：trae/agent-wX1X6Q（HEAD = 即将 bump v0.18.8 commit；远端 origin/trae/agent-wX1X6Q 停在 d37cd4e；M16.8 + M16.9 共 13 个 commit 待 push：3d9e947 / a1a5ea8 / ecca11a / 96a2b04 / ef6fb9b / d67aa75 / be0d50f / a5ab6ab / 5df13ae / 499e820 / addb10e / ed4a74e / e37199d + bump v0.18.8 commit；tag v0.18.6 指向 4a4f7a7；v0.18.5 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb；v0.18.7 未打 tag（M16.8 中间状态，直接跳到 v0.18.8 发布）；**待用户确认后 push + tag v0.18.8**）
 
 **待用户执行的收尾项**（沙箱无法完成）：
 1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）
@@ -1638,6 +1638,73 @@ AI 兜底哨兵路径（foodItemId=0）下，三条识别路径对 `meal_log.act
    - 拍一道查库命中的菜，AI 估算与库偏差小时（如 AI 170 vs 库 160），meal_log 应记 160（用库值），food_item.per100g 不更新
    - 拍啤酒触发品类校准，calories 用默认 43，蛋白/脂肪/碳水保留 AI 估算值（不再被默认值 0.5/0/3.1 覆盖）
    - 改菜名重试命中库后，meal_log 应有 recognitionConfidence 和 componentsSnapshotJson 字段
+2. 验证三路径行为一致（recognize_page 单品 / multi_dish_page 多菜 / offline_queue 离线回补）
+
+---
+
+## M16.9 减小库值重要性——AI 绝对优先（2026-07-05）—— v0.18.8 查库命中分支重写 + 复合菜残留路径修复
+
+**触发**：用户要求"把库值在这个项目中的重要性占比减小很多，然后严肃commit和push，再严肃打tag发布，一定要仔细"。M16.8 差异检测阈值 50% 太宽松——偏差 20%-50% 区间仍用库值，用户感知"AI 准但记录不对"仍存在。
+
+**核心策略**（用户通过 AskUserQuestion 两个核心决策）：
+
+1. **AI 绝对优先（激进）**：查库命中分支（foodItemId > 0）改为 AI 估算绝对优先——AI 有效（per100g ∈ [0, 900]）时始终用 AI 反算 per100g 写库 + 用 AI 值记 meal_log；AI 无效（null/负/>900）时用库值兜底（不更新库）。库值降级为 sanity check 兜底。
+2. **复合菜残留路径同步修复**：multi_dish_page composite 分支接入 AI 绝对优先（新方法 `_computeCompositeLookupHitCalibrated`），AI 整菜估算有效时用 AI 值记 meal_log（不更新库 per100g，复合菜 per100g=0 占位）。
+
+### 修复（7 个 Task，TDD Red-Green-Refactor）
+
+#### Task 1-2: 查库命中分支重写为 AI 绝对优先 + sanity check 兜底（commit addb10e）
+- 文件：`lib/features/recognize/calibrated_nutrition_calculator.dart` L48-104
+- 修改：查库命中分支重写——AI 有效（per100g ∈ [0, 900]）时始终用 AI 反算 per100g 写库 + 用 AI 值记 meal_log；AI 无效时用库值兜底（不更新库）。shouldUpdateFoodItem 优化：diffRatio > 5% 时才写库（避免无意义写库）。文件头部注释更新（M16.8 差异检测 → M16.9 AI 绝对优先）
+- 测试：`test/features/calibrated_nutrition_calculator_test.dart` 4 个新测试（AI 偏差小也用 AI / 一致不写库 / per100g>900 兜底 / 负值兜底）+ `test/features/recognize_page_test.dart` 替换 1 个测试（M16.8 偏差小用库值 → M16.9 偏差小用 AI）
+
+#### Task 3-4: 复合菜分支接入 AI 绝对优先（commit ed4a74e）
+- 文件：`lib/features/recognize/multi_dish_page.dart`
+- 修改：
+  1. 新增 `_computeCompositeLookupHitCalibrated` 方法（L379-413）：复合菜查库命中 + AI 整菜估算有效时用 AI 值记 meal_log（不更新库 per100g，复合菜 per100g=0 占位）；AI 无效时返回 null 走原 ratio 兜底
+  2. `_calcNutrition` 主菜 composite 分支（L514-523）+ 附加菜 composite 分支（L555-564）前置 `_computeCompositeLookupHitCalibrated` 检查
+  3. `_recordAll` composite 分支（L715-724）显式覆盖 cal/p/f/c，与 `_calcNutrition` 保持一致（预览=记录）
+- 测试：`test/features/multi_dish_page_test.dart` 2 个新测试（复合菜 AI 优先用 AI 值 500 / 复合菜 AI 离谱 per100g>900 用组分累加库值兜底 225）
+
+#### Task 5: calibration_page 残留 else 分支加注释（commit e37199d）
+- 文件：`lib/features/recognize/calibration_page.dart` L465-474
+- 修改：残留 else 分支（查库命中但无 aiFallback）加 M16.9 注释说明——M16.8 主路径已传 aiFallbackNutrition，此分支不应触发；保留原 ratio 兜底逻辑作为安全网。不改逻辑
+
+#### Task 6: 全量回归验证
+- `flutter analyze` → No issues found
+- `flutter test --exclude-tags smoke` → 928 passed / 0 failed（M16.9 新增 6 个 TDD 测试）
+- 6 条硬约束全部满足（build.gradle.kts isMinifyEnabled=false / SecureConfigStore 无 instance / initSentryAndRunApp 命名参数 / foodItemId 哨兵 upsertAiRecognized / AI 兜底三路径全覆盖 / per100g 反算基于 estimatedWeightGMid）
+- M16.2~M16.8 修复区域无回归
+
+#### Task 7: 发布准备（v0.18.8+27）
+- pubspec.yaml bump 0.18.7+26 → 0.18.8+27
+- HANDOFF.md 回填 M16.9 章节
+- commit + push + tag v0.18.8
+
+### 核心不变量（M16.9 更新）
+
+- **AI 绝对优先**：查库命中分支 AI 有效时始终用 AI 值（写库 per100g + 记 meal_log），库值降级为 sanity check 兜底
+- **sanity check 阈值**：AI per100g ∈ [0, 900]（上限 900 = 纯脂肪油 889 + solid clamp 上限）
+- **shouldUpdateFoodItem**：AI 有效 + diffRatio > 5% 时为 true（避免无意义写库）；复合菜始终 false（per100g=0 占位）
+- **复合菜 AI 优先**：AI 整菜估算有效时用 AI 值记 meal_log（不更新库 per100g）；AI 无效时用组分累加库值兜底
+- **预览 = 记录**：`_calcNutrition` 和 `_recordAll` 共用 `_computeCompositeLookupHitCalibrated`
+- **per100g 反算基于 estimatedWeightGMid**（硬约束 #4 不变）
+
+### M16.8 行为变化（用户感知）
+
+| 场景 | M16.8 行为 | M16.9 行为 |
+|------|-----------|-----------|
+| 查库命中 + AI 偏差 6% | 用库值（160），不更新库 | **用 AI 值（170），更新库 per100g=85** |
+| 查库命中 + AI 偏差 56% | 用 AI 值（250），更新库 per100g=125 | 用 AI 值（250），更新库 per100g=125（不变） |
+| 查库命中 + AI 离谱（per100g>900） | 不存在此场景 | **用库值兜底，不更新库** |
+| 复合菜 + AI 整菜估算 | 用组分累加库值（无差异检测） | **用 AI 整菜估算**（per100g=0 占位不更新库） |
+
+### 待用户执行
+
+1. 装 v0.18.8 APK 验证核心场景：
+   - 拍一道查库命中的菜（如番茄炒蛋），AI 估算与库偏差小时（如 AI 170 vs 库 160），meal_log 应记 **170（用 AI 值）**，food_item.per100g 应更新为 AI 反算值（85）—— **M16.8 是记 160 用库值，M16.9 改为记 170 用 AI**
+   - 拍一道查库命中的菜，AI 估算离谱时（如 AI 把水估成 5000 kcal），meal_log 应记库值（兜底），food_item.per100g 不更新
+   - 拍一道复合菜（如宫保鸡丁），AI 整菜估算有效时，meal_log 应记 AI 值（不用组分累加库值），food_item.per100g=0 占位
 2. 验证三路径行为一致（recognize_page 单品 / multi_dish_page 多菜 / offline_queue 离线回补）
 
 ---
