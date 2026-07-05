@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-05
 
-**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复已 push（commit 221d319，4 层修复详见下方"M16.3"章节）；M16.4 深度审查修复已发布 v0.18.3 GitHub Release（8 个 commit 93528fe~85e8c64，4 P1 + 4 P2 + 3 P3 共 11 个修复，详见下方"M16.4"章节；876 全量测试通过，新增 20 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3 修复区域无回归；GitHub Actions workflow 自动 build APK 并上传 release，run id 28733040721 conclusion=success；app-release.apk 78.55 MB + app-debug.apk 175.10 MB）；M16.5 复合菜 UI 全 0 修复已 push（commit f00333e，P0 修复 lookupCompositeDish 命中 0 值条目致 UI 全 0，详见下方"M16.5"章节；881 全量测试通过，新增 5 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4 修复区域无回归）；M16.6 营养数值一致性修复已 push（commit d37cd4e，tag v0.18.5，三路径 actualCalories 计算统一，详见下方"M16.6"章节；895 全量测试通过，新增 15 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4/M16.5 修复区域无回归）；M16.7 Web Interface Guidelines 全 UI 审查修复已发布 v0.18.6（commit 4a4f7a7，tag v0.18.6，17 文件 195 问题修复，详见下方"M16.7"章节；911 全量测试通过，新增 15 个 TDD 测试 + 1 个源码扫描测试；6 条硬约束全部满足；M16.2~M16.6 修复区域无回归）；**M16.8 营养值不一致深度修复已完成（commit 499e820，bump v0.18.7+26 但未打 tag，详见下方"M16.8"章节；923 全量测试通过，新增 ~12 个 TDD 测试；6 条硬约束全部满足；M16.2~M16.7 修复区域无回归；根因 A 查库命中分支忽略 AI 估算 + 根因 B 品类校准 4 项全替换 + 根因 C 改菜名重试绕过统一写库，三个根因全部修复）**；**M16.9 减小库值重要性——AI 绝对优先已完成（待 push + tag v0.18.8，详见下方"M16.9"章节；928 全量测试通过，新增 6 个 TDD 测试；6 条硬约束全部满足；M16.2~M16.8 修复区域无回归；用户要求"把库值在这个项目中的重要性占比减小很多"，查库命中分支重写为 AI 绝对优先 + sanity check 兜底，复合菜残留路径同步修复）**；**M17 App 图标重设计已完成（待 push + tag v0.18.9，详见下方"M17"章节；用户反馈"图标实在太丑"要求重新设计；M3 抽象几何（同心圆环+中心圆点）+ 紫橙双色渐变；Skill 协作 brainstorming → canvas-design → 手工 vector drawable；6 条硬约束全部满足；flutter analyze No issues）**。仓库已改 public，匿名访问 GitHub API 200 OK（M16.8 期间 GitHub API 匿名限流致 smoke test 失败，环境问题非回归）。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
-**当前分支**：trae/agent-wX1X6Q（HEAD = 即将 bump v0.18.9 commit；远端 origin/trae/agent-wX1X6Q 停在 8971d79 / 3320828（v0.18.8 已 push + tag）；M17 图标重设计 commit 待 push；tag v0.18.8 指向 3320828；v0.18.6 指向 4a4f7a7；v0.18.5 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb；v0.18.7 未打 tag（M16.8 中间状态，跳过）；**待用户确认后 push + tag v0.18.9**）
+**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复已 push（commit 221d319，4 层修复详见下方"M16.3"章节）；M16.4 深度审查修复已发布 v0.18.3 GitHub Release（8 个 commit 93528fe~85e8c64，4 P1 + 4 P2 + 3 P3 共 11 个修复，详见下方"M16.4"章节；876 全量测试通过，新增 20 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3 修复区域无回归；GitHub Actions workflow 自动 build APK 并上传 release，run id 28733040721 conclusion=success；app-release.apk 78.55 MB + app-debug.apk 175.10 MB）；M16.5 复合菜 UI 全 0 修复已 push（commit f00333e，P0 修复 lookupCompositeDish 命中 0 值条目致 UI 全 0，详见下方"M16.5"章节；881 全量测试通过，新增 5 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4 修复区域无回归）；M16.6 营养数值一致性修复已 push（commit d37cd4e，tag v0.18.5，三路径 actualCalories 计算统一，详见下方"M16.6"章节；895 全量测试通过，新增 15 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4/M16.5 修复区域无回归）；M16.7 Web Interface Guidelines 全 UI 审查修复已发布 v0.18.6（commit 4a4f7a7，tag v0.18.6，17 文件 195 问题修复，详见下方"M16.7"章节；911 全量测试通过，新增 15 个 TDD 测试 + 1 个源码扫描测试；6 条硬约束全部满足；M16.2~M16.6 修复区域无回归）；**M16.8 营养值不一致深度修复已完成（commit 499e820，bump v0.18.7+26 但未打 tag，详见下方"M16.8"章节；923 全量测试通过，新增 ~12 个 TDD 测试；6 条硬约束全部满足；M16.2~M16.7 修复区域无回归；根因 A 查库命中分支忽略 AI 估算 + 根因 B 品类校准 4 项全替换 + 根因 C 改菜名重试绕过统一写库，三个根因全部修复）**；**M16.9 减小库值重要性——AI 绝对优先已完成（待 push + tag v0.18.8，详见下方"M16.9"章节；928 全量测试通过，新增 6 个 TDD 测试；6 条硬约束全部满足；M16.2~M16.8 修复区域无回归；用户要求"把库值在这个项目中的重要性占比减小很多"，查库命中分支重写为 AI 绝对优先 + sanity check 兜底，复合菜残留路径同步修复）**；**M17 App 图标重设计已 commit（a540aae，未单独 tag，与 M18 合并发布 v0.19.0，详见下方"M17"章节；用户反馈"图标实在太丑"要求重新设计；M3 抽象几何（同心圆环+中心圆点）+ 紫橙双色渐变；Skill 协作 brainstorming → canvas-design → 手工 vector drawable；6 条硬约束全部满足；flutter analyze No issues）**；**M18 多菜场景 AI 推理可见性 + 三路径一致性已完成（待 push + tag v0.19.0，详见下方"M18"章节；用户要求"严谨一点进行复合菜和多食物的改进"；942 全量测试通过，新增 14 个 TDD 测试（4 computeCompositeLookupHit + 2 shouldUpdateFoodItem 阈值 + 5 multi_dish_page UI + 3 offline_queue 集成）；6 条硬约束全部满足；M16.2~M17 修复区域无回归；icon_assets_test 同步更新为 M17 同心圆环+中心圆点设计）**。仓库已改 public，匿名访问 GitHub API 200 OK（M16.8 期间 GitHub API 匿名限流致 smoke test 失败，环境问题非回归）。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
+**当前分支**：trae/agent-wX1X6Q（HEAD = 即将 bump v0.19.0 commit；远端 origin/trae/agent-wX1X6Q 停在 8971d79 / 3320828（v0.18.8 已 push + tag）；M17 图标重设计 commit a540aae 已本地，未单独 push/tag（与 M18 合并发布 v0.19.0）；M18 多菜 AI 可见性 commit 待创建；tag v0.18.8 指向 3320828；v0.18.6 指向 4a4f7a7；v0.18.5 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb；v0.18.7 / v0.18.9 均未单独打 tag（中间状态跳过，直接 bump v0.19.0）；**待用户确认后 push + tag v0.19.0**）
 
 **待用户执行的收尾项**（沙箱无法完成）：
 1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）
@@ -1774,11 +1774,121 @@ AI 兜底哨兵路径（foodItemId=0）下，三条识别路径对 `meal_log.act
 
 ### 待用户执行
 
-1. 装 v0.18.9 APK 验证图标在启动器中显示正常：
+1. 装 v0.19.0 APK 验证图标在启动器中显示正常：
    - 不同 OEM 蒙版（圆/方/圆角方/squircle）下前景不被裁切
    - 暗色模式 + Android 13+ 主题图标染色后前景仍可识别
    - 48dp 小尺寸下圆环+圆点骨架清晰
 2. 验证 splash 启动过渡平滑（图标色与 splash_background 不冲突）
+3. 验证多菜场景识别流程改善（M18）：
+   - 拍照识别含 2-3 道菜的复合场景，查看每道菜的 AI 估算卡片（reasoning + confidence + source badge + AI vs 库值对比）
+   - confidence<0.6 时显示"待确认"红字提示
+   - 复合菜（主菜+附加菜）查库命中时，per100g 应为 AI 反算值（不再 0 占位）
+   - 离线回补场景的复合菜应走 AI 优先路径（与前台一致）
+
+---
+
+## M18 多菜场景 AI 推理可见性 + 三路径一致性（2026-07-05）—— v0.19.0
+
+**触发**：用户反馈"在比较复杂的场景比如有好几个食物的情况下，没有AI推理的过程，精准度我也有一定程度的怀疑，是不是正确安装AI的计算提交并且显示的，我希望还能继续改进，严谨仔细，一定不能出问题" + "继续按照前面的想法进行复合菜和多食物的改进，严谨一点"。
+
+**核心改进**（用户三个诉求 → 三个改进方向）：
+1. **AI 可见性**：multi_dish_page 新增完整 AI 估算卡片（reasoning + confidence + source badge + AI vs 库值对比），让用户看见 AI 推理过程
+2. **三路径一致性**：抽取复合菜 AI 优先逻辑为公共方法 `CalibratedNutritionCalculator.computeCompositeLookupHit`，offline_queue_controller 接入，三路径行为统一
+3. **提高 AI 优先值**：复合菜 per100g 从 0 占位改为 AI 反算值（让 AI 估算进入食物库）+ 单品 shouldUpdateFoodItem 从 diffRatio > 5% 改为 > 0（任意差异都触发更新）
+
+### 实现（4 个 Task，TDD 严格循环）
+
+#### Task 1: 公共方法 + 阈值调整 + 三路径重构（RED → GREEN → verify）
+- **RED**：6 个新测试（4 个 computeCompositeLookupHit + 2 个 shouldUpdateFoodItem 阈值）
+  - `test/features/calibrated_nutrition_calculator_test.dart` L727-893
+- **GREEN**：实现 + 重构
+  - `lib/features/recognize/calibrated_nutrition_calculator.dart`
+    - L104: `shouldUpdateFoodItem: diffRatio > 0.05` → `diffRatio > 0`（任意差异都触发更新）
+    - L156-207: 新增 `computeCompositeLookupHit` 静态方法
+      - 入参：`aiFallback` (NutritionResult) + `servingG` + `mid` (estimatedWeightGMid)
+      - 反算：`per100Ratio = 100.0 / mid`（基于 mid，硬约束 4）
+      - sanity check：`aiPer100Calories ∈ [0, 900]` 才采用 AI 值（M16.9 不变量保留）
+      - 返回 `CalibratedNutrition`（foodItemId=0 哨兵 + shouldUpdateFoodItem=true）
+      - 防除零：mid <= 0 返回 null
+  - `lib/features/recognize/multi_dish_page.dart`
+    - L383-397: `_computeCompositeLookupHitCalibrated` 改为委托公共方法
+    - L699-757: `_recordAll` 复合菜分支 per100g 从 0 改为 AI 反算值（`useAiPer100` 逻辑）
+  - `lib/features/offline/offline_queue_controller.dart`
+    - L375-430: "无包装 / 包装换算宏量全 0" else 分支，插入 `computeCompositeLookupHit` 调用
+    - AI 有效 → per100g 用 AI 反算值 + actualXxx 用 AI 估算
+    - AI 无效 / mid=0 / 无 AI 估算 → 走原组分累加兜底（per100g=0, actual=composite）
+- **verify**：35 个测试通过（含 6 个新测试 + M16.9 旧测试断言更新）
+  - M16.9 旧测试 `multi_dish_page_test.dart` L547: per100g 从 `0` 改为 `closeTo(250, 0.5)`（AI 反算值）
+
+#### Task 2: multi_dish_page AI 估算卡片 UI（RED + GREEN）
+- **RED**：5 个 UI 测试
+  - `test/features/multi_dish_page_test.dart` L656-901 + `pumpAiEstimateCardPage` helper
+  - 测试覆盖：AI 估算卡片标题 + confidence<0.6 显示"待确认" + source badge AI 哨兵/库命中/AI 优先 + reasoning 折叠 + AI vs 库值对比
+- **GREEN**：实现 `_buildAiEstimateCard` + 辅助方法
+  - `lib/features/recognize/multi_dish_page.dart` L309-312: 营养素行后追加 `_buildAiEstimateCard` 调用
+  - L403-563: 新增 5 个方法
+    - `_buildAiEstimateCard`：标题行（icon + "AI 估算" + confidence + source badge）+ AI vs 库值对比（命中时）+ reasoning 折叠面板
+    - `_buildSourceBadge`：AI 哨兵（紫 "AI 兜底"）/ 库命中（蓝 "库 + AI 校准"）/ AI 优先（绿 "AI 优先"）
+    - `_buildAiVsDbComparison`：AI vs 库值热量/蛋白/脂肪/碳水对比行
+    - `_buildReasoningExpansionTile`：默认折叠，点击展开 AI 推理过程
+    - `_isAiValid`：sanity check（AI per100g ∈ [0, 900]）
+
+#### Task 3: offline_queue 复合菜集成测试（3 测试）
+- `test/features/offline_queue_composite_test.dart` L225-353 追加 3 个测试 + L464-527 新增 2 个 FakeProvider
+  - `AI 有效时复合菜 per100g 用 AI 反算值`：mid=180（= 组分 150+30 sum 不触发缩放）+ estimatedCalories=340（4*35+9*20+4*5=340 Atwater 自洽不触发修正）
+  - `mid=0 防除零走组分累加兜底`：mid=0 时 computeCompositeLookupHit 返回 null，走原 per100g=0 路径
+  - `无 AI 估算走组分累加兜底（向后兼容）`：estimatedCalories=null 时走原路径
+- 测试数据设计要点：避开 RecognitionPostProcessor 修正干扰
+  - PostProcessor 会修正 estimatedCalories（Atwater 自洽）+ 缩放组分（sum vs mid 偏差>15%）
+  - 故 mid=180（= 组分 sum 不缩放）+ calories=340（Atwater 自洽不修正）
+
+#### Task 4: 全量回归 + 发布（v0.19.0+29）
+- `flutter analyze` → No issues found
+- `flutter test --exclude-tags smoke` → 942 passed, 0 failed（新增 14 个 TDD 测试）
+- 6 条硬约束全部满足（详见下方"M18 硬约束复检"）
+- `icon_assets_test.dart` 同步更新为 M17 同心圆环+中心圆点设计（M15 遗留测试断言更新）
+- pubspec.yaml bump 0.18.9+28 → 0.19.0+29
+- HANDOFF.md 回填 M18 章节
+- commit + push + tag v0.19.0
+
+### M18 硬约束复检
+
+| 硬约束 | 复检结果 |
+|--------|----------|
+| 1. build.gradle.kts isMinifyEnabled=false + isShrinkResources=false | ✅ L62-63 |
+| 2. 写 meal_log 前调 upsertAiRecognized 替换哨兵 0 | ✅ recognize_page L99/L154 + multi_dish_page L897 + offline_queue L239/L302/L361/L399/L415 |
+| 3. AI 兜底三路径全覆盖（recognize_page / multi_dish_page / offline_queue_controller） | ✅ 5 个文件均含 upsertAiRecognized 调用 |
+| 4. per100g 反算基于 estimatedWeightGMid（不能用 servingG） | ✅ `per100Ratio = 100.0 / mid`（calibrated_nutrition_calculator.dart L48/L179） |
+| 5. SecureConfigStore 没有 instance 静态属性 | ✅ grep 无匹配 |
+| 6. initSentryAndRunApp 参数是命名参数 container: + app: | ✅ main.dart L69-74 + sentry_init.dart L15-18 |
+
+### M18 核心不变量
+
+- **复合菜 AI 优先 sanity check**：`aiPer100Calories ∈ [0, 900]` 才采用 AI 反算值（M16.9 不变量保留，M18 不放宽）
+  - AI 离谱（>900 或 <0）→ 走组分累加兜底，per100g=0 占位
+  - mid=0（防除零）→ 走组分累加兜底
+  - 无 AI 估算（estimatedCalories=null/0）→ 走组分累加兜底（向后兼容）
+- **三路径行为统一**：recognize_page / multi_dish_page / offline_queue_controller 复合菜命中分支均调 `computeCompositeLookupHit`
+- **shouldUpdateFoodItem 阈值**：单品 diffRatio > 0（任意差异都触发更新，M16.9 的 5% 阈值过宽松）
+- **AI 可见性**：multi_dish_page 每道菜显示 AI 估算卡片（reasoning + confidence + source badge + AI vs 库值对比），confidence<0.6 显示"待确认"红字
+
+### M18 用户感知变化
+
+| 元素 | 旧版（v0.18.9） | 新版（v0.19.0） |
+|------|------|------|
+| 多菜场景 AI 推理可见性 | 无（仅显示营养素数值） | 完整 AI 估算卡片（reasoning + confidence + source badge + AI vs 库值对比） |
+| 复合菜 per100g（查库命中 + AI 有效） | 0 占位（实际热量只在 meal_log） | AI 反算值（进入食物库，未来查库可命中） |
+| 单品 shouldUpdateFoodItem 阈值 | diffRatio > 5%（小差异忽略） | diffRatio > 0（任意差异都触发更新） |
+| 离线回补复合菜 AI 优先 | 未接入（走组分累加兜底） | 接入 computeCompositeLookupHit（与前台一致） |
+| confidence<0.6 提示 | 无 | 红字"待确认"提示 |
+
+### 待用户执行
+
+1. 装 v0.19.0 APK 验证多菜场景识别流程改善：
+   - 拍照识别含 2-3 道菜的复合场景，查看每道菜的 AI 估算卡片
+   - confidence<0.6 时显示"待确认"红字
+   - 复合菜查库命中时，per100g 应为 AI 反算值（食物库未来可命中）
+2. 验证离线回补场景的复合菜走 AI 优先路径（与前台一致）
 
 ---
 

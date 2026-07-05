@@ -221,6 +221,135 @@ void main() {
     expect(compositeItem.caloriesPer100g, closeTo(250, 0.5));
     expect(compositeItem.proteinPer100g, greaterThan(0)); // 包装路径蛋白/脂肪/碳水也按比例反算
   });
+
+  // ============================================================
+  // M18 Task 3: offline_queue 复合菜命中分支 AI 优先集成测试（3 个）
+  // 验证 offline_queue_controller 复合菜命中分支与 multi_dish_page 行为一致：
+  // - AI 有效（per100g ∈ [0, 900]）→ 用 AI 整菜估算记 meal_log + per100g 用 AI 反算值
+  // - AI mid=0 防除零 → 用组分累加库值兜底 + per100g=0
+  // - 无 AI 估算（旧 prompt）→ 用组分累加（向后兼容）+ per100g=0
+  //
+  // 测试数据设计（避免 PostProcessor 修正干扰）：
+  // - mid = 组分 sum（不触发组分缩放）
+  // - estimatedCalories 与 Atwater 自洽（4p+9f+4c，不触发 calories 修正）
+  // ============================================================
+
+  test('M18: offline_queue 复合菜命中 + AI 有效 → 用 AI 整菜估算（与 multi_dish_page 一致）',
+      () async {
+    final pendingRepo = PendingRecognitionRepository(db);
+    final imgPath = await writeFakeImage('composite_ai_valid');
+    await pendingRepo.enqueue(
+      imagePath: imgPath,
+      mealType: 'lunch',
+      date: '2026-07-02',
+      promptVersion: 'v1.10',
+    );
+
+    final controller = OfflineQueueController(
+      db: db,
+      visionProvider: _FakeCompositeAiValidProvider(),
+      nutritionLookup: lookup,
+    );
+    await controller.processPending();
+
+    final mealLogs = await db.select(db.mealLogs).get();
+    expect(mealLogs.length, 1);
+
+    // AI 有效：estimatedCalories=340, mid=180 → aiPer100=188.9（有效 ∈ [0, 900]）
+    // actualServingG = 组分 sum = 180g（mid=sum 不缩放）
+    // actualCalories = 340 * 180/180 = 340（AI 估算，与 multi_dish_page 一致）
+    expect(mealLogs.first.actualCalories, closeTo(340, 0.5),
+        reason: 'M18: AI 有效时用 AI 整菜估算（340），不用组分累加库值（~527）');
+    expect(mealLogs.first.actualProteinG, closeTo(35, 0.5),
+        reason: 'actualProteinG 用 AI 估算值（35）');
+
+    // food_item 的 per100g 应为 AI 反算值（188.9），不是 0 占位
+    final foodItems = await db.select(db.foodItems).get();
+    final compositeItem = foodItems.firstWhere(
+      (f) => f.name == '宫保鸡丁',
+      orElse: () => throw StateError('宫保鸡丁 food_item 未创建'),
+    );
+    expect(compositeItem.caloriesPer100g, closeTo(188.9, 0.5),
+        reason: 'M18: per100g 用 AI 反算值（340 * 100 / 180 ≈ 188.9），'
+            '不再 0 占位');
+  });
+
+  test('M18: offline_queue 复合菜命中 + AI mid=0 防除零 → 用组分累加库值兜底',
+      () async {
+    final pendingRepo = PendingRecognitionRepository(db);
+    final imgPath = await writeFakeImage('composite_mid_zero');
+    await pendingRepo.enqueue(
+      imagePath: imgPath,
+      mealType: 'lunch',
+      date: '2026-07-02',
+      promptVersion: 'v1.10',
+    );
+
+    final controller = OfflineQueueController(
+      db: db,
+      visionProvider: _FakeCompositeMidZeroProvider(),
+      nutritionLookup: lookup,
+    );
+    await controller.processPending();
+
+    final mealLogs = await db.select(db.mealLogs).get();
+    expect(mealLogs.length, 1);
+
+    // mid=0 防除零：computeCompositeLookupHit 返回 null，走组分累加兜底
+    // 组分不缩放（mid=0 不触发缩放）：鸡肉 150g + 花生 30g
+    // composite.calories = 150×167/100 + 30×567/100 + 油 12×889/100
+    //                    = 250.5 + 170.1 + 106.68 = 527.28
+    expect(mealLogs.first.actualCalories, closeTo(527.28, 1.0),
+        reason: 'M18: mid=0 防除零时用组分累加库值兜底（~527）');
+
+    // food_item 的 per100g 应为 0（兜底占位，AI 无效不进库）
+    final foodItems = await db.select(db.foodItems).get();
+    final compositeItem = foodItems.firstWhere(
+      (f) => f.name == '宫保鸡丁',
+      orElse: () => throw StateError('宫保鸡丁 food_item 未创建'),
+    );
+    expect(compositeItem.caloriesPer100g, 0,
+        reason: 'M18: mid=0 防除零时 per100g=0 占位（兜底，AI 不进库）');
+  });
+
+  test('M18: offline_queue 复合菜命中 + 无 AI 估算 → 用组分累加（向后兼容旧 prompt）',
+      () async {
+    final pendingRepo = PendingRecognitionRepository(db);
+    final imgPath = await writeFakeImage('composite_no_ai');
+    await pendingRepo.enqueue(
+      imagePath: imgPath,
+      mealType: 'lunch',
+      date: '2026-07-02',
+      promptVersion: 'v1.0',
+    );
+
+    // _FakeCompositeProvider：estimatedCalories=null（旧 prompt）
+    final controller = OfflineQueueController(
+      db: db,
+      visionProvider: _FakeCompositeProvider(),
+      nutritionLookup: lookup,
+    );
+    await controller.processPending();
+
+    final mealLogs = await db.select(db.mealLogs).get();
+    expect(mealLogs.length, 1);
+
+    // 无 AI 估算：用组分累加库值（与 M18 前行为一致，向后兼容）
+    // 组分缩放至 mid=250g：鸡肉 208.3g + 花生 41.7g
+    // composite.calories = 208.3×167/100 + 41.7×567/100 + 油 12×889/100
+    //                    = 347.86 + 236.44 + 106.68 = 690.98
+    expect(mealLogs.first.actualCalories, closeTo(690.98, 1.0),
+        reason: 'M18: 无 AI 估算时用组分累加库值（~691），向后兼容');
+
+    // food_item 的 per100g 应为 0（无 AI 估算不进库）
+    final foodItems = await db.select(db.foodItems).get();
+    final compositeItem = foodItems.firstWhere(
+      (f) => f.name == '宫保鸡丁',
+      orElse: () => throw StateError('宫保鸡丁 food_item 未创建'),
+    );
+    expect(compositeItem.caloriesPer100g, 0,
+        reason: 'M18: 无 AI 估算时 per100g=0 占位（向后兼容）');
+  });
 }
 
 /// 模拟识别 500ml 食用油（包装标签 + 液体类别，触发密度换算）
@@ -328,6 +457,71 @@ class _FakeCompositePackageProvider implements VisionProvider {
       packageServingKcal: 250,
       packageTotalG: 300,
       packageServingsPerPack: 3,
+    );
+  }
+}
+
+/// M18 Task3 测试用：复合菜（宫保鸡丁）+ AI 整菜估算有效
+/// mid=180（= 组分 150+30 sum，不触发缩放）
+/// estimatedCalories=340, protein=35, fat=20, carbs=5（Atwater 自洽：4*35+9*20+4*5=340）
+class _FakeCompositeAiValidProvider implements VisionProvider {
+  @override
+  String get name => 'FakeCompositeAiValid';
+
+  @override
+  String get promptVersion => 'v1.10';
+
+  @override
+  Future<VisionRecognitionResult> recognize(String imageBase64) async {
+    return const VisionRecognitionResult(
+      dishName: '宫保鸡丁',
+      estimatedWeightGLow: 160,
+      estimatedWeightGMid: 180, // = 组分 sum，不触发 PostProcessor 组分缩放
+      estimatedWeightGHigh: 200,
+      foodComponents: [
+        FoodComponent(name: '鸡肉', estimatedG: 150),
+        FoodComponent(name: '花生', estimatedG: 30),
+      ],
+      cookingMethod: 'stir-fry',
+      isSingleItem: false,
+      confidence: 0.9,
+      promptVersion: 'v1.10',
+      estimatedCalories: 340, // Atwater 自洽：4*35+9*20+4*5=340
+      estimatedProteinG: 35,
+      estimatedFatG: 20,
+      estimatedCarbsG: 5,
+    );
+  }
+}
+
+/// M18 Task3 测试用：复合菜（宫保鸡丁）+ mid=0 防除零兜底
+/// mid=0 时 computeCompositeLookupHit 返回 null，走组分累加兜底
+class _FakeCompositeMidZeroProvider implements VisionProvider {
+  @override
+  String get name => 'FakeCompositeMidZero';
+
+  @override
+  String get promptVersion => 'v1.10';
+
+  @override
+  Future<VisionRecognitionResult> recognize(String imageBase64) async {
+    return const VisionRecognitionResult(
+      dishName: '宫保鸡丁',
+      estimatedWeightGLow: 0,
+      estimatedWeightGMid: 0, // mid=0 防除零
+      estimatedWeightGHigh: 0,
+      foodComponents: [
+        FoodComponent(name: '鸡肉', estimatedG: 150),
+        FoodComponent(name: '花生', estimatedG: 30),
+      ],
+      cookingMethod: 'stir-fry',
+      isSingleItem: false,
+      confidence: 0.9,
+      promptVersion: 'v1.10',
+      estimatedCalories: 340, // 任意值，mid=0 时 AI 路径返回 null
+      estimatedProteinG: 35,
+      estimatedFatG: 20,
+      estimatedCarbsG: 5,
     );
   }
 }

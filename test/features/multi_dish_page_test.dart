@@ -652,4 +652,250 @@ void main() {
     expect(meals.first.actualCalories, closeTo(225, 0.5),
         reason: 'AI 离谱时用组分累加库值兜底（鸡肉 225）');
   });
+
+  // ============================================================
+  // M18 Task 2: AI 估算卡片 UI 测试（5 个）
+  // 验证 multi_dish_page 新增 _buildAiEstimateCard 渲染：
+  // - 置信度百分比（<60% 红色警告）
+  // - 来源徽章（AI 优先 / 库匹配 / AI 估算）
+  // - AI vs 库值对比行（仅查库命中时显示）
+  // - reasoning 折叠面板（reasoning 非空时显示）
+  // ============================================================
+
+  /// M18 Task 2 helper：构建主菜查库命中 + AI 估算有效的 MultiDishPage
+  /// 用于复用渲染逻辑，避免每个测试都重复 pumpWidget 样板
+  Future<void> pumpAiEstimateCardPage(
+    WidgetTester tester, {
+    required VisionRecognitionResult mainDish,
+    required NutritionResult mainSingle,
+    required NutritionResult mainAiFallback,
+  }) async {
+    final container = ProviderContainer(overrides: [
+      recognize.databaseProvider.overrideWith((ref) async => db),
+    ]);
+    addTearDown(container.dispose);
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+        home: MultiDishPage(
+          mainDish: mainDish,
+          mainSingle: mainSingle,
+          mainAiFallback: mainAiFallback,
+          additionalItems: const [],
+          mealType: 'lunch',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+      'M18 Task2: AI 估算卡片显示置信度百分比（confidence=0.92 → "92%"）',
+      (tester) async {
+    const r = VisionRecognitionResult(
+      dishName: '番茄',
+      estimatedWeightGLow: 80,
+      estimatedWeightGMid: 100,
+      estimatedWeightGHigh: 120,
+      foodComponents: [],
+      cookingMethod: 'raw',
+      isSingleItem: true,
+      confidence: 0.92, // 高置信度
+      promptVersion: 'v1.10',
+      estimatedCalories: 18,
+      estimatedProteinG: 0.9,
+      estimatedFatG: 0.2,
+      estimatedCarbsG: 3.9,
+    );
+    final aiFallback = NutritionResult(
+      foodItemId: 0,
+      calories: 18,
+      proteinG: 0.9,
+      fatG: 0.2,
+      carbsG: 3.9,
+      oilG: 0,
+      source: NutritionSource.aiEstimate,
+    );
+
+    await pumpAiEstimateCardPage(
+      tester,
+      mainDish: r,
+      mainSingle: mainSingle,
+      mainAiFallback: aiFallback,
+    );
+
+    // M18：AI 估算卡片应显示置信度 92%
+    expect(find.textContaining('92%'), findsWidgets,
+        reason: 'M18: AI 估算卡片显示置信度 92%');
+  });
+
+  testWidgets(
+      'M18 Task2: 低置信度（confidence=0.45）时显示红色警告文本（"待确认"）',
+      (tester) async {
+    const r = VisionRecognitionResult(
+      dishName: '番茄',
+      estimatedWeightGLow: 80,
+      estimatedWeightGMid: 100,
+      estimatedWeightGHigh: 120,
+      foodComponents: [],
+      cookingMethod: 'raw',
+      isSingleItem: true,
+      confidence: 0.45, // 低置信度 < 60%
+      promptVersion: 'v1.10',
+      estimatedCalories: 18,
+      estimatedProteinG: 0.9,
+      estimatedFatG: 0.2,
+      estimatedCarbsG: 3.9,
+    );
+    final aiFallback = NutritionResult(
+      foodItemId: 0,
+      calories: 18,
+      proteinG: 0.9,
+      fatG: 0.2,
+      carbsG: 3.9,
+      oilG: 0,
+      source: NutritionSource.aiEstimate,
+    );
+
+    await pumpAiEstimateCardPage(
+      tester,
+      mainDish: r,
+      mainSingle: mainSingle,
+      mainAiFallback: aiFallback,
+    );
+
+    // M18：低置信度应显示警告文本（待确认 或 红色样式）
+    expect(find.textContaining('待确认'), findsOneWidget,
+        reason: 'M18: confidence < 0.6 时显示"待确认"警告');
+  });
+
+  testWidgets(
+      'M18 Task2: 查库命中 + AI 优先时显示"AI 优先"徽章',
+      (tester) async {
+    // 主菜查库命中（mainSingle.foodItemId > 0）+ AI 有效
+    // 库 per100g = 18（番茄），AI per100g = 20（500/100=20... 用 estimatedCalories=20）
+    // diffRatio > 0 → shouldUpdateFoodItem=true → "AI 优先"徽章
+    const r = VisionRecognitionResult(
+      dishName: '番茄',
+      estimatedWeightGLow: 80,
+      estimatedWeightGMid: 100,
+      estimatedWeightGHigh: 120,
+      foodComponents: [],
+      cookingMethod: 'raw',
+      isSingleItem: true,
+      confidence: 0.9,
+      promptVersion: 'v1.10',
+      estimatedCalories: 20, // AI 估算 per100g=20（与库 18 偏差 11%）
+      estimatedProteinG: 0.9,
+      estimatedFatG: 0.2,
+      estimatedCarbsG: 3.9,
+    );
+    final aiFallback = NutritionResult(
+      foodItemId: 0,
+      calories: 20,
+      proteinG: 0.9,
+      fatG: 0.2,
+      carbsG: 3.9,
+      oilG: 0,
+      source: NutritionSource.aiEstimate,
+    );
+
+    await pumpAiEstimateCardPage(
+      tester,
+      mainDish: r,
+      mainSingle: mainSingle,
+      mainAiFallback: aiFallback,
+    );
+
+    // M18：查库命中 + AI 优先时应显示"AI 优先"徽章
+    expect(find.text('AI 优先'), findsOneWidget,
+        reason: 'M18: 查库命中 + AI 有效时显示"AI 优先"徽章');
+  });
+
+  testWidgets(
+      'M18 Task2: 查库命中时显示 AI vs 库值对比行（含 "AI:" "库:" "偏差"）',
+      (tester) async {
+    // 主菜查库命中 + AI 有效，对比行应显示
+    const r = VisionRecognitionResult(
+      dishName: '番茄',
+      estimatedWeightGLow: 80,
+      estimatedWeightGMid: 100,
+      estimatedWeightGHigh: 120,
+      foodComponents: [],
+      cookingMethod: 'raw',
+      isSingleItem: true,
+      confidence: 0.9,
+      promptVersion: 'v1.10',
+      estimatedCalories: 20, // AI per100g=20
+      estimatedProteinG: 0.9,
+      estimatedFatG: 0.2,
+      estimatedCarbsG: 3.9,
+    );
+    final aiFallback = NutritionResult(
+      foodItemId: 0,
+      calories: 20,
+      proteinG: 0.9,
+      fatG: 0.2,
+      carbsG: 3.9,
+      oilG: 0,
+      source: NutritionSource.aiEstimate,
+    );
+
+    await pumpAiEstimateCardPage(
+      tester,
+      mainDish: r,
+      mainSingle: mainSingle,
+      mainAiFallback: aiFallback,
+    );
+
+    // M18：查库命中时显示 AI vs 库值对比行
+    // mid=100，aiPer100 = 20*100/100 = 20，dbPer100 = 18*100/100 = 18
+    expect(find.textContaining('AI:'), findsOneWidget,
+        reason: 'M18: 对比行包含 "AI:"');
+    expect(find.textContaining('库:'), findsOneWidget,
+        reason: 'M18: 对比行包含 "库:"');
+    expect(find.textContaining('偏差'), findsOneWidget,
+        reason: 'M18: 对比行包含 "偏差"');
+  });
+
+  testWidgets(
+      'M18 Task2: reasoning 非空时显示 AI 推理过程折叠面板',
+      (tester) async {
+    const r = VisionRecognitionResult(
+      dishName: '番茄',
+      estimatedWeightGLow: 80,
+      estimatedWeightGMid: 100,
+      estimatedWeightGHigh: 120,
+      foodComponents: [],
+      cookingMethod: 'raw',
+      isSingleItem: true,
+      confidence: 0.9,
+      promptVersion: 'v1.10',
+      estimatedCalories: 18,
+      estimatedProteinG: 0.9,
+      estimatedFatG: 0.2,
+      estimatedCarbsG: 3.9,
+      reasoning: '识别为番茄，红色圆形，重量约 100g，含水量高，热量较低。',
+    );
+    final aiFallback = NutritionResult(
+      foodItemId: 0,
+      calories: 18,
+      proteinG: 0.9,
+      fatG: 0.2,
+      carbsG: 3.9,
+      oilG: 0,
+      source: NutritionSource.aiEstimate,
+    );
+
+    await pumpAiEstimateCardPage(
+      tester,
+      mainDish: r,
+      mainSingle: mainSingle,
+      mainAiFallback: aiFallback,
+    );
+
+    // M18：reasoning 非空时显示 AI 推理过程折叠面板
+    expect(find.text('AI 推理过程'), findsOneWidget,
+        reason: 'M18: reasoning 非空时显示折叠面板标题');
+  });
 }
