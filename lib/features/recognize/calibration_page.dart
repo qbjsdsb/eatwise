@@ -462,8 +462,11 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
         calibrated.actualCarbsG,
       );
     }
-    // 查库命中但无 aiFallback（旧调用方）：DB per100g 已是真实值，按 servingG/mid 比例换算
+    // M16.9：查库命中但无 aiFallback——此分支在 M16.8 后不应触发
+    // （主路径 recognize_page L466-467 / L663-664 已传 aiFallbackNutrition）
+    // 兜底：按 servingG/mid 比例换算库值（保留原 ratio 逻辑）
     // 防除零：AI 返回 estimatedWeightGMid <= 0 时 ratio=1（用原值，不按比例换算）
+    // 若未来有调用方未传 aiFallbackNutrition，此处仍是安全兜底
     final mid = r.estimatedWeightGMid;
     final ratio = mid > 0 ? servingG / mid : 1.0;
     return (
