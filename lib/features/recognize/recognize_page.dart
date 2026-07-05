@@ -438,6 +438,9 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
             state.recognitionResult!,
             mealType: state.mealType,
             imagePath: controller.current.imagePath,
+            // M16.8：传 AI 兜底估算，改菜名重试命中后走差异检测（与主路径一致）
+            aiFallbackNutrition:
+                controller.aiFallbackNutrition(state.recognitionResult!),
           );
           return;
         }
@@ -459,6 +462,9 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
         // 改菜名支持：注入 NutritionLookup 供 calibration_page 调用（5 级模糊兜底 + OFF 云查）
         final nutritionLookup = await ref.read(nutritionLookupProvider.future);
         if (!mounted) return;
+        // M16.8：计算 AI 兜底估算，传给 CalibrationPage 让查库命中分支预览走差异检测
+        final mainAiFallback =
+            controller.aiFallbackNutrition(state.recognitionResult!);
         Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => CalibrationPage(
@@ -468,6 +474,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
               foodItemRepo: foodItemRepo,
               suggestedServingG: suggestedServingG,
               nutritionLookup: nutritionLookup,
+              aiFallbackNutrition: mainAiFallback,
               onConfirm:
                   (
                     servingG,
@@ -487,6 +494,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
                       mealRepo: mealRepo,
                       result: result,
                       singleNutrition: state.singleNutrition,
+                      aiFallbackNutrition: mainAiFallback,
                       compositeNutrition: state.compositeNutrition,
                       mealType:
                           state.mealType, // Sprint 2 T0：从 controller state 读餐次
@@ -551,6 +559,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
     required String mealType,
     String? imagePath,
     String? currentName,
+    NutritionResult? aiFallbackNutrition,
   }) async {
     if (!mounted) return;
     // currentName：用户改菜名重试后透传，让弹窗显示用户最新输入而非原始识别名
@@ -633,6 +642,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
         mealType: mealType,
         imagePath: imagePath,
         currentName: newDishName,
+        aiFallbackNutrition: aiFallbackNutrition,
       );
       return;
     }
@@ -658,6 +668,8 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
           singleNutrition: nutrition,
           foodItemRepo: foodItemRepo,
           suggestedServingG: suggestedServingG,
+          // M16.8：传 AI 兜底估算，让查库命中分支预览走差异检测（与记录同源）
+          aiFallbackNutrition: aiFallbackNutrition,
           onConfirm:
               (
                 servingG,
@@ -668,21 +680,32 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
                 componentsSnapshot,
               }) async {
                 final mealRepo = await ref.read(mealLogRepoProvider.future);
-                await mealRepo.insertMealLog(
-                  date: todayYmd(),
-                  mealType: mealType,
-                  foodItemId: nutrition!.foodItemId,
-                  actualServingG: servingG,
-                  actualCalories: calories,
-                  actualProteinG: protein,
-                  actualFatG: fat,
-                  actualCarbsG: carbs,
-                  originalImagePath: imagePath,
+                final foodRepo = await ref.read(
+                  foodItemRepoProvider.future,
                 );
-                if (mounted) {
+                // M16.8：改调 writeCalibratedMealLog 统一写库路径，
+                // 补齐 recognitionConfidence + componentsSnapshotJson 字段
+                // （原直接调 insertMealLog 缺这两字段，致 meal_log 记录不完整）
+                final actualCalories = await RecognizePage.writeCalibratedMealLog(
+                  foodRepo: foodRepo,
+                  mealRepo: mealRepo,
+                  result: resultForCalibration,
+                  singleNutrition: nutrition,
+                  aiFallbackNutrition: aiFallbackNutrition,
+                  compositeNutrition: null,
+                  mealType: mealType,
+                  servingG: servingG,
+                  calories: calories,
+                  protein: protein,
+                  fat: fat,
+                  carbs: carbs,
+                  componentsSnapshot: componentsSnapshot,
+                  imagePath: imagePath,
+                );
+                if (mounted && actualCalories != null) {
                   showAppToast(
                     context,
-                    '已记录：${calories.toStringAsFixed(0)} kcal',
+                    '已记录：${actualCalories.toStringAsFixed(0)} kcal',
                   );
                 }
               },

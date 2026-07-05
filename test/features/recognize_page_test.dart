@@ -347,4 +347,82 @@ void main() {
     final foods = await db.foodItems.select().get();
     expect(foods.first.caloriesPer100g, 80, reason: '偏差小时库 per100g 不更新');
   });
+
+  // M16.8 Task 8：验证 writeCalibratedMealLog 记录 recognitionConfidence + componentsSnapshotJson
+  // 契约：_showNotFoundDialog 改菜名重试路径改调 writeCalibratedMealLog 后，
+  // meal_log 必须有 recognitionConfidence（来自 result.confidence）和 componentsSnapshotJson
+  // （来自 componentsSnapshot）。原 _showNotFoundDialog 直接调 mealRepo.insertMealLog 缺这两字段。
+  test(
+      'M16.8: writeCalibratedMealLog 查库命中时记录 recognitionConfidence + componentsSnapshotJson', () async {
+    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+          name: '番茄炒蛋',
+          defaultServingG: 100,
+          caloriesPer100g: 80,
+          proteinPer100g: 6,
+          fatPer100g: 10,
+          carbsPer100g: 12,
+          source: 'china_fct',
+          sourceVersion: 'test',
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+        ));
+
+    const r = VisionRecognitionResult(
+      dishName: '番茄炒蛋',
+      estimatedWeightGLow: 180,
+      estimatedWeightGMid: 200,
+      estimatedWeightGHigh: 220,
+      estimatedCalories: 170,
+      estimatedProteinG: 7,
+      estimatedFatG: 10,
+      estimatedCarbsG: 13,
+      foodComponents: [],
+      cookingMethod: 'stir_fry',
+      isSingleItem: true,
+      confidence: 0.85, // 识别置信度
+      promptVersion: 'v1.0',
+      foodCategory: 'solid',
+    );
+    final lookupHit = NutritionResult(
+      foodItemId: 1,
+      calories: 160,
+      proteinG: 6,
+      fatG: 10,
+      carbsG: 12,
+      oilG: 0,
+    );
+    final aiFallback = NutritionResult(
+      foodItemId: 0,
+      calories: 170,
+      proteinG: 7,
+      fatG: 10,
+      carbsG: 13,
+      oilG: 0,
+      source: NutritionSource.aiEstimate,
+    );
+    const componentsSnapshot = '[{"name":"番茄","weight":100}]';
+
+    await RecognizePage.writeCalibratedMealLog(
+      foodRepo: foodRepo,
+      mealRepo: mealRepo,
+      result: r,
+      singleNutrition: lookupHit,
+      aiFallbackNutrition: aiFallback,
+      compositeNutrition: null,
+      mealType: 'lunch',
+      servingG: 200,
+      calories: 160,
+      protein: 6,
+      fat: 10,
+      carbs: 12,
+      componentsSnapshot: componentsSnapshot,
+      imagePath: null,
+    );
+
+    final meals = await db.mealLogs.select().get();
+    expect(meals.length, 1, reason: '应记录一条 meal_log');
+    expect(meals.first.recognitionConfidence, closeTo(0.85, 0.001),
+        reason: '改菜名重试路径也应记录识别置信度（来自 result.confidence）');
+    expect(meals.first.componentsSnapshotJson, componentsSnapshot,
+        reason: '改菜名重试路径也应记录组分快照');
+  });
 }
