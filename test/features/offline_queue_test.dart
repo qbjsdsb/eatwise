@@ -183,6 +183,56 @@ void main() {
     expect(all.first.errorMessage, contains('识别异常'));
   });
 
+  // M16.4 P2-4: fire-and-forget processPending 上报 Sentry
+  // 原实现：start() 内 processPending().catchError((_) {}) 吞异常，DB 写失败 /
+  //   food_item upsert 失败无可观测性，线上问题无法定位。
+  // 修复：注入 onError 回调（生产默认 Sentry.captureException），outer catch +
+  //   catchError 都 best-effort 上报，保留 fire-and-forget 语义（不阻塞调用方）。
+  group('M16.4-P2-4 processPending 异常上报 onError（best-effort Sentry）', () {
+    test('processPending 内部异常时通过 onError 上报（生产默认 Sentry.captureException）',
+        () async {
+      // 先入队一条 pending（用 _ThrowingProvider 触发 per-item catch）
+      final imgPath = await writeFakeImage('p24_fail');
+      await pendingRepo.enqueue(
+          imagePath: imgPath, mealType: 'breakfast', date: '2026-07-02');
+
+      // 用 mock onError 回调捕获异常（生产环境默认 Sentry.captureException）
+      final errors = <Object>[];
+      final controller = OfflineQueueController(
+        db: db,
+        visionProvider: _ThrowingProvider(),
+        nutritionLookup: NutritionLookup(FoodItemRepository(db)),
+        onError: (e, st) => errors.add(e),
+      );
+
+      // 关闭 db：markFailed / listPending 抛异常 → 逃逸 per-item catch → outer catch → onError
+      await db.close();
+
+      await controller.processPending();
+
+      // 关键断言：异常通过 onError 上报（生产环境默认 Sentry.captureException）
+      expect(errors, isNotEmpty,
+          reason: 'processPending 内部异常应通过 onError 上报 Sentry，'
+              '否则 DB 写失败 / food_item upsert 失败无可观测性');
+    });
+
+    test('不传 onError 时向后兼容（默认走 Sentry.captureException，不崩溃）', () async {
+      // 旧调用方 / Provider 未传 onError（默认 Sentry.captureException）
+      final controller = OfflineQueueController(
+        db: db,
+        visionProvider: _FakeAppleProvider(),
+        nutritionLookup: NutritionLookup(FoodItemRepository(db)),
+      );
+
+      // 关闭 db 触发 outer catch（默认 onError 调 Sentry.captureException，
+      // 测试环境 Sentry 未初始化，SDK 内部 no-op 不抛异常）
+      await db.close();
+
+      // 不应抛异常（fire-and-forget 语义 + best-effort 上报）
+      await controller.processPending();
+    });
+  });
+
   // M11 修复：后台回补成功计入月度识别次数
   // 原实现：OfflineQueueController.processPending 成功 markDone 时不调
   //   incrementMonthlyCount，设置页"本月识别次数"偏低，T43 计数与实际 token 消耗脱节。

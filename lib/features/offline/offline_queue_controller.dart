@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 
 import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
@@ -31,6 +32,8 @@ class OfflineQueueController {
   // M11：月度识别计数（可选，与 recognize_controller 模式一致）
   // 后台回补成功时 +1，设置页"本月识别次数"与实际 token 消耗对齐
   final SecureConfigStore? _secureConfigStore;
+  // M16.4 P2-4：异常上报回调（生产默认 Sentry.captureException，测试可注入 mock）
+  final void Function(Object error, StackTrace? stackTrace) _onError;
   StreamSubscription<List<ConnectivityResult>>? _sub;
   bool _wasOffline = true;
   bool _processing = false;
@@ -42,12 +45,21 @@ class OfflineQueueController {
     required NutritionLookup nutritionLookup,
     CircuitBreaker? circuitBreaker, // T37：可选命名参数（与 recognize_controller 模式一致）
     SecureConfigStore? secureConfigStore, // M11：可选命名参数（月度计数）
+    // M16.4 P2-4：可选异常上报回调（默认 Sentry.captureException，便于测试 mock）
+    void Function(Object error, StackTrace? stackTrace)? onError,
   })  : _db = db,
         _visionProvider = visionProvider,
         _fallbackProvider = fallbackProvider,
         _nutritionLookup = nutritionLookup,
         _circuitBreaker = circuitBreaker,
-        _secureConfigStore = secureConfigStore;
+        _secureConfigStore = secureConfigStore,
+        _onError = onError ?? _defaultOnError;
+
+  /// 默认异常上报：best-effort 调 Sentry.captureException
+  /// Sentry 未初始化时 SDK 内部 no-op，安全（不会抛异常阻塞调用方）
+  static void _defaultOnError(Object error, StackTrace? stackTrace) {
+    Sentry.captureException(error, stackTrace: stackTrace);
+  }
 
   /// 启动监听（App 启动时调用）
   Future<void> start() async {
@@ -59,15 +71,21 @@ class OfflineQueueController {
       final isOnline = results.any((r) => r != ConnectivityResult.none);
       if (_wasOffline && isOnline) {
         // 网络恢复 → 触发回补（fire-and-forget，内部已 catch）
-        processPending().catchError((_) {});
+        // M16.4 P2-4：catchError 内 best-effort 上报 Sentry（保留可观测性）
+        processPending().catchError((e, st) {
+          _onError(e, st);
+        });
       }
       _wasOffline = !isOnline;
     });
 
     // 启动时若已在线也尝试一次（处理上次崩溃残留）
     // fire-and-forget：不 await，避免 pending 多时阻塞 app 启动序列数分钟
+    // M16.4 P2-4：catchError 内 best-effort 上报 Sentry（保留可观测性）
     if (!_wasOffline) {
-      processPending().catchError((_) {});
+      processPending().catchError((e, st) {
+        _onError(e, st);
+      });
     }
   }
 
@@ -415,8 +433,10 @@ class OfflineQueueController {
           await pendingRepo.markFailed(p.id, e.toString());
         }
       }
-    } catch (_) {
+    } catch (e, st) {
       // listPending / DB 异常：吞掉避免未观察异常，下次网络恢复重试
+      // M16.4 P2-4：best-effort 上报 Sentry（保留可观测性，不阻塞调用方）
+      _onError(e, st);
     } finally {
       _processing = false;
     }
