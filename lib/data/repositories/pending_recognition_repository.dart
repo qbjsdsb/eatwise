@@ -63,7 +63,10 @@ class PendingRecognitionRepository {
   }
 
   /// 标记失败 + 重试计数 +1
-  /// 重试 3 次后（retryCount 达到 3）标记 failed，不再重试
+  /// 重试 5 次后（retryCount 达到 5）标记 failed，不再重试
+  ///
+  /// M16.2：阈值 3→5，与断路器 _failureThreshold 一致，给更多重试机会
+  /// （原 3 次过严，30s 超时 3 次即永久 failed，用户记录丢失）
   ///
   /// [permanent] 为 true 时直接标记 failed（图片缺失等不可恢复错误），不增加重试计数
   Future<void> markFailed(int id, String errorMessage,
@@ -80,7 +83,7 @@ class PendingRecognitionRepository {
       return;
     }
     // 包事务：read-then-write 原子化，防"立即重试"与后台 workmanager 并发时
-    // 两者都读到 retryCount=2 都写 +1（本应一方写 failed），导致计数丢失 + 本应
+    // 两者都读到 retryCount=4 都写 +1（本应一方写 failed），导致计数丢失 + 本应
     // failed 的任务继续重试浪费 API 配额
     await _db.transaction(() async {
       final current = await (_db.pendingRecognitions.select()
@@ -90,8 +93,8 @@ class PendingRecognitionRepository {
       await (_db.pendingRecognitions.update()..where((p) => p.id.equals(id)))
           .write(
         PendingRecognitionsCompanion(
-          // retryCount 当前为 0/1/2 时下次还重试；当前为 2 时（即将变 3）标记 failed
-          status: current.retryCount >= 2
+          // M16.2：retryCount 当前为 0-3 时下次还重试；当前为 4 时（即将变 5）标记 failed
+          status: current.retryCount >= 4
               ? const Value('failed')
               : const Value('pending'),
           retryCount: Value(current.retryCount + 1),

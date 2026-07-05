@@ -288,7 +288,7 @@ void main() {
     expect(dinnerMeals.first.actualCalories, greaterThan(0));
   });
 
-  test('离线重试 3 次后标记 failed（不再 pending）', () async {
+  test('离线重试 5 次后标记 failed（不再 pending）', () async {
     final pendingRepo = PendingRecognitionRepository(db);
     final imgPath = await writeFakeImage('retry_test');
     final id = await pendingRepo.enqueue(
@@ -304,15 +304,13 @@ void main() {
       nutritionLookup: NutritionLookup(FoodItemRepository(db)),
     );
 
-    // 第 1 次：retryCount 0→1，仍 pending
-    await controller.processPending();
-    expect(await pendingRepo.countPending(), 1);
+    // 第 1-4 次：retryCount 0→4，仍 pending
+    for (var i = 1; i <= 4; i++) {
+      await controller.processPending();
+      expect(await pendingRepo.countPending(), 1);
+    }
 
-    // 第 2 次：retryCount 1→2，仍 pending
-    await controller.processPending();
-    expect(await pendingRepo.countPending(), 1);
-
-    // 第 3 次：retryCount 2→3，转 failed
+    // 第 5 次：retryCount 4→5，转 failed
     await controller.processPending();
     expect(await pendingRepo.countPending(), 0); // 不再 pending
 
@@ -320,7 +318,7 @@ void main() {
           ..where((p) => p.id.equals(id)))
         .getSingle();
     expect(row.status, 'failed');
-    expect(row.retryCount, 3);
+    expect(row.retryCount, 5);
   });
 }
 

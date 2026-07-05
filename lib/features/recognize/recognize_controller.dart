@@ -100,9 +100,11 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   // T43 月度识别计数（可选，向后兼容；识别成功后 +1，按月归档）
   final SecureConfigStore? _secureConfigStore;
 
-  // T23：本地限流（每分钟最多 2 次，间隔 30s，防误触连点烧 token）
+  // T23：本地限流（每分钟最多 4 次，间隔 15s，防误触连点烧 token）
+  // M16.2：30s→15s，原 30s 过严，识别失败后用户想立即重试需等 30s 体验差
+  // 15s 仍能防误触连点（连点间隔通常 <2s），但失败后重试更友好
   DateTime? _lastRecognizeTime;
-  static const _minInterval = Duration(seconds: 30);
+  static const _minInterval = Duration(seconds: 15);
 
   RecognizeController(
     this._primaryProvider,
@@ -169,7 +171,16 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
     XFile? xFile;
     try {
       final picker = ImagePicker();
-      xFile = await picker.pickImage(source: source, maxWidth: 1024, maxHeight: 1024);
+      // M16.2：加 imageQuality: 85（与后续 compress quality:85 一致）
+      // 原 image_picker 默认 imageQuality=100（不压缩），返回全质量大图，
+      // 后续 compress 又重编码一次，双重处理累积损失。显式设 85 让 image_picker
+      // 一次压缩到位，compress 只负责 EXIF 方向校正 + 格式统一
+      xFile = await picker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
       if (xFile == null) {
         // 用户取消选图：重置限流时间戳，不惩罚取消行为
         _lastRecognizeTime = null;
@@ -370,7 +381,8 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         additionalItems: additionalItems,
       );
     } catch (e) {
-      // T37 断路器：retryable 失败记录（连续 3 次 → open）
+      // T37 断路器：retryable 失败记录（连续 5 次 → open）
+      // M16.2：429 限流不计入失败（isRateLimit=true），仅模型故障/网络错误累计
       // best-effort：断路器操作本身异常不可逃逸 catch 块（否则吞掉原始错误，用户看到的是断路器异常）
       if (_circuitBreaker != null &&
           e is VisionRecognitionException &&
@@ -378,9 +390,14 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         try {
           final breakerState = await _circuitBreaker.state;
           if (breakerState == CircuitBreakerState.halfOpen) {
+            // halfOpen 失败：429 也走 recordHalfOpenFailure 重置 open 计时
+            // （halfOpen 期间任何失败都应回到 open，429 也不例外，但 recordHalfOpenFailure
+            //   不区分 isRateLimit，因为 halfOpen 是单次试探，失败即回 open 是设计）
             await _circuitBreaker.recordHalfOpenFailure();
           } else {
-            await _circuitBreaker.recordFailure();
+            // closed 状态失败：429 限流不计入失败计数（isRateLimit=true）
+            final isRateLimit = e.reason.contains('限流 429');
+            await _circuitBreaker.recordFailure(isRateLimit: isRateLimit);
           }
         } catch (_) {
           // best-effort：断路器持久化失败不逃逸
@@ -410,6 +427,9 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         }
       }
       state = state.copyWith(state: RecognizeState.error, errorMessage: e.toString());
+      // M16.2：识别失败后重置限流时间戳，不惩罚失败（让用户可立即重试）
+      // 原 30s 限流 + 失败不重置致用户失败后必须等 30s 才能重试，体验差
+      _lastRecognizeTime = null;
     }
   }
 

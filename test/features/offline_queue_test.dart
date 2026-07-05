@@ -87,38 +87,31 @@ void main() {
     expect(all.first.processedAt, isNotNull);
   });
 
-  test('markFailed 重试 3 次后标记 failed（不再 pending）', () async {
+  test('markFailed 重试 5 次后标记 failed（不再 pending）', () async {
     final imgPath = await writeFakeImage('a');
     final id = await pendingRepo.enqueue(
         imagePath: imgPath, mealType: 'breakfast', date: '2026-07-02');
 
-    // 第 1 次失败：retryCount 0→1，status 仍 pending
-    await pendingRepo.markFailed(id, '网络超时 1');
-    expect(await pendingRepo.countPending(), 1);
+    // 第 1-4 次失败：retryCount 0→4，status 仍 pending
+    for (var i = 1; i <= 4; i++) {
+      await pendingRepo.markFailed(id, '网络超时 $i');
+      expect(await pendingRepo.countPending(), 1);
+      var row = await (db.pendingRecognitions.select()
+            ..where((p) => p.id.equals(id)))
+          .getSingle();
+      expect(row.retryCount, i);
+      expect(row.status, 'pending');
+    }
+
+    // 第 5 次失败：retryCount 4→5，status 转 failed（不再 pending）
+    await pendingRepo.markFailed(id, '网络超时 5');
+    expect(await pendingRepo.countPending(), 0); // 不再 pending
     var row = await (db.pendingRecognitions.select()
           ..where((p) => p.id.equals(id)))
         .getSingle();
-    expect(row.retryCount, 1);
-    expect(row.status, 'pending');
-
-    // 第 2 次失败：retryCount 1→2，status 仍 pending
-    await pendingRepo.markFailed(id, '网络超时 2');
-    expect(await pendingRepo.countPending(), 1);
-    row = await (db.pendingRecognitions.select()
-          ..where((p) => p.id.equals(id)))
-        .getSingle();
-    expect(row.retryCount, 2);
-    expect(row.status, 'pending');
-
-    // 第 3 次失败：retryCount 2→3，status 转 failed（不再 pending）
-    await pendingRepo.markFailed(id, '网络超时 3');
-    expect(await pendingRepo.countPending(), 0); // 不再 pending
-    row = await (db.pendingRecognitions.select()
-          ..where((p) => p.id.equals(id)))
-        .getSingle();
-    expect(row.retryCount, 3);
+    expect(row.retryCount, 5);
     expect(row.status, 'failed');
-    expect(row.errorMessage, '网络超时 3');
+    expect(row.errorMessage, '网络超时 5');
   });
 
   test('processPending 图片不存在时 markFailed', () async {

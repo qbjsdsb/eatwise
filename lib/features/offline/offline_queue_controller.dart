@@ -106,18 +106,19 @@ class OfflineQueueController {
             break; // 断路器 open：跳过本批所有 pending，等恢复后下次 processPending 重试
           }
 
-          // 调视觉模型（30s 超时，避免单条卡死整队列）
+          // 调视觉模型（60s 超时，避免单条卡死整队列）
+          // M16.2：30→60s，与 qwen_vl_provider.dart 一致，复杂图识别需要时间
           // 主失败 → fallback（与 recognize_controller.dart 主备降级一致）
           VisionRecognitionResult result;
           try {
             result = await _visionProvider
                 .recognize(imageBase64)
-                .timeout(const Duration(seconds: 30));
+                .timeout(const Duration(seconds: 60));
           } catch (e) {
             if (_fallbackProvider == null) rethrow;
             result = await _fallbackProvider
                 .recognize(imageBase64)
-                .timeout(const Duration(seconds: 30));
+                .timeout(const Duration(seconds: 60));
           }
 
           // T37 断路器：视觉调用成功记录成功（halfOpen → closed）
@@ -152,8 +153,11 @@ class OfflineQueueController {
               // 标记 failed 让用户后续手动处理，避免静默丢失餐次
               final cal = result.estimatedCalories;
               if (cal == null) {
+                // M16.2：permanent: true → false（让用户可改菜名重试）
+                // 原 permanent: true 让记录永久 failed 无法恢复，但此场景可通过
+                // recognize_page 改菜名重试解决，不应永久放弃
                 await pendingRepo.markFailed(
-                    p.id, 'AI 无估算且库未命中，需手动录入', permanent: true);
+                    p.id, 'AI 无估算且库未命中，需手动录入或改菜名重试');
                 continue;
               }
               // v1.9：包装食品 OCR 优先路径——有包装营养表数据时按包装换算，
@@ -290,9 +294,9 @@ class OfflineQueueController {
             } else if (composite.componentHits.isEmpty) {
               // 复合菜组分全 miss 且 AI 无估算（旧 prompt）：不写近 0 卡 meal_log，
               // 标记 failed 让用户手动处理（与前台 recognize_controller 行为一致）
+              // M16.2：permanent: true → false（让用户可改菜名重试，与单品路径一致）
               await pendingRepo.markFailed(
-                  p.id, '复合菜组分全 miss 且 AI 无估算，需手动录入',
-                  permanent: true);
+                  p.id, '复合菜组分全 miss 且 AI 无估算，需手动录入或改菜名重试');
               continue;
             } else {
               // 复合菜 upsert ai_recognized（存组分快照，热量在 meal_log）
@@ -391,6 +395,7 @@ class OfflineQueueController {
           }
         } catch (e) {
           // T37 断路器：retryable 视觉调用失败记录（halfOpen 失败 → 重新 open）
+          // M16.2：429 限流不计入失败计数（isRateLimit=true），与 recognize_controller 一致
           // best-effort：断路器操作本身异常不可逃逸 catch 块
           if (_circuitBreaker != null &&
               e is VisionRecognitionException &&
@@ -400,7 +405,8 @@ class OfflineQueueController {
               if (breakerState == CircuitBreakerState.halfOpen) {
                 await _circuitBreaker.recordHalfOpenFailure();
               } else {
-                await _circuitBreaker.recordFailure();
+                final isRateLimit = e.reason.contains('限流 429');
+                await _circuitBreaker.recordFailure(isRateLimit: isRateLimit);
               }
             } catch (_) {
               // best-effort：断路器持久化失败不逃逸

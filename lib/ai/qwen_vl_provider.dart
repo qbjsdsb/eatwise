@@ -68,7 +68,7 @@ class QwenVlProvider implements VisionProvider {
             ),
           ],
         ),
-      ).timeout(const Duration(seconds: 30)); // 防服务端无响应挂死
+      ).timeout(const Duration(seconds: 60)); // 防服务端无响应挂死（M16.2：30→60s，复杂图识别需要时间）
 
       // response.text 为 String? 便捷访问器（openai_dart 7.0）
       final jsonStr = response.text;
@@ -116,8 +116,8 @@ class QwenVlProvider implements VisionProvider {
       // 超时：retryable（L1 重试 → L2 切 GLM）
       throw VisionRecognitionException('请求超时: ${e.message}', retryable: true);
     } on TimeoutException {
-      // dart:async TimeoutException（.timeout(30s) 触发）：retryable
-      throw VisionRecognitionException('请求超时（30s），请检查网络后重试', retryable: true);
+      // dart:async TimeoutException（.timeout(60s) 触发）：retryable
+      throw VisionRecognitionException('请求超时（60s），请检查网络后重试', retryable: true);
     } on ConnectionException catch (e) {
       // 网络错误：retryable
       throw VisionRecognitionException('网络连接失败: ${e.message}', retryable: true);

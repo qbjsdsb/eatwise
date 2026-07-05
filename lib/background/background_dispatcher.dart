@@ -2,6 +2,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:workmanager/workmanager.dart';
 
+import '../ai/glm_4v_provider.dart';
+import '../ai/nutrition_lookup.dart';
+import '../ai/qwen_vl_provider.dart';
 import '../core/config/app_config.dart';
 import '../core/config/secure_config_store.dart';
 import '../data/backup/auto_backup.dart';
@@ -9,8 +12,7 @@ import '../data/backup/image_cleanup.dart';
 import '../data/database/connection.dart';
 import '../data/database/database.dart';
 import '../data/repositories/food_item_repository.dart';
-import '../ai/nutrition_lookup.dart';
-import '../ai/qwen_vl_provider.dart';
+import '../features/recognize/circuit_breaker.dart';
 import '../features/offline/offline_queue_controller.dart';
 import 'background_tasks.dart';
 
@@ -77,13 +79,33 @@ Future<void> _runOfflineBackfill(EatWiseDatabase db) async {
         ? config.qwenBaseUrl
         : 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   );
+  // M16.2 修复 P1-4：后台回补补上 fallbackProvider + circuitBreaker
+  // 原 background_dispatcher 缺 fallbackProvider（Qwen 失败直接 markFailed 无 GLM 兜底）
+  // 和 circuitBreaker（前后台行为分叉），与前台 offlineQueueControllerProvider 配置对齐
+  final fallbackProvider = config.glmApiKey.isNotEmpty
+      ? Glm4vProvider(
+          apiKey: config.glmApiKey,
+          baseUrl: config.glmBaseUrl.isNotEmpty
+              ? config.glmBaseUrl
+              : 'https://open.bigmodel.cn/api/paas/v4',
+        )
+      : null;
   final foodRepo = FoodItemRepository(db);
   final lookup = NutritionLookup(foodRepo);
+  // 后台 isolate 用 SecureConfigStore 持久化断路器状态（与前台共享）
+  // SecureConfigStore 方法名是 writeRaw/readRaw/deleteRaw
+  final breaker = CircuitBreaker(
+    write: (k, v) => store.writeRaw(k, v),
+    read: (k) => store.readRaw(k),
+    delete: (k) => store.deleteRaw(k),
+  );
 
   final controller = OfflineQueueController(
     db: db,
     visionProvider: visionProvider,
+    fallbackProvider: fallbackProvider, // M16.2：补 GLM 兜底
     nutritionLookup: lookup,
+    circuitBreaker: breaker, // M16.2：补断路器（与前台一致）
     secureConfigStore: store, // M11：后台回补计入月度识别次数（复用已实例化的 store）
   );
   // 后台回补只调 processPending 一次（不启动 connectivity 监听）

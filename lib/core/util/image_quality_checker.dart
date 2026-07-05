@@ -7,10 +7,16 @@ import 'package:image/image.dart' as img;
 ///
 /// 模糊检测：用拉普拉斯算子方差（Variance of Laplacian）判断图片清晰度。
 /// 原理：拉普拉斯算子对边缘敏感，清晰图边缘锐利→方差大，模糊图边缘平滑→方差小。
-/// 阈值参考 OpenCV 社区常用 100，但移动端压缩后阈值偏低，这里取 50。
+///
+/// M16.2 修复（用户反馈"相册内识别经常出错"）：
+/// - 阈值 50→25：原阈值对低纹理食物（米饭/粥/汤面/蒸蛋）误判清晰图为模糊
+///   经三层降采样（image_picker resize 1024 → compress quality 85 → checker copyResize 256）
+///   后方差显著降低，50 过严。25 仍能拒识真模糊图（手抖/失焦），但放行低纹理食物
+/// - copyResize 256→512：提高方差计算精度，减少降采样损失，让阈值判断更准
 class ImageQualityChecker {
-  /// 低于此方差判定为模糊（移动端压缩图经验值）
-  static const double _blurThreshold = 50.0;
+  /// 低于此方差判定为模糊
+  /// M16.2：50→25（原阈值对低纹理食物误判，三层降采样后方差偏低）
+  static const double _blurThreshold = 25.0;
 
   /// 检查图片是否模糊
   /// [bytes] 图片字节数据
@@ -21,8 +27,9 @@ class ImageQualityChecker {
       final decoded = await Future(() => img.decodeImage(bytes));
       if (decoded == null) return false; // 解码失败不阻断（交后续流程处理）
 
-      // 缩小到 256x256 加速计算（模糊检测不需要高分辨率）
-      final small = img.copyResize(decoded, width: 256);
+      // 缩小到 512x512 加速计算（模糊检测不需要高分辨率）
+      // M16.2：256→512，提高方差计算精度，减少降采样损失
+      final small = img.copyResize(decoded, width: 512);
 
       // 转灰度
       final gray = img.grayscale(small);

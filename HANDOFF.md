@@ -23,8 +23,8 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.18.0+19（pubspec.yaml）
-- **当前分支**：trae/agent-wX1X6Q（HEAD = bfa54e6 v0.18.0 release；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
+- **当前版本**：0.18.1+20（pubspec.yaml）
+- **当前分支**：trae/agent-wX1X6Q（HEAD = 待 commit 的 M16.2 修复；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
   - `android/app/build.gradle.kts` 必须保持 `isMinifyEnabled=false` + `isShrinkResources=false`（否则 R8 剥掉 sentry/workmanager 反射类致启动崩溃）
@@ -36,13 +36,16 @@
 
 **最后更新**：2026-07-05
 
-**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；v0.18.1 修复进行中（M16 应用内更新功能实际不可用——根因：仓库私有致 GitHub API 匿名访问 404，详见下方"M16.1 应用内更新修复"章节）；本次修复 4 个问题（P1 HTTP header+超时 / P2 APK 流式下载+渐进进度 / P3 真实 GitHub API smoke test 覆盖测试盲区），新增 4 个测试用例（apk_downloader 流式分块/无 content-length/下载不完整 + smoke test 2 个），836 全量测试通过。v0.18.0 GitHub Release 已发布（app-release.apk 74.84 MB）；4 个 GitHub Secrets 已上传；CI build 第 3 次成功。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
-**当前分支**：trae/agent-wX1X6Q（HEAD = bfa54e6 + 待 commit 的 M16.1 修复；远端 origin/trae/agent-wX1X6Q 停在 bfa54e6；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
+**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复进行中（用户反馈"相册内识别经常出错"，深度审查 14 个问题，本次修复 5 个 P0/P1 + 1 个 P1-4 后台配置不一致，详见下方"M16.2 识别流程修复"章节）；844 全量测试通过（含 M16.2 新增 8 个测试）。仓库已改 public，匿名访问 GitHub API 200 OK，smoke test 2/2 通过。v0.18.0 GitHub Release 已发布（app-release.apk 74.84 MB）；4 个 GitHub Secrets 已上传；CI build 第 3 次成功。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
+**当前分支**：trae/agent-wX1X6Q（HEAD = 82139eb + 待 commit 的 M16.2 修复；远端 origin/trae/agent-wX1X6Q 已同步到 82139eb；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
 
 **待用户执行的收尾项**（沙箱无法完成）：
-1. **【紧急】把仓库改成 public**：访问 https://github.com/qbjsdsb/eatwise/settings → 底部 "Danger Zone" → "Change to public"。**这是应用内更新能工作的根本前提**——沙箱 token 无 Administration write 权限无法自动改。改完后跑 `flutter test test/smoke/github_release_smoke_test.dart` 验证匿名访问 OK
+1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）
 2. **删除 classic PAT** `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`：访问 https://github.com/settings/tokens 手动删除（classic PAT 无法通过 API 自删，已用完上传 secrets 的使命，不应保留）
-3. **本地真机验证 v0.18.1 应用内更新全链路**：装 v0.18.1 APK → 在 app 内"设置 → 检查更新"验证全链路 → 下个版本起直接 app 内一键升级
+3. **本地真机验证 v0.18.1**：
+   - 装 v0.18.1 APK（v0.17.0 旧版需卸载一次因签名切换，v0.18.0 起可覆盖安装）
+   - 验证应用内更新：设置 → 检查更新（GitHub API 调用 + APK 下载 + 系统安装器）
+   - 验证识别流程改善：相册选图 + 拍照识别（模糊检测放宽 + 断路器宽容 + 超时延长 + 限流放宽）
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
@@ -1108,6 +1111,79 @@
 2. 改完后沙箱跑 `flutter test test/smoke/github_release_smoke_test.dart` 验证匿名访问 OK
 3. bump 版本号 → 推 v0.18.1 tag → CI build → 发布 v0.18.1 release
 4. 装 v0.18.1 APK 真机验证全链路
+
+---
+
+## M16.2 识别流程修复（2026-07-05）—— v0.18.1 识别错误 5 个 P0/P1 + P1-4 后台配置不一致
+
+用户反馈"相册内识别经常出错，有时候拍照也有"。深度审查从 image_picker 拍照/选图 → 压缩 → 模糊检测 → AI 调用 → 断路器 → 离线回补全链路，发现 14 个问题（P0×3 / P1×6 / P2×5 / P3×6）。本次修复 5 个 P0/P1 + 1 个 P1-4 后台配置不一致，共 6 个问题。
+
+**P0-1 模糊检测误判低纹理食物**（`lib/core/util/image_quality_checker.dart`）：
+- **问题**：阈值 50 对低纹理食物（米饭/粥/汤面/蒸蛋）误判清晰图为模糊直接拒识。三层降采样（image_picker resize 1024 → compress quality:85 → checker copyResize 256）后方差显著降低，相册图压缩后更低，匹配"相册内识别经常出错"
+- **修复**：阈值 50→25（仍能拒识真模糊图如手抖/失焦，但放行低纹理食物）+ copyResize 256→512（提高方差计算精度，减少降采样损失）
+- **新增测试**（`test/core/util/image_quality_checker_test.dart`，5 个）：纯色图判模糊 / 高对比棋盘格不判模糊 / 解码失败返回 false / 空字节返回 false / 低纹理食物模拟图不判模糊
+
+**P0-2 断路器误触发**（`lib/features/recognize/circuit_breaker.dart` + `recognize_controller.dart` + `offline_queue_controller.dart`）：
+- **问题**：3 次失败阈值过低 + 429 限流也计入失败 + open 30s 跨 session 持久化。网络抖动或限流期间 3 次失败即 open 30s，期间所有识别直接入队不调 API
+- **修复**：
+  - 阈值 3→5（网络抖动更宽容）
+  - open 时长 30s→60s（给服务端更多恢复时间）
+  - 429 限流不计入失败计数（`recordFailure(isRateLimit: true)` 直接 return，限流是正常行为不是模型故障）
+  - recognize_controller / offline_queue_controller 的 catch 块加 `isRateLimit = e.reason.contains('限流 429')` 判断
+- **测试更新**（`test/features/circuit_breaker_test.dart`，12 个）：原 9 个测试更新阈值 3→5 / 时长 30s→60s + 新增 3 个 429 不累计测试
+
+**P0-3 30s 超时偏短**（`lib/ai/qwen_vl_provider.dart` + `lib/features/offline/offline_queue_controller.dart`）：
+- **问题**：v1.10 prompt 加了 reasoning 必填 + 9 个 package_* 字段 + 自洽约束，复杂图（多菜+包装 OCR+CoT）响应常 30-60s，必超时 → 重试 → 又超时 → 离线入队 → 后台回补又超时 → 3 次永久 failed
+- **修复**：超时 30s→60s（qwen_vl_provider L71 + offline_queue_controller L116/L121 同步）
+- 注：无需新测试，超时是常量改动，smoke test 走真实 API 验证
+
+**P1-1 permanent: true 过度使用 + retryCount 阈值过严**（`lib/features/offline/offline_queue_controller.dart` + `lib/data/repositories/pending_recognition_repository.dart`）：
+- **问题 1**：L156 "AI 无估算且库未命中" + L295 "复合菜组分全 miss 且 AI 无估算" 标 permanent: true 让记录永久 failed 无法恢复，但此场景可通过改菜名重试解决
+- **问题 2**：retryCount 阈值 3 过严，30s 超时 3 次即永久 failed 用户记录丢失
+- **修复**：
+  - L156/L295 permanent: true → false（让用户可改菜名重试）
+  - retryCount 阈值 3→5（与断路器 _failureThreshold 一致，给更多重试机会）
+- **测试更新**：`test/features/offline_queue_test.dart` + `test/integration/sprint2_e2e_test.dart` 的"重试 3 次后标记 failed"→"重试 5 次后标记 failed"
+
+**P1-4 后台回补配置不一致**（`lib/background/background_dispatcher.dart`）：
+- **问题**：background_dispatcher 缺 fallbackProvider（Qwen 失败直接 markFailed 无 GLM 兜底）+ 缺 circuitBreaker（前后台行为分叉），后台成功率低于前台
+- **修复**：补上 fallbackProvider（config.glmApiKey 非空时构造 Glm4vProvider）+ circuitBreaker（用 SecureConfigStore.writeRaw/readRaw/deleteRaw 持久化，与前台共享状态）
+- 注：AppConfig 字段名是 `glmApiKey/glmBaseUrl`（非 glm4vApiKey）；SecureConfigStore 方法名是 `writeRaw/readRaw/deleteRaw`（非 write/read/delete）
+
+**P1-5 image_picker 双重压缩 + 限流过严**（`lib/features/recognize/recognize_controller.dart`）：
+- **问题 1**：image_picker 默认 imageQuality=100（不压缩），返回全质量大图，后续 compress 又重编码一次，双重处理累积损失
+- **问题 2**：限流 30s 过严，识别失败后用户想立即重试需等 30s
+- **问题 3**：失败后不重置限流时间戳（惩罚失败）
+- **修复**：
+  - image_picker 加 `imageQuality: 85`（与后续 compress quality:85 一致，一次压缩到位）
+  - 限流 30s→15s（仍能防误触连点，失败后重试更友好）
+  - catch 块末尾加 `_lastRecognizeTime = null`（失败后重置限流，不惩罚失败）
+
+**已审查无问题的部分**（避免误改）：
+- AndroidManifest / file_paths.xml / MainActivity.kt（应用内更新配置正确）✅
+- providers.dart updateServiceProvider 配置正确 ✅
+- version_comparator.dart / update_models.dart / update_page.dart ✅
+- prompts.dart 规则冲突（P1-2/P1-3）未修（需更深设计讨论，本次不动 prompt 避免引入新问题）
+
+**验证**：
+- `flutter analyze` → No issues found
+- `flutter test` → 844 passed / 3 skipped（M16.2 新增 8 个测试：5 image_quality_checker + 3 circuit_breaker 429）
+
+**未修的 8 个问题**（P1×3 / P2×5 / P3×6，后续迭代）：
+- P1-2 prompts 规则冲突（需设计讨论）
+- P1-3 多菜 take(5) 截断（需 UX 决策）
+- P1-6 已合并到 P1-5 一起修
+- P2-1 防御性兜底 0 卡 food_item 污染库
+- P2-2 非 VisionRecognitionException 显示生涩 toString
+- P2-3 解码失败垃圾图直送 API
+- P2-4 mediaType 硬编码
+- P2-5 fire-and-forget 吞 DB 异常
+- P3×6 设计倾向/理论问题
+
+**待用户执行**：
+1. 装 v0.18.1 APK 真机验证识别流程改善
+2. 关注相册选图 + 低纹理食物（米饭/粥）+ 复杂图（多菜+包装）识别是否好转
+3. 若仍有问题，反馈具体场景（什么图 / 错误信息 / 是否入队），定位剩余 P1/P2
 
 ---
 
