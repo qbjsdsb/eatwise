@@ -1,4 +1,3 @@
-import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/data/repositories/food_item_repository.dart';

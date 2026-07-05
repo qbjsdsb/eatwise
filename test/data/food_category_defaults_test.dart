@@ -39,7 +39,10 @@ void main() {
         category: 'beer',
       );
       expect(result.$1, 43); // 200/43≈4.65，超 2 倍，用默认值
-      expect(result.$2, 0.5); // 蛋白也用默认
+      // M16.8：宏量保留 AI 值（带 clamp），不再用默认值替换
+      expect(result.$2, 2); // 蛋白保留 AI 值 2
+      expect(result.$3, 1); // 脂肪保留 AI 值 1
+      expect(result.$4, 15); // 碳水保留 AI 值 15
     });
 
     test('calibrate 啤酒 AI 估算过低（10）用默认值 43', () {
