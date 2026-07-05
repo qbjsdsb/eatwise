@@ -376,6 +376,42 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
     );
   }
 
+  /// M16.9：复合菜查库命中 + AI 整菜估算 → AI 绝对优先
+  /// 比较 compositeNutrition.calories（组分累加库值）vs aiFallback.calories（AI 整菜估算）
+  /// AI 有效（per100g ∈ [0, 900]）时用 AI 整菜估算记 meal_log
+  /// （不更新库 per100g，复合菜 per100g=0 占位）
+  /// AI 无效时返回 null，调用方走原 ratio 兜底（组分累加库值）
+  CalibratedNutrition? _computeCompositeLookupHitCalibrated(
+      int index, VisionRecognitionResult dish, double serving) {
+    // 包装营养表优先（精确值，不走差异检测）
+    if (dish.hasPackageNutrition) return null;
+    final composite = _getCompositeNutrition(index);
+    if (composite == null) return null;
+    final aiFallback = _getAiFallback(index);
+    if (aiFallback == null) return null;
+    // 复合菜 lookupCompositeDish 返回的 calories 已是组分累加值（对应 mid 份量）
+    // AI aiFallback.calories 也是整菜估算（对应 mid 份量）
+    // sanity check：AI per100g 有效区间 [0, 900]（与单品分支一致）
+    final mid = dish.estimatedWeightGMid;
+    final aiPer100 = mid > 0 ? aiFallback.calories * 100 / mid : aiFallback.calories;
+    final aiValid = aiPer100 >= 0 && aiPer100 <= 900;
+    if (!aiValid) return null; // AI 无效，返回 null 让调用方走原 ratio 兜底
+    // AI 绝对优先：用 AI 整菜估算记 meal_log（actualXxx 按 serving 比例缩放）
+    final ratio = mid > 0 ? serving / mid : 1.0;
+    return CalibratedNutrition(
+      caloriesPer100g: 0, // 复合菜 per100g 保持 0 占位
+      proteinPer100g: 0,
+      fatPer100g: 0,
+      carbsPer100g: 0,
+      actualCalories: aiFallback.calories * ratio,
+      actualProteinG: aiFallback.proteinG * ratio,
+      actualFatG: aiFallback.fatG * ratio,
+      actualCarbsG: aiFallback.carbsG * ratio,
+      foodItemId: 0, // 复合菜 foodItemId 由 _recordAll 的 upsertAiRecognized 处理
+      shouldUpdateFoodItem: false, // 复合菜不更新库 per100g
+    );
+  }
+
   /// v1.3：数量步进器（同物多份场景，仅单品命中 + perUnitG > 0 显示）
   /// − / 数量+单位 / + 三段式，范围 1-20；改数量时同步 _servings[index] = perUnitG × quantity
   Widget _buildQuantityStepper(int index, VisionRecognitionResult dish) {
@@ -475,6 +511,16 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
           n.carbsG * ratio,
         );
       }
+      // M16.9：复合菜查库命中 + AI 整菜估算 → AI 绝对优先
+      final compositeCalibrated = _computeCompositeLookupHitCalibrated(0, dish, serving);
+      if (compositeCalibrated != null) {
+        return (
+          compositeCalibrated.actualCalories,
+          compositeCalibrated.actualProteinG,
+          compositeCalibrated.actualFatG,
+          compositeCalibrated.actualCarbsG,
+        );
+      }
       if (widget.mainComposite != null) {
         final n = widget.mainComposite!;
         return (
@@ -504,6 +550,16 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
           n.proteinG * ratio,
           n.fatG * ratio,
           n.carbsG * ratio,
+        );
+      }
+      // M16.9：复合菜查库命中 + AI 整菜估算 → AI 绝对优先
+      final compositeCalibrated = _computeCompositeLookupHitCalibrated(index, dish, serving);
+      if (compositeCalibrated != null) {
+        return (
+          compositeCalibrated.actualCalories,
+          compositeCalibrated.actualProteinG,
+          compositeCalibrated.actualFatG,
+          compositeCalibrated.actualCarbsG,
         );
       }
       final item = widget.additionalItems[index - 1];
@@ -657,6 +713,15 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
               }
             }
           } else if (composite != null) {
+            // M16.9：复合菜查库命中 + AI 整菜估算 → AI 绝对优先
+            // 显式覆盖 cal/p/f/c，与 _calcNutrition 保持一致（预览=记录）
+            final compositeCalibrated = _computeCompositeLookupHitCalibrated(i, dish, serving);
+            if (compositeCalibrated != null) {
+              cal = compositeCalibrated.actualCalories;
+              p = compositeCalibrated.actualProteinG;
+              f = compositeCalibrated.actualFatG;
+              c = compositeCalibrated.actualCarbsG;
+            }
             final oilG = composite.oilG;
             componentsSnapshot = _encodeComponents(dish, oilG: oilG);
             // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），per100g 用包装换算值（替代 0）

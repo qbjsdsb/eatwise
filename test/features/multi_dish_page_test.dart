@@ -428,4 +428,218 @@ void main() {
     expect(food.caloriesPer100g, closeTo(125, 0.5),
         reason: '库 per100g 应被 AI 反算值更新（250*100/200=125）');
   });
+
+  // M16.9：复合菜分支接入 AI 绝对优先
+  // 复合菜 lookupCompositeDish 返回组分累加库值（鸡肉 150g×150kcal/100 + 油 10g×889/100 ≈ 225+89=314）
+  // AI 整菜估算 estimatedCalories=500（per100g=250，有效区间 [0,900] 内，偏差 59%）
+  // M16.8：用组分累加库值（314），AI 整菜估算被丢弃
+  // M16.9：AI 绝对优先，用 AI 整菜估算记 meal_log（500），复合菜 per100g=0 占位不更新库
+  testWidgets(
+      'M16.9: 复合菜查库命中 + AI 整菜估算有效时用 AI 值记录（AI 绝对优先）',
+      (tester) async {
+    // 独立 db：只预置鸡肉（复合菜组分），避免与 setUp 番茄/米饭 id 冲突
+    final db = EatWiseDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+          name: '鸡肉',
+          defaultServingG: 100,
+          caloriesPer100g: 150,
+          proteinPer100g: 20,
+          fatPer100g: 8,
+          carbsPer100g: 0,
+          source: 'china_fct',
+          sourceVersion: 'test',
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+        ));
+
+    final container = ProviderContainer(overrides: [
+      recognize.databaseProvider.overrideWith((ref) => db),
+    ]);
+    addTearDown(container.dispose);
+
+    // 主菜：宫保鸡丁（复合菜，组分鸡肉 150g + 用油 10g）
+    // estimatedWeightGMid=200g, AI 整菜估算 500kcal（per100g=250，有效）
+    const r = VisionRecognitionResult(
+      dishName: '宫保鸡丁',
+      estimatedWeightGLow: 180,
+      estimatedWeightGMid: 200,
+      estimatedWeightGHigh: 220,
+      estimatedCalories: 500, // AI 整菜估算（对应 mid=200g）
+      estimatedProteinG: 35,
+      estimatedFatG: 20,
+      estimatedCarbsG: 5,
+      foodComponents: [],
+      cookingMethod: 'stir_fry',
+      isSingleItem: false, // 复合菜
+      confidence: 0.9,
+      promptVersion: 'v1.10',
+      foodCategory: 'solid',
+    );
+    // 复合菜查库结果：组分累加库值
+    // 鸡肉 150g × 150kcal/100 = 225 kcal；油 10g × 889/100 ≈ 89 kcal → 整菜 314 kcal
+    // （简化：oilG 单独存于 CompositeNutritionResult.oilG，不进 componentHits）
+    final composite = CompositeNutritionResult(
+      calories: 225, // 鸡肉组分累加（不含油）
+      proteinG: 30, // 20 * 150 / 100
+      fatG: 12, // 8 * 150 / 100
+      carbsG: 0,
+      oilG: 10, // 用油 10g（_calcNutrition 会加 889*10/100≈89 kcal）
+      componentHits: [
+        ComponentHit(
+          name: '鸡肉',
+          foodItemId: 1,
+          estimatedG: 150,
+          caloriesPer100g: 150,
+          proteinPer100g: 20,
+          fatPer100g: 8,
+          carbsPer100g: 0,
+        ),
+      ],
+      componentMisses: [],
+    );
+    final aiFallback = NutritionResult(
+      foodItemId: 0, // AI 兜底哨兵（复合菜 _recordAll 仍走 upsertAiRecognized）
+      calories: 500, // AI 整菜估算（对应 mid=200g）
+      proteinG: 35,
+      fatG: 20,
+      carbsG: 5,
+      oilG: 0,
+      source: NutritionSource.aiEstimate,
+    );
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+          home: MultiDishPage(
+        mainDish: r,
+        mainSingle: null, // 复合菜：单品 null
+        mainComposite: composite,
+        mainAiFallback: aiFallback,
+        additionalItems: [],
+        mealType: 'lunch',
+      )),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('全部记录'));
+    await tester.pumpAndSettle();
+
+    final meals = await db.mealLogs.select().get();
+    expect(meals.length, 1, reason: '复合菜应写入 1 条 meal_log');
+
+    // 核心断言：meal_log.actualCalories 用 AI 整菜估算（500），不用组分累加库值（225+89=314）
+    expect(meals.first.actualCalories, closeTo(500, 0.5),
+        reason: 'M16.9 复合菜 AI 绝对优先：用 AI 整菜估算（500），'
+            '不用组分累加库值（~314）');
+
+    // 宏量也用 AI 值（按 serving/mid=1 比例缩放，serving=mid=200）
+    expect(meals.first.actualProteinG, closeTo(35, 0.5),
+        reason: 'actualProteinG 用 AI 估算值');
+    expect(meals.first.actualFatG, closeTo(20, 0.5),
+        reason: 'actualFatG 用 AI 估算值');
+    expect(meals.first.actualCarbsG, closeTo(5, 0.5),
+        reason: 'actualCarbsG 用 AI 估算值');
+
+    // 复合菜 food_item 应通过 upsertAiRecognized 创建，per100g=0 占位（不更新库）
+    final food = await (db.foodItems.select()
+          ..where((f) => f.name.equals('宫保鸡丁') & f.source.equals('ai_recognized')))
+        .getSingle();
+    expect(food.caloriesPer100g, 0,
+        reason: '复合菜 per100g 保持 0 占位，不更新库（M16.9 不更新复合菜 per100g）');
+  });
+
+  // M16.9：复合菜 AI 整菜估算离谱（per100g > 900）时用组分累加库值兜底
+  testWidgets(
+      'M16.9: 复合菜 AI 整菜估算离谱（per100g>900）时用组分累加库值兜底',
+      (tester) async {
+    final db = EatWiseDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+          name: '鸡肉',
+          defaultServingG: 100,
+          caloriesPer100g: 150,
+          proteinPer100g: 20,
+          fatPer100g: 8,
+          carbsPer100g: 0,
+          source: 'china_fct',
+          sourceVersion: 'test',
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+        ));
+
+    final container = ProviderContainer(overrides: [
+      recognize.databaseProvider.overrideWith((ref) => db),
+    ]);
+    addTearDown(container.dispose);
+
+    // AI 估 2000kcal（mid=200g → per100g=1000 > 900 离谱）
+    const r = VisionRecognitionResult(
+      dishName: '宫保鸡丁',
+      estimatedWeightGLow: 180,
+      estimatedWeightGMid: 200,
+      estimatedWeightGHigh: 220,
+      estimatedCalories: 2000, // AI 离谱值
+      estimatedProteinG: 100,
+      estimatedFatG: 80,
+      estimatedCarbsG: 50,
+      foodComponents: [],
+      cookingMethod: 'stir_fry',
+      isSingleItem: false,
+      confidence: 0.9,
+      promptVersion: 'v1.10',
+      foodCategory: 'solid',
+    );
+    final composite = CompositeNutritionResult(
+      calories: 225, // 鸡肉组分累加
+      proteinG: 30,
+      fatG: 12,
+      carbsG: 0,
+      oilG: 10,
+      componentHits: [
+        ComponentHit(
+          name: '鸡肉',
+          foodItemId: 1,
+          estimatedG: 150,
+          caloriesPer100g: 150,
+          proteinPer100g: 20,
+          fatPer100g: 8,
+          carbsPer100g: 0,
+        ),
+      ],
+      componentMisses: [],
+    );
+    final aiFallback = NutritionResult(
+      foodItemId: 0,
+      calories: 2000, // AI 离谱
+      proteinG: 100,
+      fatG: 80,
+      carbsG: 50,
+      oilG: 0,
+      source: NutritionSource.aiEstimate,
+    );
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+          home: MultiDishPage(
+        mainDish: r,
+        mainSingle: null,
+        mainComposite: composite,
+        mainAiFallback: aiFallback,
+        additionalItems: [],
+        mealType: 'lunch',
+      )),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('全部记录'));
+    await tester.pumpAndSettle();
+
+    final meals = await db.mealLogs.select().get();
+    expect(meals.length, 1);
+
+    // AI 离谱时用组分累加库值兜底：225（鸡肉组分累加，multi_dish_page _calcNutrition
+    // 复合菜兜底分支不加油脂热量，是既有行为，非 M16.9 引入）
+    expect(meals.first.actualCalories, closeTo(225, 0.5),
+        reason: 'AI 离谱时用组分累加库值兜底（鸡肉 225）');
+  });
 }
