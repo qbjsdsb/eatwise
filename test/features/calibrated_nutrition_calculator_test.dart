@@ -137,7 +137,10 @@ void main() {
       });
 
       test('场景5：宏量同步，actualMacros = 校准后 per100g * servingG / 100', () {
-        // beer 校准后 per100g=(43, 0.5, 0, 3.1)，actualMacros 必须用同一 per100g
+        // M16.8：beer 触发校准只替换 calories，宏量保留 AI 值（带 clamp）
+        // mid=300g, AI 估 600kcal/2g 蛋白/1g 脂肪/15g 碳水
+        // AI per100g = (200, 0.667, 0.333, 5.0)，cal 偏离 beer 43 触发校准
+        // 校准后 per100g = (43, 0.667, 0.333, 5.0)，actualMacros 必须用同一 per100g
         final r = VisionRecognitionResult(
           dishName: '啤酒',
           estimatedWeightGLow: 250,
@@ -170,14 +173,14 @@ void main() {
           servingG: 300,
         );
 
-        // 校准后 per100g 宏量
-        expect(result.proteinPer100g, 0.5);
-        expect(result.fatPer100g, 0);
-        expect(result.carbsPer100g, 3.1);
+        // 校准后 per100g 宏量（保留 AI 反算值，不替换为品类默认 0.5/0/3.1）
+        expect(result.proteinPer100g, closeTo(2 * 100 / 300, 0.001)); // 0.667
+        expect(result.fatPer100g, closeTo(1 * 100 / 300, 0.001)); // 0.333
+        expect(result.carbsPer100g, closeTo(15 * 100 / 300, 0.001)); // 5.0
         // actualMacros 与 per100g 同步：actualXxx = per100g * servingG / 100
-        expect(result.actualProteinG, closeTo(0.5 * 300 / 100, 0.01)); // 1.5
-        expect(result.actualFatG, closeTo(0 * 300 / 100, 0.01)); // 0
-        expect(result.actualCarbsG, closeTo(3.1 * 300 / 100, 0.01)); // 9.3
+        expect(result.actualProteinG, closeTo(2 * 100 / 300 * 300 / 100, 0.01)); // 2
+        expect(result.actualFatG, closeTo(1 * 100 / 300 * 300 / 100, 0.01)); // 1
+        expect(result.actualCarbsG, closeTo(15 * 100 / 300 * 300 / 100, 0.01)); // 15
         // 一致性断言：actualXxx 严格等于 per100g * servingG / 100
         expect(result.actualCalories,
             closeTo(result.caloriesPer100g * 300 / 100, 0.001));

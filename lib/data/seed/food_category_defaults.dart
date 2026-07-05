@@ -82,9 +82,12 @@ class FoodCategoryDefaults {
 
   /// 校准 AI 估算的 per100g 营养值。
   ///
-  /// 规则：AI 估算的 caloriesPer100g 偏离品类默认值 2 倍以上（高或低），
-  /// 用品类默认值（4 项全替）；否则保留 AI 估算。
-  /// solid/未知品类（无默认值）不校准，直接返回 AI 估算。
+  /// M16.8：只校准 calories（最重要），宏量保留 AI 值（加 clamp 兜底防离谱）。
+  /// 规则：
+  /// - AI caloriesPer100g 偏离品类默认值 2 倍以上（高或低）→ calories 用默认值，宏量保留 AI 值
+  /// - 不触发校准 → 4 项全保留 AI 值
+  /// - solid/未知品类 → 4 项 clamp 到合理区间（无品类默认值，仅防离谱）
+  /// - 宏量 clamp：蛋白/脂肪/碳水 ∈ [0, 100]（不可能超 100g/100g）
   ///
   /// [aiCaloriesPer100g] AI 估算的每 100g 热量
   /// [category] food_category（beer/wine/carbonated/solid 等）
@@ -96,25 +99,29 @@ class FoodCategoryDefaults {
     required double aiCarbsPer100g,
     required String category,
   }) {
+    // 宏量 clamp 兜底（所有分支共用）：不可能超 100g/100g，不允许负值
+    final clampedProtein = aiProteinPer100g.clamp(0.0, 100.0);
+    final clampedFat = aiFatPer100g.clamp(0.0, 100.0);
+    final clampedCarbs = aiCarbsPer100g.clamp(0.0, 100.0);
+
     final defCal = defaults[category]?.$1;
-    // 无默认值的品类（solid 等）不加品类默认值校准（差异太大无意义），
-    // 但加合理性区间 clamp，防止 AI 离谱估算（如米饭估成 5000kcal/100g）直通 meal_log
-    // 区间依据：solid 热量上限 900（纯脂肪油 889，solid 不含纯油），
-    // 蛋白/脂肪/碳水不可能超 100g/100g
+    // 无默认值的品类（solid 等）：仅 clamp，不加品类默认值校准
+    // 区间依据：solid 热量上限 900（纯脂肪油 889，solid 不含纯油）
     if (defCal == null) {
       return (
         aiCaloriesPer100g.clamp(0.0, 900.0),
-        aiProteinPer100g.clamp(0.0, 100.0),
-        aiFatPer100g.clamp(0.0, 100.0),
-        aiCarbsPer100g.clamp(0.0, 100.0),
+        clampedProtein,
+        clampedFat,
+        clampedCarbs,
       );
     }
-    // 偏离 2 倍以上（高或低）用默认值；defCal=0（water）时 AI 任何正值都算偏离
+    // 偏离 2 倍以上（高或低）→ calories 用默认值，宏量保留 AI 值（带 clamp）
+    // defCal=0（water）时 AI 任何正值都算偏离
     final ratio = defCal > 0 ? aiCaloriesPer100g / defCal : (aiCaloriesPer100g > 0 ? 999.0 : 1.0);
     if (ratio > 2.0 || ratio < 0.5) {
-      final d = defaults[category]!;
-      return (d.$1, d.$2, d.$3, d.$4);
+      return (defCal, clampedProtein, clampedFat, clampedCarbs);
     }
-    return (aiCaloriesPer100g, aiProteinPer100g, aiFatPer100g, aiCarbsPer100g);
+    // 不触发校准：4 项全保留 AI 值（带 clamp）
+    return (aiCaloriesPer100g.clamp(0.0, 900.0), clampedProtein, clampedFat, clampedCarbs);
   }
 }
