@@ -2,9 +2,7 @@
 <resources>
     <!-- 暗色模式 splash 背景：匹配 app 默认主题（M3 fromSeed #6750A4）暗色 surface 色 -->
     <color name="splash_background">#1C1B1F</color>
-    <!-- M17：暗色模式图标颜色与亮色一致（自适应图标不随主题变）
-         紫橙双色渐变（与亮色相同）：左上紫 #6750A4 → 右下橙 #FF6E40 -->
-    <color name="ic_launcher_background">#6750A4</color>
-    <color name="ic_launcher_background_end">#FF6E40</color>
-    <color name="ic_launcher_foreground">#FFFFFF</color>
+    <!-- M22：暗色模式图标与亮色一致（自适应图标不随主题变，白底紫前景） -->
+    <color name="ic_launcher_background">#FFFFFF</color>
+    <color name="ic_launcher_foreground">#6750A4</color>
 </resources>

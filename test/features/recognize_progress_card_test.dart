@@ -10,6 +10,11 @@
 // - lookupNutrition：1-3 done + 第 4 active
 // - done：4 全 done
 // - error/queued：特殊文案，不展示 4 阶段
+//
+// M22 适配：TweenAnimationBuilder 首帧从 begin=0 开始，需 pump(500ms) 到达终值再断言。
+//   不用 pumpAndSettle——preprocessing/recognizing/lookupNutrition 有 CircularProgressIndicator
+//   无限动画，pumpAndSettle 会 timeout。pump(500ms) 只推进 1 帧，TweenAnimationBuilder
+//   (400ms) 与 AnimatedContainer (300ms) 均到达终值，无限 spinner 不影响断言。
 import 'package:eatwise/features/recognize/recognize_controller.dart';
 import 'package:eatwise/features/recognize/recognize_progress_card.dart';
 import 'package:flutter/material.dart';
@@ -22,11 +27,16 @@ void main() {
         home: Scaffold(body: Center(child: child)),
       );
 
+  // M22：pump 500ms 让 TweenAnimationBuilder(400ms) 和 AnimatedContainer(300ms) 到达终值
+  // 不用 pumpAndSettle——避免 CircularProgressIndicator 无限动画 timeout
+  const settleDuration = Duration(milliseconds: 500);
+
   group('RecognizeProgressCard 4 阶段进度', () {
     testWidgets('pickingImage：第 1 阶段 active，进度 0/4', (tester) async {
       await tester.pumpWidget(wrap(const RecognizeProgressCard(
         currentState: RecognizeState.pickingImage,
       )));
+      await tester.pump(settleDuration);
       // 第 1 阶段文案存在
       expect(find.text('选图中…'), findsOneWidget);
       // 第 2-4 阶段文案存在
@@ -47,6 +57,7 @@ void main() {
       await tester.pumpWidget(wrap(const RecognizeProgressCard(
         currentState: RecognizeState.preprocessing,
       )));
+      await tester.pump(settleDuration);
       final progress = tester.widget<LinearProgressIndicator>(
           find.byType(LinearProgressIndicator));
       expect(progress.value, 0.25);
@@ -60,6 +71,7 @@ void main() {
       await tester.pumpWidget(wrap(const RecognizeProgressCard(
         currentState: RecognizeState.recognizing,
       )));
+      await tester.pump(settleDuration);
       final progress = tester.widget<LinearProgressIndicator>(
           find.byType(LinearProgressIndicator));
       expect(progress.value, 0.5);
@@ -71,6 +83,7 @@ void main() {
       await tester.pumpWidget(wrap(const RecognizeProgressCard(
         currentState: RecognizeState.lookupNutrition,
       )));
+      await tester.pump(settleDuration);
       final progress = tester.widget<LinearProgressIndicator>(
           find.byType(LinearProgressIndicator));
       expect(progress.value, 0.75);
@@ -82,6 +95,7 @@ void main() {
       await tester.pumpWidget(wrap(const RecognizeProgressCard(
         currentState: RecognizeState.done,
       )));
+      await tester.pump(settleDuration);
       final progress = tester.widget<LinearProgressIndicator>(
           find.byType(LinearProgressIndicator));
       expect(progress.value, 1.0);
@@ -115,6 +129,7 @@ void main() {
       await tester.pumpWidget(wrap(const RecognizeProgressCard(
         currentState: RecognizeState.idle,
       )));
+      await tester.pump(settleDuration);
       final progress = tester.widget<LinearProgressIndicator>(
           find.byType(LinearProgressIndicator));
       expect(progress.value, 0.0);
@@ -129,6 +144,7 @@ void main() {
       await tester.pumpWidget(wrap(const RecognizeProgressCard(
         currentState: RecognizeState.preprocessing,
       )));
+      await tester.pump(settleDuration);
       // 第 2 阶段"压缩图中…"是当前，应加粗
       final activeText = tester.widget<Text>(find.text('压缩图中…'));
       expect((activeText.style?.fontWeight ?? FontWeight.normal),
@@ -150,12 +166,49 @@ void main() {
       await tester.pumpWidget(wrap(const RecognizeProgressCard(
         currentState: RecognizeState.recognizing,
       )));
+      await tester.pump(settleDuration);
       // 第 1-2 阶段已完成（2 个勾）
       expect(find.byIcon(Icons.check), findsNWidgets(2));
       // 第 3 阶段当前（1 个转圈）
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
       // 第 4 阶段未到（无勾无转圈）
       // 总勾数 + 转圈数 = 3（已完成 2 + 当前 1）
+    });
+  });
+
+  // M22 新增：动画测试
+  group('RecognizeProgressCard 动画（M22）', () {
+    testWidgets('进度条用 TweenAnimationBuilder 平滑插值', (tester) async {
+      await tester.pumpWidget(wrap(const RecognizeProgressCard(
+        currentState: RecognizeState.preprocessing,
+      )));
+      // 应存在 TweenAnimationBuilder 包裹 LinearProgressIndicator
+      //（用 byWidgetPredicate 而非 byType——Dart 泛型不变，
+      //  TweenAnimationBuilder<double> 不是 TweenAnimationBuilder<Object?>）
+      expect(find.byWidgetPredicate((w) => w is TweenAnimationBuilder),
+          findsWidgets);
+      // pump 让动画到达终值
+      await tester.pump(settleDuration);
+      final progress = tester.widget<LinearProgressIndicator>(
+          find.byType(LinearProgressIndicator));
+      expect(progress.value, 0.25);
+    });
+
+    testWidgets('done 态显示成功反馈图标（M22 新增）', (tester) async {
+      await tester.pumpWidget(wrap(const RecognizeProgressCard(
+        currentState: RecognizeState.done,
+      )));
+      await tester.pump(settleDuration);
+      // done 态除了 4 个阶段勾（Icons.check），还应有一个成功反馈图标（Icons.check_circle）
+      expect(find.byIcon(Icons.check_circle), findsOneWidget);
+    });
+
+    testWidgets('状态圆圈用 AnimatedContainer 颜色过渡', (tester) async {
+      await tester.pumpWidget(wrap(const RecognizeProgressCard(
+        currentState: RecognizeState.preprocessing,
+      )));
+      // 应存在 AnimatedContainer（状态圆圈颜色过渡）
+      expect(find.byType(AnimatedContainer), findsWidgets);
     });
   });
 }

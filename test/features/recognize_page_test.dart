@@ -431,4 +431,15 @@ void main() {
     expect(meals.first.componentsSnapshotJson, componentsSnapshot,
         reason: '改菜名重试路径也应记录组分快照');
   });
+
+  group('M22 done 态成功停留', () {
+    test('doneSuccessDwell 常量存在且为 400ms（M22 done 成功停留）', () {
+      // M22：done 态成功停留 400ms，让用户看到完成反馈再跳转
+      expect(
+        RecognizePage.doneSuccessDwell,
+        const Duration(milliseconds: 400),
+        reason: 'done 态应停留 400ms 让用户看到成功反馈，不再瞬间消失',
+      );
+    });
+  });
 }

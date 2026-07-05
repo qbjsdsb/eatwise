@@ -3,120 +3,106 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// 验证 Android 图标资源完整性
 ///
-/// 历史：M15 引入餐叉+餐刀 + 暖橙纯色背景；M17 重设计为 M3 抽象几何
-/// （同心圆环+中心圆点）+ 紫橙双色渐变；M20 重设计为 Google Lens 风
-/// （圆角取景框+四角 L 形角标+中心食物剪影+扫描线），保留 M17 紫橙渐变背景。
+/// 历史：M15 餐叉+餐刀+暖橙纯色 → M17 同心圆环+紫橙渐变 → M20 Google Lens 风
+/// （四角 L+苹果圆+扫描线+紫橙渐变）→ M22 白底紫前景反转+精修取景框+碗剪影
+/// （用户反馈「颜色丑、粗糙、太大、不像谷歌」重设计）。
 /// 测试断言随设计演进更新，确保资源文件与设计意图保持一致。
 void main() {
-  group('图标资源完整性 (M20)', () {
+  group('图标资源完整性 (M22)', () {
     const androidResDir = 'android/app/src/main/res';
 
-    test('colors.xml 含 ic_launcher_background 紫色起始色（M17 紫橙渐变）', () {
+    test('colors.xml 含 ic_launcher_background 白色 + ic_launcher_foreground 紫色（M22 白底反转）', () {
       final file = File('$androidResDir/values/colors.xml');
       final content = file.readAsStringSync();
       expect(
         content,
-        contains('<color name="ic_launcher_background">#6750A4</color>'),
-        reason: 'M17 起始色 #6750A4（M3 基线紫），呼应 App 主题种子色',
+        contains('<color name="ic_launcher_background">#FFFFFF</color>'),
+        reason: 'M22 反转配色：背景白 #FFFFFF（Google Camera 风），移除紫橙渐变',
       );
       expect(
         content,
-        contains('<color name="ic_launcher_background_end">#FF6E40</color>'),
-        reason: 'M17 渐变结束色 #FF6E40（Deep Orange 400），食欲色/食物色',
+        contains('<color name="ic_launcher_foreground">#6750A4</color>'),
+        reason: 'M22 前景紫 #6750A4（M3 基线紫，呼应 App 主题种子色）',
       );
-    });
-
-    test('colors.xml 含 ic_launcher_foreground 颜色定义', () {
-      final file = File('$androidResDir/values/colors.xml');
-      final content = file.readAsStringSync();
+      // M22 移除渐变结束色（不再用渐变背景）
       expect(
         content,
-        contains('<color name="ic_launcher_foreground">#FFFFFF</color>'),
-        reason: '图标前景颜色应抽到 colors.xml',
+        isNot(contains('ic_launcher_background_end')),
+        reason: 'M22 移除渐变结束色（白底纯色，无渐变）',
       );
     });
 
-    test('ic_launcher_background.xml 用渐变引用 @color/ic_launcher_background*（M17 紫橙渐变）', () {
+    test('ic_launcher_background.xml 纯白填充（M22 移除渐变）', () {
       final file = File('$androidResDir/drawable/ic_launcher_background.xml');
       final content = file.readAsStringSync();
-      // M17：渐变背景，引用两个 color 资源（起始紫 + 结束橙）
+      // M22：纯白背景，引用 @color/ic_launcher_background
       expect(
         content,
-        contains('android:startColor="@color/ic_launcher_background"'),
-        reason: '渐变起始色应引用 @color/ic_launcher_background（紫）',
+        contains('android:fillColor="@color/ic_launcher_background"'),
+        reason: 'M22 背景应纯白填充引用 @color/ic_launcher_background',
+      );
+      // M22 不应有渐变（移除 <gradient> 和 aapt:attr）
+      expect(
+        content,
+        isNot(contains('<gradient')),
+        reason: 'M22 移除渐变（白底纯色）',
       );
       expect(
         content,
-        contains('android:endColor="@color/ic_launcher_background_end"'),
-        reason: '渐变结束色应引用 @color/ic_launcher_background_end（橙）',
-      );
-      // 属性值不应硬编码颜色（注释里的颜色说明允许，但 startColor/endColor
-      // 属性值必须是 @color 引用，不能是 # 字面量）
-      expect(
-        content,
-        isNot(contains('android:startColor="#')),
-        reason: 'startColor 属性值不应硬编码 # 字面量（应通过 @color 资源引用）',
-      );
-      expect(
-        content,
-        isNot(contains('android:endColor="#')),
-        reason: 'endColor 属性值不应硬编码 # 字面量（应通过 @color 资源引用）',
+        isNot(contains('ic_launcher_background_end')),
+        reason: 'M22 不再引用渐变结束色',
       );
     });
 
-    test('ic_launcher_foreground.xml 含取景框+食物剪影+扫描线 path（M20 重设计）', () {
+    test('ic_launcher_foreground.xml 含精修取景框+碗剪影（M22 重设计）', () {
       final file = File('$androidResDir/drawable/ic_launcher_foreground.xml');
       final content = file.readAsStringSync();
-      // M20 几何：取景框圆角矩形 path，从 (29,29) 开始
+      // M22 几何：取景框四角 L 从 (36,36) 开始（M20 是 29,29，M22 收敛到 36,36 更小更精致）
       expect(
         content,
-        contains('android:pathData="M29,29'),
-        reason: '取景框 path 应从 (29,29) 开始（M20 圆角矩形取景框）',
+        contains('android:pathData="M36,36'),
+        reason: '取景框 path 应从 (36,36) 开始（M22 收敛范围 50→36dp）',
       );
-      // M20 几何：中心食物剪影（苹果简化形），从 (44,54) 开始
+      // M22 几何：中心碗剪影（半圆盘）从 (42,48) 开始
       expect(
         content,
-        contains('android:pathData="M44,54'),
-        reason: '食物剪影 path 应从 (44,54) 开始（M20 中心食物剪影）',
+        contains('android:pathData="M42,48'),
+        reason: '碗剪影 path 应从 (42,48) 开始（M22 中心碗半圆盘）',
       );
-      // M20 几何：扫描线，从 (33,54) 开始
+      // M22 描边 2.5dp（M20 是 4dp，M22 精修更细）
       expect(
         content,
-        contains('android:pathData="M33,54'),
-        reason: '扫描线 path 应从 (33,54) 开始（M20 水平扫描线）',
+        contains('android:strokeWidth="2.5"'),
+        reason: 'M22 取景框描边 2.5dp（M20 4dp 太粗）',
+      );
+      // M22 round 线帽（M20 是 square，M22 精修更圆润）
+      expect(
+        content,
+        contains('android:strokeLineCap="round"'),
+        reason: 'M22 round 线帽（M20 square 太生硬）',
       );
       expect(
         content,
         contains('android:fillColor="@color/ic_launcher_foreground"'),
-        reason: '前景应引用 @color/ic_launcher_foreground',
+        reason: '前景应引用 @color/ic_launcher_foreground（M22 紫色）',
       );
-      // 旧的"碗+蒸汽"应被移除（注释里 'steam' 也不应有）
+      // M22 移除扫描线（M20 的 M33,54 应不存在）
       expect(
         content,
-        isNot(contains('steam')),
-        reason: '旧的蒸汽注释应被移除',
+        isNot(contains('M33,54')),
+        reason: 'M22 移除扫描线（静态线不传达动态，增加杂乱）',
       );
-      // M15 餐叉+餐刀 path 应已移除
+      // M20 的苹果圆 M44,54 应不存在
       expect(
         content,
-        isNot(contains('M38,24')),
-        reason: 'M15 餐叉 path 应被 M20 取景框替换',
+        isNot(contains('M44,54')),
+        reason: 'M20 苹果圆 path 应被 M22 碗剪影替换',
       );
+      // M20 的取景框 M29,29 应不存在
       expect(
         content,
-        isNot(contains('M62,24')),
-        reason: 'M15 餐刀 path 应被 M20 食物剪影替换',
-      );
-      // M17 同心圆环 path 应已移除
-      expect(
-        content,
-        isNot(contains('M50,29')),
-        reason: 'M17 同心圆环 path 应被 M20 取景框替换',
-      );
-      expect(
-        content,
-        isNot(contains('M46,54')),
-        reason: 'M17 中心圆点 path 应被 M20 食物剪影替换',
+        isNot(contains('M29,29')),
+        reason: 'M20 取景框 path 应被 M22 收敛范围替换',
       );
     });
 

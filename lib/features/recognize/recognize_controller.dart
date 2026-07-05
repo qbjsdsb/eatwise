@@ -111,6 +111,11 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
   DateTime? _lastRecognizeTime;
   static const _minInterval = Duration(seconds: 15);
 
+  // M22：查库阶段最小展示时长，避免 lookupNutrition state 闪太快（DB lookup ~200ms）
+  // 设 state 后延迟 300ms 再查库，让用户看到「查库回填中…」阶段
+  @visibleForTesting
+  static const lookupMinDwell = Duration(milliseconds: 300);
+
   RecognizeController(
     this._primaryProvider,
     this._fallbackProvider,
@@ -310,6 +315,8 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
         recognitionResult: result,
         imagePath: xFile.path,
       );
+      // M22：查库阶段最小展示，避免 UI 闪烁（DB lookup ~200ms 会闪过）
+      await Future.delayed(lookupMinDwell);
 
       // 主菜查库回填
       NutritionResult? mainSingle;

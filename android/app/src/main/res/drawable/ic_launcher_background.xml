@@ -1,38 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  自适应图标背景：紫→橙 135° 对角线线性渐变（M17 重设计）。
+  自适应图标背景：纯白 #FFFFFF（M22 反转配色重设计）。
 
-  选色理由（M17 用户决策：M3 抽象几何 + 紫橙双色渐变）：
-  - 起始色 #6750A4（M3 基线紫）：呼应 App 主题种子色，紫色 = 觉知/识别/思考
-  - 结束色 #FF6E40（Material Deep Orange 400）：食欲色/食物色，橙色 = 温度/享受/品味
-  - 135° 对角线（左上紫 → 右下橙）：视觉从"思考/识别"流向"享受/品味"，
-    契合"慢慢吃"理念——先用脑（识别营养），再用嘴（品味食物）
-  - 渐变层次比纯色更精致耐看，符合 M3 Expressive 大胆配色
+  选色理由（M22 用户决策：白底+紫前景，Google Camera 风）：
+  - 纯白背景最 Google 风（Google Camera/Lens 都是白底深前景）
+  - 白底高对比衬托紫色前景，缩放到 48dp 仍清晰
+  - 用户切 App 主题色不影响图标（图标独立配色，不跟主题变）
 
-  技术实现：
-  - <aapt:attr> 嵌入 <gradient> 实现 vector drawable 渐变（API 24+，自适应图标 anydpi-v26 支持）
-  - 全画布 108×108 full-bleed（背景可超安全区，OEM 蒙版自动裁切）
-  - 渐变方向向量：(0,0) → (108,108)，即左上到右下对角线
-
-  M15 → M17 演进：M15 暖橙纯色 → M17 紫橙双色渐变（用户反馈"图标实在太丑"重设计）
+  M15 暖橙纯色 → M17 紫橙渐变 → M20 紫橙渐变+Lens 风 → M22 白底纯色（用户反馈「颜色丑、不像谷歌」重设计）
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <path android:pathData="M0,0 h108 v108 h-108 z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:type="linear"
-                android:startX="0"
-                android:startY="0"
-                android:endX="108"
-                android:endY="108"
-                android:startColor="@color/ic_launcher_background"
-                android:endColor="@color/ic_launcher_background_end" />
-        </aapt:attr>
-    </path>
+    <path
+        android:pathData="M0,0 h108 v108 h-108 z"
+        android:fillColor="@color/ic_launcher_background" />
 </vector>

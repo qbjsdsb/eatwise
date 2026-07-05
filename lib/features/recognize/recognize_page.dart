@@ -28,6 +28,10 @@ class RecognizePage extends ConsumerStatefulWidget {
   @override
   ConsumerState<RecognizePage> createState() => _RecognizePageState();
 
+  /// M22：done 态成功停留时长，让用户看到完成反馈动画再跳转校准页
+  @visibleForTesting
+  static const doneSuccessDwell = Duration(milliseconds: 400);
+
   /// 校准页 onConfirm 回调核心逻辑：写 food_item + meal_log。
   ///
   /// 抽成静态方法便于单测（M16.6 Task 3）：验证 AI 兜底哨兵路径（foodItemId=0）
@@ -402,6 +406,8 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
       final state = controller.current;
       if (state.state == RecognizeState.done &&
           state.recognitionResult != null) {
+        // M22：done 态成功停留，让用户看到 4 阶段全勾 + 成功反馈动画再跳转
+        await Future.delayed(RecognizePage.doneSuccessDwell);
         if (!mounted) return;
         // 持久化原图：image_picker 临时缓存会被系统清理，复制到 app 私有目录避免 broken image
         // （与离线入队 _persistImage 一致，回写 state.imagePath 让后续 meal_log 引用持久路径）

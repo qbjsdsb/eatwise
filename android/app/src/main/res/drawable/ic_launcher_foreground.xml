@@ -1,38 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  自适应图标前景：Google Lens 风格「四角取景框 + 中心食物剪影 + 扫描线」（M20 重设计）。
+  自适应图标前景：精修取景框 + 中心碗剪影（M22 重设计）。
 
-  设计理念（M20 用户决策：Google Lens 风扫描镜头，精致如谷歌）：
-  - 四角 L 形角标 = 取景框（拍照识别核心功能），聚焦感强
-  - 中心苹果剪影 = 食物识别（苹果是健康/营养/食物的通用符号）
-  - 水平扫描线 = AI 扫描中（穿过食物中心，暗示"正在识别"）
-  - 纯白前景在紫橙渐变背景上高对比，缩放到 48dp 仍清晰
+  设计理念（M22 用户决策：白底+紫前景反转，精修取景框+食物）：
+  - 四角 L 形角标 = 取景框（拍照识别核心功能），2.5dp round 描边精致不粗糙
+  - 中心碗剪影 = 食物（半圆盘 flat top + curve bottom，比 M20 苹果圆更可读为「食物/餐具」）
+  - 移除扫描线（静态线不传达动态，增加视觉杂乱）
+  - 紫前景 #6750A4 在白底上高对比，呼应 App 主题种子色
 
-  设计哲学 "Google Lens × Mindful Eating"：
-  - 借鉴 Google Lens 的取景框语言（四角 L + 扫描线）传达"识别"
-  - 中心苹果剪影传达"食物"
-  - 保留 M17 紫橙双色渐变背景（紫色=觉知，橙色=温度），契合"慢慢吃"理念
+  设计哲学 "Google Camera × Mindful Eating"：
+  - 借鉴 Google Camera/Lens 的白底+深前景配色（最 Google 风）
+  - 取景框语言传达「AI 扫描识别」
+  - 碗剪影传达「食物/慢慢吃」
 
   画布 108×108dp，安全区 66×66（中心 54,54，半径 33）。
-  实际几何范围（留 4dp 余量，半径 29 内）：
-  - 四角 L 形角标：每角 12×12dp，描边 4dp，位于 (29,29)-(79,79) 取景框四角
-  - 中心苹果剪影：直径 20dp（半径 10dp），中心 (54,54)
-  - 水平扫描线：y=54，x=33-75，描边 2dp
+  M22 几何范围（前景 36dp span = 33% 画布，M20 是 50dp = 46%，M22 更小更精致留白足）：
+  - 四角 L 形角标：每角 8×8dp，描边 2.5dp round cap，位于 (36,36)-(72,72) 取景框四角
+  - 中心碗剪影：半圆盘 24dp wide × 12dp tall，flat top y=48，curve bottom y=60，中心 (54,54)
 
   path 几何说明：
-  - 四角 L path：8 条线段（每角 2 条），用 strokeColor 描边
-    左上角：M29,29→L41,29 + M29,29→L29,41
-    右上角：M67,29→L79,29 + M79,29→L79,41
-    右下角：M79,79→L67,79 + M79,79→L79,67
-    左下角：M29,79→L41,79 + M29,79→L29,67
-  - 苹果剪影 path：从 (44,54) 画两个半圆顺时针形成直径 20dp 的圆
-  - 扫描线 path：从 (33,54) 水平画到 (75,54)，用 strokeColor 描边 2dp
+  - 四角 L path：8 条线段（每角 2 条），strokeColor 紫 2.5dp round cap
+    左上：M36,36→L44,36 + M36,36→L36,44
+    右上：M64,36→L72,36 + M72,36→L72,44
+    右下：M72,72→L64,72 + M72,72→L72,64
+    左下：M36,72→L44,72 + M36,72→L36,64
+  - 碗剪影 path：从 (42,48) 画半圆顺时针到 (66,48)（A12,12 sweep=1 = 下方半圆），Z 闭合
+    flat top = 碗口，curve bottom = 碗底，reads as 碗/食物容器
 
   monochrome 兼容（Android 13+ 主题图标）：
-  - 前景纯白 alpha 通道，无渐变在前景层
-  - 系统染色时背景渐变被忽略，前景独立可识别（四角 L + 苹果 + 扫描线的剪影）
+  - 前景纯紫 alpha 通道，系统染色时白底被忽略，前景独立可识别（四角 L + 碗的剪影）
 
-  M15 → M17 → M20 演进：M15 餐叉+餐刀具象 → M17 同心圆环+圆点抽象 → M20 Google Lens 风取景框+食物+扫描线（用户反馈"还是太难看，希望像谷歌公司会做的样子"重设计）
+  M15 餐叉+餐刀 → M17 同心圆环 → M20 苹果圆+扫描线 → M22 碗剪影（用户反馈「还是丑、粗糙、太大、不像谷歌」重设计）
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -40,30 +38,20 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 四角 L 形角标（取景框装饰，每角 12×12dp，白色描边 4dp，square 线帽）：
-         M29,29 起点（左上角虚拟直角点）
+    <!-- 四角 L 形角标（取景框，每角 8×8dp，紫色描边 2.5dp，round 线帽）：
+         M36,36 起点（左上角虚拟直角点）
          8 条线段分别画 4 个角的 L 形 -->
     <path
         android:strokeColor="@color/ic_launcher_foreground"
-        android:strokeWidth="4"
-        android:strokeLineCap="square"
-        android:pathData="M29,29 L41,29 M29,29 L29,41 M67,29 L79,29 M79,29 L79,41 M79,79 L67,79 M79,79 L79,67 M29,79 L41,79 M29,79 L29,67" />
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M36,36 L44,36 M36,36 L36,44 M64,36 L72,36 M72,36 L72,44 M72,72 L64,72 M72,72 L72,64 M36,72 L44,72 M36,72 L36,64" />
 
-    <!-- 中心苹果剪影（直径 20dp，半径 10dp，中心 54,54）：
-         M44,54 左点
-         A10,10 0 1 1 64,54 上半圆顺时针到右点
-         A10,10 0 1 1 44,54 下半圆顺时针回左点
-         Z 闭合 -->
+    <!-- 中心碗剪影（半圆盘 24×12dp，flat top y=48，curve bottom y=60，紫色填充）：
+         M42,48 左点（碗口左端）
+         A12,12 0 0 1 66,48 顺时针画下半圆到右点（sweep=1 = 下方弧，碗底）
+         Z 闭合（flat top = 碗口） -->
     <path
         android:fillColor="@color/ic_launcher_foreground"
-        android:pathData="M44,54 A10,10 0 1 1 64,54 A10,10 0 1 1 44,54 Z" />
-
-    <!-- 水平扫描线（y=54，x=33-75，白色描边 2dp，穿过苹果中心暗示"AI 扫描中"）：
-         M33,54 起点
-         L75,54 水平画到右端 -->
-    <path
-        android:strokeColor="@color/ic_launcher_foreground"
-        android:strokeWidth="2"
-        android:strokeLineCap="round"
-        android:pathData="M33,54 L75,54" />
+        android:pathData="M42,48 A12,12 0 0 1 66,48 Z" />
 </vector>

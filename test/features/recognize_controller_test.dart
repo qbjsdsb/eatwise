@@ -447,4 +447,15 @@ void main() {
       expect(n.carbsG, 0);
     });
   });
+
+  group('M22 查库阶段最小展示', () {
+    test('lookupMinDwell 常量存在且为 300ms（M22 查库最小展示）', () {
+      // M22：查库阶段最小展示 300ms，避免 lookupNutrition state 闪太快
+      expect(
+        RecognizeController.lookupMinDwell,
+        const Duration(milliseconds: 300),
+        reason: '查库阶段应最小展示 300ms，避免 lookupNutrition 闪太快',
+      );
+    });
+  });
 }
