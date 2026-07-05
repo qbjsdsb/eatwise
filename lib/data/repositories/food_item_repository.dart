@@ -470,6 +470,27 @@ class FoodItemRepository {
     );
   }
 
+  /// M16.8：按 foodItemId 更新 4 项 per100g（不动其他字段）
+  ///
+  /// 用途：查库命中 + AI 偏差大时，用 AI 反算 per100g 纠正脏库。
+  /// 仅更新营养字段，保留 name/source/version/created_at 等元数据。
+  Future<void> updatePer100g({
+    required int foodItemId,
+    required double caloriesPer100g,
+    required double proteinPer100g,
+    required double fatPer100g,
+    required double carbsPer100g,
+  }) async {
+    await (_db.foodItems.update()..where((f) => f.id.equals(foodItemId))).write(
+      FoodItemsCompanion(
+        caloriesPer100g: Value(caloriesPer100g),
+        proteinPer100g: Value(proteinPer100g),
+        fatPer100g: Value(fatPer100g),
+        carbsPer100g: Value(carbsPer100g),
+      ),
+    );
+  }
+
   /// 手动录入新食物（source='manual'）
   /// T10 手动录入页"查不到→自定义→存库"用
   /// aliases：可选别名列表（如模型返回的原始菜名，用于自动学习，下次识别同名自动命中）
