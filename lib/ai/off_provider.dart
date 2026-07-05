@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 
 /// Open Food Facts 云查结果（per 100g 营养素，已转 kcal）
 class OffResult {
@@ -80,8 +81,12 @@ class OffProvider {
       },
     );
     // OFF 要求 User-Agent 标识应用（否则可能被限流）
+    // P1-1: 版本号从 PackageInfo 动态读取（替代硬编码 0.4.0，pubspec bump 后自动同步）
+    final info = await PackageInfo.fromPlatform();
+    final ua =
+        'EatWise/${info.version} (Android; food-matching) contact@eatwise.app';
     final resp = await _client
-        .get(url, headers: {'User-Agent': 'EatWise/0.4.0 (nutrition app)'})
+        .get(url, headers: {'User-Agent': ua})
         .timeout(_timeout);
     if (resp.statusCode != 200) return null;
     final json = jsonDecode(resp.body) as Map<String, dynamic>;
@@ -127,13 +132,15 @@ class OffProvider {
     final brand = (p['brands'] as String?)?.trim() ?? '';
 
     // serving_size 解析（如 "330 ml" / "100 g"），默认 100g
+    // P1-2: 扩展支持 ml 单位，饮料按密度 1.0 兜底为 g（避免按 100g 算的 5 倍偏差）
     double defaultServingG = 100;
     final serving = (p['serving_size'] as String?)?.trim();
     if (serving != null && serving.isNotEmpty) {
-      final m = RegExp(r'(\d+(?:\.\d+)?)\s*g', caseSensitive: false)
+      final m = RegExp(r'(\d+(?:\.\d+)?)\s*(g|ml)', caseSensitive: false)
           .firstMatch(serving);
       if (m != null) {
         final v = double.tryParse(m.group(1)!);
+        // ml 按密度 1.0 兜底为 g（饮料密度≈1），g 直接用数值
         if (v != null && v > 0 && v < 5000) defaultServingG = v;
       }
     }
