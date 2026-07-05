@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/util/refresh_bus.dart';
 import '../../core/widgets/m3_widgets.dart';
-import '../../data/repositories/profile_repository.dart';
 import 'nutrition_calculator.dart';
 import '../recognize/providers.dart' as recognize;
 
@@ -31,6 +30,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   String _dietPreference = 'none';
   String _healthCondition = 'none';
   bool _loading = true;
+  bool _loadError = false; // 加载失败标志：与空表单严格区分（避免误导用户以为可填写）
   bool _busy = false; // 防重入：保存期间禁用按钮，避免双击重复写库
   bool _dirty = false; // 用户是否改过任意字段（PopScope 未保存确认用）
 
@@ -55,8 +55,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
   Future<void> _loadProfile() async {
     try {
-      final db = await ref.read(recognize.databaseProvider.future);
-      final repo = ProfileRepository(db);
+      final repo = await ref.read(recognize.profileRepoProvider.future);
       final p = await repo.get();
       _heightCtrl.text = p.heightCm.toString();
       _weightCtrl.text = p.weightKg.toString();
@@ -71,11 +70,14 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       _specialCondition = p.specialCondition ?? 'none';
       _dietPreference = p.dietPreference ?? 'none';
       _healthCondition = p.healthCondition ?? 'none';
+      _loadError = false; // 加载成功：清错误标志（重试成功后兜底）
     } catch (e) {
-      // DB 异常时不卡死 loading
+      // DB 异常时不卡死 loading，置 _loadError 标志让 build 显 ErrorState
+      // （不静默显空表单误导用户，与 today_meals_page _loadError 同构）
       if (mounted) {
         showAppToast(context, '档案加载失败：$e');
       }
+      _loadError = true;
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -93,6 +95,28 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    // 加载失败：显 ErrorState + 重试按钮（不显空白表单误导用户）
+    // 与 today_meals_page.dart 的 _loadError + ErrorState 模式同构
+    if (_loadError) {
+      return Scaffold(
+        body: ErrorState(
+          message: '档案加载失败',
+          onRetry: () {
+            setState(() {
+              _loadError = false;
+              _loading = true;
+            });
+            // 失败可能源于 databaseProvider 缓存的错误（如 DB 打开失败），
+            // invalidate 后下次 read 会重新执行 create 函数，让重试真正生效
+            // 同时 invalidate profileRepoProvider：它依赖 databaseProvider，
+            // 级联 invalidate 确保下次 read 拿到全新 Repository 实例
+            ref.invalidate(recognize.databaseProvider);
+            ref.invalidate(recognize.profileRepoProvider);
+            _loadProfile();
+          },
+        ),
+      );
+    }
     if (_loading) {
       return const Scaffold(body: LoadingState());
     }
@@ -369,8 +393,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _busy = true);
     try {
-      final db = await ref.read(recognize.databaseProvider.future);
-      final repo = ProfileRepository(db);
+      final repo = await ref.read(recognize.profileRepoProvider.future);
 
       // 读取现有 profile，保留 tdeeAdjustmentKcal（校准累积值，不应被 goalRate 重算覆盖）
       final existing = await repo.get();

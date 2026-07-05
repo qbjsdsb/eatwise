@@ -24,6 +24,15 @@ SentryEvent? scrubBeforeSend(SentryEvent event, Hint hint) {
   }
   event.extra = scrubbedExtra;
 
+  // 2.1 脱敏 tags（与 extra 同模式：命中 _isSensitiveKey 的 entry 删除）
+  final tags = Map<String, String>.from(event.tags ?? const {});
+  final scrubbedTags = <String, String>{};
+  for (final entry in tags.entries) {
+    if (_isSensitiveKey(entry.key)) continue;
+    scrubbedTags[entry.key] = entry.value;
+  }
+  event.tags = scrubbedTags;
+
   // 3. 脱敏 exception message 中的路径和 key
   final exceptions = event.exceptions;
   if (exceptions != null) {

@@ -11,7 +11,6 @@ import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
 import '../../core/config/secure_config_store.dart';
 import '../../core/util/recognition_post_processor.dart';
-import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/pending_recognition_repository.dart';
@@ -94,6 +93,10 @@ class OfflineQueueController {
 
   /// 处理所有 pending 记录
   /// 公开方法：测试可手动触发（沙箱无法模拟真实网络切换）
+  ///
+  /// M24 B3：原 ~396 行单方法拆为遍历+分发 + _processSingleItem / _processComposite
+  /// 两个子方法。仅拆方法结构，业务逻辑（哨兵替换 / per100g 反算 / 包装 OCR /
+  /// 品类校准 / 组分份量校准）全部保留不变。
   Future<void> processPending() async {
     if (_processing) return; // 防重入
     _processing = true;
@@ -105,383 +108,15 @@ class OfflineQueueController {
       final mealRepo = MealLogRepository(_db);
 
       for (final p in pending) {
-        try {
-          // 读图片 base64（异步 exists 避免阻塞 UI）
-          final imageFile = File(p.imagePath);
-          if (!await imageFile.exists()) {
-            // 图片缺失是不可恢复错误，直接标记 failed（不重试）
-            await pendingRepo.markFailed(p.id, '图片文件不存在', permanent: true);
-            continue;
-          }
-          final imageBase64 = base64Encode(await imageFile.readAsBytes());
-
-          // T37 断路器：open 状态跳过本条（不调 API），直接 continue 保留 pending 状态
-          // 【第2轮 Self-Review 修正】：不能调 markFailed！markFailed 会增加 retryCount
-          //   （pending_recognition_repository.dart：retryCount 达 3 标 failed 永久不重试），
-          //   断路器 open 30s 期间多次 processPending 会触发上限导致 pending 永久 failed。
-          //   正确做法：直接 continue，保留 pending 状态，等断路器恢复后下次 processPending 重试。
-          if (_circuitBreaker != null && !await _circuitBreaker.allowCall) {
-            break; // 断路器 open：跳过本批所有 pending，等恢复后下次 processPending 重试
-          }
-
-          // 调视觉模型（60s 超时，避免单条卡死整队列）
-          // M16.2：30→60s，与 qwen_vl_provider.dart 一致，复杂图识别需要时间
-          // 主失败 → fallback（与 recognize_controller.dart 主备降级一致）
-          VisionRecognitionResult result;
-          try {
-            result = await _visionProvider
-                .recognize(imageBase64)
-                .timeout(const Duration(seconds: 60));
-          } catch (e) {
-            if (_fallbackProvider == null) rethrow;
-            result = await _fallbackProvider
-                .recognize(imageBase64)
-                .timeout(const Duration(seconds: 60));
-          }
-
-          // T37 断路器：视觉调用成功记录成功（halfOpen → closed）
-          // best-effort：断路器持久化失败不影响主流程（与 recognize_controller 一致）
-          if (_circuitBreaker != null) {
-            try {
-              await _circuitBreaker.recordSuccess();
-            } catch (_) {}
-          }
-
-          // 第二波：后处理（密度换算 + 校验修正），与前台 recognize_controller 一致
-          // 修复第一波盲区：离线回补原直接用原始 result，包装液体未换算 ml→g、
-          // 营养素不自洽未修正、组分份量不自洽未缩放，导致前后台行为分叉。
-          result = RecognitionPostProcessor.process(result);
-
-          // 查库回填营养素：区分单品 / 复合菜
-          // （修复 bug：原无条件 lookupSingleItem 导致复合菜 nutrition==null 静默丢弃）
-          int foodItemId;
-          double actualCalories, actualProteinG, actualFatG, actualCarbsG;
-          double actualServingG = result.estimatedWeightGMid;
-          String? componentsJson;
-
-          if (result.isSingleItem) {
-            final nutrition = await _nutritionLookup.lookupSingleItem(
-              dishName: result.dishName,
-              servingG: result.estimatedWeightGMid,
-              brand: result.brand,
-            );
-            // M16.8：三路径统一——离线回补也走 CalibratedNutritionCalculator，
-            // 与 recognize_page / multi_dish_page 一致：
-            // - 查库命中（nutrition != null）+ 有 AI 估算：差异检测决定信任 AI 还是库
-            //   - 偏差 > 50%：用 AI 反算 per100g + 更新库 + 用 AI 值记录
-            //   - 偏差 ≤ 50%：用库 per100g + 不更新库
-            // - 查库未命中（nutrition == null）+ 有 AI 估算：哨兵分支走品类校准 + upsert
-            // - 无 AI 估算（旧 prompt）：保留原 ratio 逻辑（库值 × mid/100），向后兼容
-            final cal = result.estimatedCalories;
-            final hasAiEstimate = cal != null;
-            final mid = result.estimatedWeightGMid;
-
-            if (nutrition != null && hasAiEstimate) {
-              // M16.8：查库命中 + 有 AI 估算 → 走差异检测
-              // 后台用 mid 不调整 servingG（与 recognize_page 前台 servingG=mid 一致）
-              final aiFallback = NutritionResult(
-                foodItemId: 0,
-                calories: cal,
-                proteinG: result.estimatedProteinG ?? 0,
-                fatG: result.estimatedFatG ?? 0,
-                carbsG: result.estimatedCarbsG ?? 0,
-                oilG: 0,
-              );
-              final calibrated = CalibratedNutritionCalculator.compute(
-                recognitionResult: result,
-                aiFallback: aiFallback,
-                servingG: mid,
-                lookupHitNutrition: nutrition,
-              );
-              foodItemId = calibrated.foodItemId;
-              actualCalories = calibrated.actualCalories;
-              actualProteinG = calibrated.actualProteinG;
-              actualFatG = calibrated.actualFatG;
-              actualCarbsG = calibrated.actualCarbsG;
-              // 偏差大时更新库 per100g（纠正脏库，下次查库命中走"偏差小"分支）
-              if (calibrated.shouldUpdateFoodItem) {
-                final foodItemRepo = FoodItemRepository(_db);
-                await foodItemRepo.updatePer100g(
-                  foodItemId: calibrated.foodItemId,
-                  caloriesPer100g: calibrated.caloriesPer100g,
-                  proteinPer100g: calibrated.proteinPer100g,
-                  fatPer100g: calibrated.fatPer100g,
-                  carbsPer100g: calibrated.carbsPer100g,
-                );
-              }
-            } else if (nutrition != null) {
-              // 无 AI 估算（旧 prompt）：保留原 ratio 逻辑（库值即 per100g × mid / 100）
-              // 走原 actualServingG=mid 路径，actualCalories = nutrition.calories
-              foodItemId = nutrition.foodItemId;
-              actualCalories = nutrition.calories;
-              actualProteinG = nutrition.proteinG;
-              actualFatG = nutrition.fatG;
-              actualCarbsG = nutrition.carbsG;
-            } else if (hasAiEstimate) {
-              // 查库未命中 + 有 AI 估算 → 哨兵分支走品类校准 + upsert
-              // CalibratedNutritionCalculator 内部已处理包装 OCR 优先 + 品类校准兜底
-              final aiFallback = NutritionResult(
-                foodItemId: 0,
-                calories: cal,
-                proteinG: result.estimatedProteinG ?? 0,
-                fatG: result.estimatedFatG ?? 0,
-                carbsG: result.estimatedCarbsG ?? 0,
-                oilG: 0,
-              );
-              final calibrated = CalibratedNutritionCalculator.compute(
-                recognitionResult: result,
-                aiFallback: aiFallback,
-                servingG: mid,
-              );
-              final foodItemRepo = FoodItemRepository(_db);
-              // 哨兵 foodItemId=0，写 meal_log 前必须调 upsertAiRecognized 替换为真实 id
-              // （硬约束 2：meal_log.food_item_id 是非空外键，哨兵 0 会触发外键约束违规）
-              foodItemId = await foodItemRepo.upsertAiRecognized(
-                name: result.dishName,
-                brand: result.brand,
-                caloriesPer100g: calibrated.caloriesPer100g,
-                proteinPer100g: calibrated.proteinPer100g,
-                fatPer100g: calibrated.fatPer100g,
-                carbsPer100g: calibrated.carbsPer100g,
-                confidence: result.confidence,
-              );
-              actualCalories = calibrated.actualCalories;
-              actualProteinG = calibrated.actualProteinG;
-              actualFatG = calibrated.actualFatG;
-              actualCarbsG = calibrated.actualCarbsG;
-            } else {
-              // v1.4：单品库未命中 + AI 无估算（旧 prompt）
-              // 不创建 0 卡 food_item（会污染未来查库），不写 meal_log，
-              // 标记 failed 让用户后续手动处理，避免静默丢失餐次
-              // M16.2：permanent: true → false（让用户可改菜名重试）
-              await pendingRepo.markFailed(
-                  p.id, 'AI 无估算且库未命中，需手动录入或改菜名重试');
-              continue;
-            }
-          } else {
-            // 复合菜 → lookupCompositeDish（组分累加 + 烹饪用油）
-            final composite = await _nutritionLookup.lookupCompositeDish(
-              components: result.foodComponents,
-              cookingMethod: result.cookingMethod,
-            );
-            if (composite.componentHits.isEmpty &&
-                result.estimatedCalories != null) {
-              // v1.4：复合菜组分全 miss 时用 AI 整菜估算兜底（与前台对齐）
-              // v1.9：包装食品 OCR 优先路径——若复合菜恰好是预包装速冻食品等
-              // （如速冻水饺被识别为 composite 但有包装营养表），优先用包装数据换算
-              // 复合菜不做品类校准（无 meaningful food category），AI 估算路径直接用原值
-              // v1.10：包装换算后宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ 回退 AI 估算，
-              //   避免复合菜路径宏量显示 0（与单品路径 / 前台哨兵分支一致）
-              final mid = result.estimatedWeightGMid;
-              final per100 = mid > 0 ? 100.0 / mid : 0.0;
-              final packagePer100 = result.hasPackageNutrition
-                  ? result.computePackageNutritionPer100g(
-                      estimatedProteinG: result.estimatedProteinG,
-                      estimatedFatG: result.estimatedFatG,
-                      estimatedCarbsG: result.estimatedCarbsG,
-                    )
-                  : null;
-              // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
-              final packageMacrosAllZero = packagePer100 != null &&
-                  packagePer100.$2 == 0 &&
-                  packagePer100.$3 == 0 &&
-                  packagePer100.$4 == 0;
-              final (caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g) =
-                  (packagePer100 != null && !packageMacrosAllZero)
-                      ? packagePer100
-                      : (() {
-                          // 无包装数据 / 包装换算宏量全 0 → 走原 AI 估算路径（复合菜不做品类校准）
-                          return (
-                            result.estimatedCalories! * per100,
-                            (result.estimatedProteinG ?? 0) * per100,
-                            (result.estimatedFatG ?? 0) * per100,
-                            (result.estimatedCarbsG ?? 0) * per100,
-                          );
-                        })();
-              final foodItemRepo = FoodItemRepository(_db);
-              foodItemId = await foodItemRepo.upsertAiRecognized(
-                name: result.dishName,
-                brand: result.brand,
-                caloriesPer100g: caloriesPer100g,
-                proteinPer100g: proteinPer100g,
-                fatPer100g: fatPer100g,
-                carbsPer100g: carbsPer100g,
-                confidence: result.confidence,
-              );
-              // v1.9：有包装数据时 actualCalories 用包装换算整菜热量（与单品路径一致）
-              // 无包装数据时用 AI 估算整菜值
-              // v1.10：包装换算宏量全 0 时也走 AI 估算整菜值（与 per100g 路径一致，
-              //   per100g 已回退 AI 估算，actualCalories 不再用包装换算避免两者脱节）
-              if (packagePer100 != null && !packageMacrosAllZero && mid > 0) {
-                actualCalories = caloriesPer100g * mid / 100;
-              } else {
-                actualCalories = result.estimatedCalories!;
-              }
-              actualProteinG = result.estimatedProteinG ?? 0;
-              actualFatG = result.estimatedFatG ?? 0;
-              actualCarbsG = result.estimatedCarbsG ?? 0;
-            } else if (composite.componentHits.isEmpty) {
-              // 复合菜组分全 miss 且 AI 无估算（旧 prompt）：不写近 0 卡 meal_log，
-              // 标记 failed 让用户手动处理（与前台 recognize_controller 行为一致）
-              // M16.2：permanent: true → false（让用户可改菜名重试，与单品路径一致）
-              await pendingRepo.markFailed(
-                  p.id, '复合菜组分全 miss 且 AI 无估算，需手动录入或改菜名重试');
-              continue;
-            } else {
-              // 复合菜 upsert ai_recognized（存组分快照，热量在 meal_log）
-              final foodItemRepo = FoodItemRepository(_db);
-              componentsJson = jsonEncode({
-                'components': result.foodComponents
-                    .map((c) => {'name': c.name, 'estimated_g': c.estimatedG})
-                    .toList(),
-                'oil_g': composite.oilG,
-              });
-              // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），按包装换算
-              // per100g + actualCalories 都用包装换算值，跳过组分累加
-              // 无包装数据 → 走原组分累加路径（per100g=0，actualCalories=composite.calories）
-              // v1.10：包装换算后宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ 回退组分累加，
-              //   避免复合菜路径宏量显示 0（与单品路径 / 前台哨兵分支一致）
-              actualServingG = result.foodComponents
-                  .fold<double>(0, (s, c) => s + c.estimatedG);
-              final packagePer100 = result.hasPackageNutrition
-                  ? result.computePackageNutritionPer100g(
-                      estimatedProteinG: result.estimatedProteinG,
-                      estimatedFatG: result.estimatedFatG,
-                      estimatedCarbsG: result.estimatedCarbsG,
-                    )
-                  : null;
-              // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
-              final packageMacrosAllZero = packagePer100 != null &&
-                  packagePer100.$2 == 0 &&
-                  packagePer100.$3 == 0 &&
-                  packagePer100.$4 == 0;
-              if (packagePer100 != null && !packageMacrosAllZero) {
-                // 有包装：per100g 存包装换算值（未来查库按密度算更准），
-                // actualCalories 按 actualServingG 换算（与份量一致）
-                foodItemId = await foodItemRepo.upsertAiRecognized(
-                  name: result.dishName,
-                  brand: result.brand,
-                  caloriesPer100g: packagePer100.$1,
-                  proteinPer100g: packagePer100.$2,
-                  fatPer100g: packagePer100.$3,
-                  carbsPer100g: packagePer100.$4,
-                  confidence: result.confidence,
-                  componentsJson: componentsJson,
-                );
-                actualCalories = packagePer100.$1 * actualServingG / 100;
-                actualProteinG = packagePer100.$2 * actualServingG / 100;
-                actualFatG = packagePer100.$3 * actualServingG / 100;
-                actualCarbsG = packagePer100.$4 * actualServingG / 100;
-              } else {
-                // 无包装 / 包装换算宏量全 0 → M18：AI 优先 + 兜底组分累加
-                // M18 三路径一致性：调用公共方法 computeCompositeLookupHit
-                // AI 有效（per100g ∈ [0, 900]）时 per100g 用 AI 反算值 + actualXxx 用 AI 估算
-                // AI 离谱（per100g>900）/ mid=0 / 无 AI 估算 → 走原组分累加（per100g=0，actual=composite）
-                final hasAiEstimate = result.estimatedCalories != null &&
-                    result.estimatedCalories! > 0;
-                final aiCalibrated = hasAiEstimate
-                    ? CalibratedNutritionCalculator.computeCompositeLookupHit(
-                        aiFallback: NutritionResult(
-                          foodItemId: 0,
-                          calories: result.estimatedCalories!,
-                          proteinG: result.estimatedProteinG ?? 0,
-                          fatG: result.estimatedFatG ?? 0,
-                          carbsG: result.estimatedCarbsG ?? 0,
-                          oilG: 0,
-                          source: NutritionSource.aiEstimate,
-                        ),
-                        servingG: actualServingG,
-                        mid: result.estimatedWeightGMid,
-                      )
-                    : null;
-                if (aiCalibrated != null) {
-                  // M18：AI 有效，per100g 用 AI 反算值写库 + AI 估算记 meal_log
-                  foodItemId = await foodItemRepo.upsertAiRecognized(
-                    name: result.dishName,
-                    brand: result.brand,
-                    caloriesPer100g: aiCalibrated.caloriesPer100g,
-                    proteinPer100g: aiCalibrated.proteinPer100g,
-                    fatPer100g: aiCalibrated.fatPer100g,
-                    carbsPer100g: aiCalibrated.carbsPer100g,
-                    confidence: result.confidence,
-                    componentsJson: componentsJson,
-                  );
-                  actualCalories = aiCalibrated.actualCalories;
-                  actualProteinG = aiCalibrated.actualProteinG;
-                  actualFatG = aiCalibrated.actualFatG;
-                  actualCarbsG = aiCalibrated.actualCarbsG;
-                } else {
-                  // AI 离谱 / mid=0 / 无 AI 估算：走原组分累加路径
-                  foodItemId = await foodItemRepo.upsertAiRecognized(
-                    name: result.dishName,
-                    brand: result.brand,
-                    caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储
-                    proteinPer100g: 0,
-                    fatPer100g: 0,
-                    carbsPer100g: 0,
-                    confidence: result.confidence,
-                    componentsJson: componentsJson,
-                  );
-                  actualCalories = composite.calories;
-                  actualProteinG = composite.proteinG;
-                  actualFatG = composite.fatG;
-                  actualCarbsG = composite.carbsG;
-                }
-              }
-            }
-          }
-
-          // 写 meal_log + 标记 done（事务包裹：原子化，防 insertMealLog 成功但 markDone
-          // 失败导致下次重试产生重复 meal_log 记录）
-          await _db.transaction(() async {
-            await mealRepo.insertMealLog(
-              date: p.date,
-              mealType: p.mealType,
-              foodItemId: foodItemId,
-              actualServingG: actualServingG,
-              actualCalories: actualCalories,
-              actualProteinG: actualProteinG,
-              actualFatG: actualFatG,
-              actualCarbsG: actualCarbsG,
-              originalImagePath: p.imagePath,
-              recognitionConfidence: result.confidence,
-              componentsSnapshotJson: componentsJson,
-            );
-            await pendingRepo.markDone(p.id, foodItemId);
-          });
-
-          // M11：后台回补成功计入月度识别次数（与前台 recognize_controller 一致）
-          // 事务成功后才计数（事务失败会被 catch 块 markFailed，不应计数）
-          // best-effort：计数失败不覆盖回补主流程（与 recognize_controller 模式一致）
-          if (_secureConfigStore != null) {
-            try {
-              final now = DateTime.now();
-              await _secureConfigStore.incrementMonthlyCount(now.year, now.month);
-            } catch (e) {
-              debugPrint('M11 incrementMonthlyCount 失败（不影响回补）：$e');
-            }
-          }
-        } catch (e) {
-          // T37 断路器：retryable 视觉调用失败记录（halfOpen 失败 → 重新 open）
-          // M16.2：429 限流不计入失败计数（isRateLimit=true），与 recognize_controller 一致
-          // best-effort：断路器操作本身异常不可逃逸 catch 块
-          if (_circuitBreaker != null &&
-              e is VisionRecognitionException &&
-              e.retryable) {
-            try {
-              final breakerState = await _circuitBreaker.state;
-              if (breakerState == CircuitBreakerState.halfOpen) {
-                await _circuitBreaker.recordHalfOpenFailure();
-              } else {
-                final isRateLimit = e.reason.contains('限流 429');
-                await _circuitBreaker.recordFailure(isRateLimit: isRateLimit);
-              }
-            } catch (_) {
-              // best-effort：断路器持久化失败不逃逸
-            }
-          }
-          await pendingRepo.markFailed(p.id, e.toString());
+        // T37 断路器：open 状态跳过本批所有 pending（不调 API）
+        // 【第2轮 Self-Review 修正】：不能调 markFailed！markFailed 会增加 retryCount
+        //   （pending_recognition_repository.dart：retryCount 达 3 标 failed 永久不重试），
+        //   断路器 open 30s 期间多次 processPending 会触发上限导致 pending 永久 failed。
+        //   正确做法：直接 break，保留 pending 状态，等断路器恢复后下次 processPending 重试。
+        if (_circuitBreaker != null && !await _circuitBreaker.allowCall) {
+          break; // 断路器 open：跳过本批所有 pending，等恢复后下次 processPending 重试
         }
+        await _processOnePending(p, pendingRepo, mealRepo);
       }
     } catch (e, st) {
       // listPending / DB 异常：吞掉避免未观察异常，下次网络恢复重试
@@ -491,6 +126,454 @@ class OfflineQueueController {
       _processing = false;
     }
   }
+
+  /// M24 B3：处理单条 pending（视觉调用 + 分发 + 写库 + 错误处理）
+  ///
+  /// 从 processPending 抽出，主方法只做遍历 + 断路器 break + 分发。
+  /// 业务逻辑（哨兵替换 / per100g 反算 / 包装 OCR / 品类校准）在
+  /// _processSingleItem / _processComposite 中保留不变。
+  Future<void> _processOnePending(
+    PendingRecognition p,
+    PendingRecognitionRepository pendingRepo,
+    MealLogRepository mealRepo,
+  ) async {
+    try {
+      // 读图片 base64（异步 exists 避免阻塞 UI）
+      final imageFile = File(p.imagePath);
+      if (!await imageFile.exists()) {
+        // 图片缺失是不可恢复错误，直接标记 failed（不重试）
+        await pendingRepo.markFailed(p.id, '图片文件不存在', permanent: true);
+        return;
+      }
+      final imageBase64 = base64Encode(await imageFile.readAsBytes());
+
+      // 调视觉模型（60s 超时，避免单条卡死整队列）
+      // M16.2：30→60s，与 qwen_vl_provider.dart 一致，复杂图识别需要时间
+      // 主失败 → fallback（与 recognize_controller.dart 主备降级一致）
+      VisionRecognitionResult result;
+      try {
+        result = await _visionProvider
+            .recognize(imageBase64)
+            .timeout(const Duration(seconds: 60));
+      } catch (e) {
+        if (_fallbackProvider == null) rethrow;
+        result = await _fallbackProvider
+            .recognize(imageBase64)
+            .timeout(const Duration(seconds: 60));
+      }
+
+      // T37 断路器：视觉调用成功记录成功（halfOpen → closed）
+      // best-effort：断路器持久化失败不影响主流程（与 recognize_controller 一致）
+      if (_circuitBreaker != null) {
+        try {
+          await _circuitBreaker.recordSuccess();
+        } catch (_) {}
+      }
+
+      // 第二波：后处理（密度换算 + 校验修正），与前台 recognize_controller 一致
+      // 修复第一波盲区：离线回补原直接用原始 result，包装液体未换算 ml→g、
+      // 营养素不自洽未修正、组分份量不自洽未缩放，导致前后台行为分叉。
+      result = RecognitionPostProcessor.process(result);
+
+      // M24 B3：分发到单品 / 复合菜子方法（原 L162-432 范围）
+      // - 子方法返回 _ProcessResult（foodItemId + actualXxx + componentsJson）
+      // - 子方法返回 null 表示已 markFailed，主方法 return 跳过写 meal_log
+      // - 硬约束 2/3/4：哨兵替换 + per100g 反算逻辑在子方法中保留不变
+      final r = result.isSingleItem
+          ? await _processSingleItem(p, result, pendingRepo)
+          : await _processComposite(p, result, pendingRepo);
+      if (r == null) return; // 子方法已 markFailed（库未命中且无 AI 估算等）
+
+      // 写 meal_log + 标记 done（事务包裹：原子化，防 insertMealLog 成功但 markDone
+      // 失败导致下次重试产生重复 meal_log 记录）
+      await _db.transaction(() async {
+        await mealRepo.insertMealLog(
+          date: p.date,
+          mealType: p.mealType,
+          foodItemId: r.foodItemId,
+          actualServingG: r.actualServingG,
+          actualCalories: r.actualCalories,
+          actualProteinG: r.actualProteinG,
+          actualFatG: r.actualFatG,
+          actualCarbsG: r.actualCarbsG,
+          originalImagePath: p.imagePath,
+          recognitionConfidence: result.confidence,
+          componentsSnapshotJson: r.componentsJson,
+        );
+        await pendingRepo.markDone(p.id, r.foodItemId);
+      });
+
+      // M11：后台回补成功计入月度识别次数（与前台 recognize_controller 一致）
+      // 事务成功后才计数（事务失败会被 catch 块 markFailed，不应计数）
+      // best-effort：计数失败不覆盖回补主流程（与 recognize_controller 模式一致）
+      if (_secureConfigStore != null) {
+        try {
+          final now = DateTime.now();
+          await _secureConfigStore.incrementMonthlyCount(now.year, now.month);
+        } catch (e) {
+          debugPrint('M11 incrementMonthlyCount 失败（不影响回补）：$e');
+        }
+      }
+    } catch (e) {
+      // T37 断路器：retryable 视觉调用失败记录（halfOpen 失败 → 重新 open）
+      // M16.2：429 限流不计入失败计数（isRateLimit=true），与 recognize_controller 一致
+      // best-effort：断路器操作本身异常不可逃逸 catch 块
+      if (_circuitBreaker != null &&
+          e is VisionRecognitionException &&
+          e.retryable) {
+        try {
+          final breakerState = await _circuitBreaker.state;
+          if (breakerState == CircuitBreakerState.halfOpen) {
+            await _circuitBreaker.recordHalfOpenFailure();
+          } else {
+            final isRateLimit = e.reason.contains('限流 429');
+            await _circuitBreaker.recordFailure(isRateLimit: isRateLimit);
+          }
+        } catch (_) {
+          // best-effort：断路器持久化失败不逃逸
+        }
+      }
+      await pendingRepo.markFailed(p.id, e.toString());
+    }
+  }
+
+  /// M24 B3：单品路径子方法（原 processPending L162-260 范围）
+  /// 含 foodItemId=0 哨兵替换（硬约束 2）+ 包装 OCR 优先 + AI 估算兜底
+  /// 返回 null 表示已 markFailed（库未命中且无 AI 估算），调用方应 continue
+  Future<_ProcessResult?> _processSingleItem(
+    PendingRecognition p,
+    VisionRecognitionResult result,
+    PendingRecognitionRepository pendingRepo,
+  ) async {
+    final nutrition = await _nutritionLookup.lookupSingleItem(
+      dishName: result.dishName,
+      servingG: result.estimatedWeightGMid,
+      brand: result.brand,
+    );
+    // M16.8：三路径统一——离线回补也走 CalibratedNutritionCalculator，
+    // 与 recognize_page / multi_dish_page 一致：
+    // - 查库命中（nutrition != null）+ 有 AI 估算：差异检测决定信任 AI 还是库
+    //   - 偏差 > 50%：用 AI 反算 per100g + 更新库 + 用 AI 值记录
+    //   - 偏差 ≤ 50%：用库 per100g + 不更新库
+    // - 查库未命中（nutrition == null）+ 有 AI 估算：哨兵分支走品类校准 + upsert
+    // - 无 AI 估算（旧 prompt）：保留原 ratio 逻辑（库值 × mid/100），向后兼容
+    final cal = result.estimatedCalories;
+    final hasAiEstimate = cal != null;
+    final mid = result.estimatedWeightGMid;
+    int foodItemId;
+    double actualCalories, actualProteinG, actualFatG, actualCarbsG;
+    final double actualServingG = mid;
+
+    if (nutrition != null && hasAiEstimate) {
+      // M16.8：查库命中 + 有 AI 估算 → 走差异检测
+      // 后台用 mid 不调整 servingG（与 recognize_page 前台 servingG=mid 一致）
+      final aiFallback = NutritionResult(
+        foodItemId: 0,
+        calories: cal,
+        proteinG: result.estimatedProteinG ?? 0,
+        fatG: result.estimatedFatG ?? 0,
+        carbsG: result.estimatedCarbsG ?? 0,
+        oilG: 0,
+      );
+      final calibrated = CalibratedNutritionCalculator.compute(
+        recognitionResult: result,
+        aiFallback: aiFallback,
+        servingG: mid,
+        lookupHitNutrition: nutrition,
+      );
+      foodItemId = calibrated.foodItemId;
+      actualCalories = calibrated.actualCalories;
+      actualProteinG = calibrated.actualProteinG;
+      actualFatG = calibrated.actualFatG;
+      actualCarbsG = calibrated.actualCarbsG;
+      // 偏差大时更新库 per100g（纠正脏库，下次查库命中走"偏差小"分支）
+      if (calibrated.shouldUpdateFoodItem) {
+        final foodItemRepo = FoodItemRepository(_db);
+        await foodItemRepo.updatePer100g(
+          foodItemId: calibrated.foodItemId,
+          caloriesPer100g: calibrated.caloriesPer100g,
+          proteinPer100g: calibrated.proteinPer100g,
+          fatPer100g: calibrated.fatPer100g,
+          carbsPer100g: calibrated.carbsPer100g,
+        );
+      }
+    } else if (nutrition != null) {
+      // 无 AI 估算（旧 prompt）：保留原 ratio 逻辑（库值即 per100g × mid / 100）
+      // 走原 actualServingG=mid 路径，actualCalories = nutrition.calories
+      foodItemId = nutrition.foodItemId;
+      actualCalories = nutrition.calories;
+      actualProteinG = nutrition.proteinG;
+      actualFatG = nutrition.fatG;
+      actualCarbsG = nutrition.carbsG;
+    } else if (hasAiEstimate) {
+      // 查库未命中 + 有 AI 估算 → 哨兵分支走品类校准 + upsert
+      // CalibratedNutritionCalculator 内部已处理包装 OCR 优先 + 品类校准兜底
+      final aiFallback = NutritionResult(
+        foodItemId: 0,
+        calories: cal,
+        proteinG: result.estimatedProteinG ?? 0,
+        fatG: result.estimatedFatG ?? 0,
+        carbsG: result.estimatedCarbsG ?? 0,
+        oilG: 0,
+      );
+      final calibrated = CalibratedNutritionCalculator.compute(
+        recognitionResult: result,
+        aiFallback: aiFallback,
+        servingG: mid,
+      );
+      final foodItemRepo = FoodItemRepository(_db);
+      // 哨兵 foodItemId=0，写 meal_log 前必须调 upsertAiRecognized 替换为真实 id
+      // （硬约束 2：meal_log.food_item_id 是非空外键，哨兵 0 会触发外键约束违规）
+      foodItemId = await foodItemRepo.upsertAiRecognized(
+        name: result.dishName,
+        brand: result.brand,
+        caloriesPer100g: calibrated.caloriesPer100g,
+        proteinPer100g: calibrated.proteinPer100g,
+        fatPer100g: calibrated.fatPer100g,
+        carbsPer100g: calibrated.carbsPer100g,
+        confidence: result.confidence,
+      );
+      actualCalories = calibrated.actualCalories;
+      actualProteinG = calibrated.actualProteinG;
+      actualFatG = calibrated.actualFatG;
+      actualCarbsG = calibrated.actualCarbsG;
+    } else {
+      // v1.4：单品库未命中 + AI 无估算（旧 prompt）
+      // 不创建 0 卡 food_item（会污染未来查库），不写 meal_log，
+      // 标记 failed 让用户后续手动处理，避免静默丢失餐次
+      // M16.2：permanent: true → false（让用户可改菜名重试）
+      await pendingRepo.markFailed(
+          p.id, 'AI 无估算且库未命中，需手动录入或改菜名重试');
+      return null;
+    }
+
+    return _ProcessResult(
+      foodItemId: foodItemId,
+      actualCalories: actualCalories,
+      actualProteinG: actualProteinG,
+      actualFatG: actualFatG,
+      actualCarbsG: actualCarbsG,
+      actualServingG: actualServingG,
+      componentsJson: null,
+    );
+  }
+
+  /// M24 B3：复合菜路径子方法（原 processPending L261-432 范围）
+  /// 含组分份量校准 + 包装 OCR + 哨兵替换（硬约束 2）
+  /// 返回 null 表示已 markFailed（组分全 miss 且无 AI 估算），调用方应 continue
+  Future<_ProcessResult?> _processComposite(
+    PendingRecognition p,
+    VisionRecognitionResult result,
+    PendingRecognitionRepository pendingRepo,
+  ) async {
+    // 复合菜 → lookupCompositeDish（组分累加 + 烹饪用油）
+    final composite = await _nutritionLookup.lookupCompositeDish(
+      components: result.foodComponents,
+      cookingMethod: result.cookingMethod,
+    );
+    int foodItemId;
+    double actualCalories, actualProteinG, actualFatG, actualCarbsG;
+    double actualServingG = result.estimatedWeightGMid;
+    String? componentsJson;
+
+    if (composite.componentHits.isEmpty &&
+        result.estimatedCalories != null) {
+      // v1.4：复合菜组分全 miss 时用 AI 整菜估算兜底（与前台对齐）
+      // v1.9：包装食品 OCR 优先路径——若复合菜恰好是预包装速冻食品等
+      // （如速冻水饺被识别为 composite 但有包装营养表），优先用包装数据换算
+      // 复合菜不做品类校准（无 meaningful food category），AI 估算路径直接用原值
+      // v1.10：包装换算后宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ 回退 AI 估算，
+      //   避免复合菜路径宏量显示 0（与单品路径 / 前台哨兵分支一致）
+      final mid = result.estimatedWeightGMid;
+      final per100 = mid > 0 ? 100.0 / mid : 0.0;
+      final packagePer100 = result.hasPackageNutrition
+          ? result.computePackageNutritionPer100g(
+              estimatedProteinG: result.estimatedProteinG,
+              estimatedFatG: result.estimatedFatG,
+              estimatedCarbsG: result.estimatedCarbsG,
+            )
+          : null;
+      // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
+      final packageMacrosAllZero = packagePer100 != null &&
+          packagePer100.$2 == 0 &&
+          packagePer100.$3 == 0 &&
+          packagePer100.$4 == 0;
+      final (caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g) =
+          (packagePer100 != null && !packageMacrosAllZero)
+              ? packagePer100
+              : (() {
+                  // 无包装数据 / 包装换算宏量全 0 → 走原 AI 估算路径（复合菜不做品类校准）
+                  return (
+                    result.estimatedCalories! * per100,
+                    (result.estimatedProteinG ?? 0) * per100,
+                    (result.estimatedFatG ?? 0) * per100,
+                    (result.estimatedCarbsG ?? 0) * per100,
+                  );
+                })();
+      final foodItemRepo = FoodItemRepository(_db);
+      foodItemId = await foodItemRepo.upsertAiRecognized(
+        name: result.dishName,
+        brand: result.brand,
+        caloriesPer100g: caloriesPer100g,
+        proteinPer100g: proteinPer100g,
+        fatPer100g: fatPer100g,
+        carbsPer100g: carbsPer100g,
+        confidence: result.confidence,
+      );
+      // v1.9：有包装数据时 actualCalories 用包装换算整菜热量（与单品路径一致）
+      // 无包装数据时用 AI 估算整菜值
+      // v1.10：包装换算宏量全 0 时也走 AI 估算整菜值（与 per100g 路径一致，
+      //   per100g 已回退 AI 估算，actualCalories 不再用包装换算避免两者脱节）
+      if (packagePer100 != null && !packageMacrosAllZero && mid > 0) {
+        actualCalories = caloriesPer100g * mid / 100;
+      } else {
+        actualCalories = result.estimatedCalories!;
+      }
+      actualProteinG = result.estimatedProteinG ?? 0;
+      actualFatG = result.estimatedFatG ?? 0;
+      actualCarbsG = result.estimatedCarbsG ?? 0;
+    } else if (composite.componentHits.isEmpty) {
+      // 复合菜组分全 miss 且 AI 无估算（旧 prompt）：不写近 0 卡 meal_log，
+      // 标记 failed 让用户手动处理（与前台 recognize_controller 行为一致）
+      // M16.2：permanent: true → false（让用户可改菜名重试，与单品路径一致）
+      await pendingRepo.markFailed(
+          p.id, '复合菜组分全 miss 且 AI 无估算，需手动录入或改菜名重试');
+      return null;
+    } else {
+      // 复合菜 upsert ai_recognized（存组分快照，热量在 meal_log）
+      final foodItemRepo = FoodItemRepository(_db);
+      componentsJson = jsonEncode({
+        'components': result.foodComponents
+            .map((c) => {'name': c.name, 'estimated_g': c.estimatedG})
+            .toList(),
+        'oil_g': composite.oilG,
+      });
+      // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），按包装换算
+      // per100g + actualCalories 都用包装换算值，跳过组分累加
+      // 无包装数据 → 走原组分累加路径（per100g=0，actualCalories=composite.calories）
+      // v1.10：包装换算后宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ 回退组分累加，
+      //   避免复合菜路径宏量显示 0（与单品路径 / 前台哨兵分支一致）
+      actualServingG = result.foodComponents
+          .fold<double>(0, (s, c) => s + c.estimatedG);
+      final packagePer100 = result.hasPackageNutrition
+          ? result.computePackageNutritionPer100g(
+              estimatedProteinG: result.estimatedProteinG,
+              estimatedFatG: result.estimatedFatG,
+              estimatedCarbsG: result.estimatedCarbsG,
+            )
+          : null;
+      // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
+      final packageMacrosAllZero = packagePer100 != null &&
+          packagePer100.$2 == 0 &&
+          packagePer100.$3 == 0 &&
+          packagePer100.$4 == 0;
+      if (packagePer100 != null && !packageMacrosAllZero) {
+        // 有包装：per100g 存包装换算值（未来查库按密度算更准），
+        // actualCalories 按 actualServingG 换算（与份量一致）
+        foodItemId = await foodItemRepo.upsertAiRecognized(
+          name: result.dishName,
+          brand: result.brand,
+          caloriesPer100g: packagePer100.$1,
+          proteinPer100g: packagePer100.$2,
+          fatPer100g: packagePer100.$3,
+          carbsPer100g: packagePer100.$4,
+          confidence: result.confidence,
+          componentsJson: componentsJson,
+        );
+        actualCalories = packagePer100.$1 * actualServingG / 100;
+        actualProteinG = packagePer100.$2 * actualServingG / 100;
+        actualFatG = packagePer100.$3 * actualServingG / 100;
+        actualCarbsG = packagePer100.$4 * actualServingG / 100;
+      } else {
+        // 无包装 / 包装换算宏量全 0 → M18：AI 优先 + 兜底组分累加
+        // M18 三路径一致性：调用公共方法 computeCompositeLookupHit
+        // AI 有效（per100g ∈ [0, 900]）时 per100g 用 AI 反算值 + actualXxx 用 AI 估算
+        // AI 离谱（per100g>900）/ mid=0 / 无 AI 估算 → 走原组分累加（per100g=0，actual=composite）
+        final hasAiEstimate = result.estimatedCalories != null &&
+            result.estimatedCalories! > 0;
+        final aiCalibrated = hasAiEstimate
+            ? CalibratedNutritionCalculator.computeCompositeLookupHit(
+                aiFallback: NutritionResult(
+                  foodItemId: 0,
+                  calories: result.estimatedCalories!,
+                  proteinG: result.estimatedProteinG ?? 0,
+                  fatG: result.estimatedFatG ?? 0,
+                  carbsG: result.estimatedCarbsG ?? 0,
+                  oilG: 0,
+                  source: NutritionSource.aiEstimate,
+                ),
+                servingG: actualServingG,
+                mid: result.estimatedWeightGMid,
+              )
+            : null;
+        if (aiCalibrated != null) {
+          // M18：AI 有效，per100g 用 AI 反算值写库 + AI 估算记 meal_log
+          foodItemId = await foodItemRepo.upsertAiRecognized(
+            name: result.dishName,
+            brand: result.brand,
+            caloriesPer100g: aiCalibrated.caloriesPer100g,
+            proteinPer100g: aiCalibrated.proteinPer100g,
+            fatPer100g: aiCalibrated.fatPer100g,
+            carbsPer100g: aiCalibrated.carbsPer100g,
+            confidence: result.confidence,
+            componentsJson: componentsJson,
+          );
+          actualCalories = aiCalibrated.actualCalories;
+          actualProteinG = aiCalibrated.actualProteinG;
+          actualFatG = aiCalibrated.actualFatG;
+          actualCarbsG = aiCalibrated.actualCarbsG;
+        } else {
+          // AI 离谱 / mid=0 / 无 AI 估算：走原组分累加路径
+          foodItemId = await foodItemRepo.upsertAiRecognized(
+            name: result.dishName,
+            brand: result.brand,
+            caloriesPer100g: 0, // 复合菜热量不按 100g 密度存储
+            proteinPer100g: 0,
+            fatPer100g: 0,
+            carbsPer100g: 0,
+            confidence: result.confidence,
+            componentsJson: componentsJson,
+          );
+          actualCalories = composite.calories;
+          actualProteinG = composite.proteinG;
+          actualFatG = composite.fatG;
+          actualCarbsG = composite.carbsG;
+        }
+      }
+    }
+
+    return _ProcessResult(
+      foodItemId: foodItemId,
+      actualCalories: actualCalories,
+      actualProteinG: actualProteinG,
+      actualFatG: actualFatG,
+      actualCarbsG: actualCarbsG,
+      actualServingG: actualServingG,
+      componentsJson: componentsJson,
+    );
+  }
+}
+
+/// M24 B3：processPending 子方法返回值
+/// 子方法返回 null 表示已 markFailed（调用方应 continue 跳过写 meal_log）
+class _ProcessResult {
+  final int foodItemId;
+  final double actualCalories;
+  final double actualProteinG;
+  final double actualFatG;
+  final double actualCarbsG;
+  final double actualServingG;
+  final String? componentsJson;
+
+  const _ProcessResult({
+    required this.foodItemId,
+    required this.actualCalories,
+    required this.actualProteinG,
+    required this.actualFatG,
+    required this.actualCarbsG,
+    required this.actualServingG,
+    required this.componentsJson,
+  });
 }
 
 /// Riverpod Provider：OfflineQueueController 单例

@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:drift/drift.dart';
 import 'package:eatwise/data/database/database.dart';
 
+// M24 Task B1：feature 层不再直接 import database.dart，FoodItem 类型从此处走
+export 'package:eatwise/data/database/database.dart' show FoodItem;
+
 class FoodItemRepository {
   final EatWiseDatabase _db;
 

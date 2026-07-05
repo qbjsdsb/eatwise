@@ -6,9 +6,7 @@ import '../../core/config/app_config.dart';
 import '../../core/util/date_format.dart';
 import '../../core/util/refresh_bus.dart';
 import '../../core/widgets/m3_widgets.dart';
-import '../../data/database/database.dart';
 import '../../data/repositories/meal_log_repository.dart';
-import '../../data/repositories/profile_repository.dart';
 import '../../data/repositories/weight_log_repository.dart';
 import '../../nutrition/tdee_calibrator.dart';
 import '../recognize/providers.dart' as recognize;
@@ -60,11 +58,10 @@ class WeightPageState extends ConsumerState<WeightPage> {
 
   Future<void> _load() async {
     try {
-      final db = await ref.read(recognize.databaseProvider.future);
-      final repo = WeightLogRepository(db);
+      final repo = await ref.read(recognize.weightLogRepoProvider.future);
       _logs = await repo.getRecent(days: 30);
       // 加载 30 天 meal_log 并按日聚合热量（双轴图用）
-      final mealRepo = MealLogRepository(db);
+      final mealRepo = await ref.read(recognize.mealLogRepoProvider.future);
       final now = DateTime.now();
       final startDate = now.subtract(const Duration(days: 30));
       final startStr = formatYmd(startDate);
@@ -390,8 +387,7 @@ class WeightPageState extends ConsumerState<WeightPage> {
     }
     setState(() => _busy = true);
     try {
-      final db = await ref.read(recognize.databaseProvider.future);
-      final repo = WeightLogRepository(db);
+      final repo = await ref.read(recognize.weightLogRepoProvider.future);
       final today = todayYmd();
       await repo.insert(date: today, weightKg: weight);
 
@@ -400,12 +396,15 @@ class WeightPageState extends ConsumerState<WeightPage> {
       // 导致即使主页刷新，宏量目标仍用旧体重算。
       // 注意：不重算 dailyCalorieTarget（BMR 重算只在用户主动编辑档案时做，
       // 日常体重波动通过 TDEE 校准 adjustmentKcal 微调）
-      await ProfileRepository(db).update(weightKg: weight);
+      final profileRepo = await ref.read(recognize.profileRepoProvider.future);
+      await profileRepo.update(weightKg: weight);
 
       // 触发 TDEE 自适应校准（Sprint 3 T22）
       try {
         final config = await ref.read(appConfigProvider.future);
         if (config.tdeeAutoCalib) {
+          // TdeeCalibrator 非 Repository，仍需 db 实例（db 走 databaseProvider 注入）
+          final db = await ref.read(recognize.databaseProvider.future);
           final calibrator = TdeeCalibrator(db);
           final result = await calibrator.runAndApply(enabled: true);
           if (result.adjustmentKcal != 0 && mounted) {
@@ -551,8 +550,7 @@ class WeightPageState extends ConsumerState<WeightPage> {
       if (result.weightKg == log.weightKg && result.date == log.date) return;
       setState(() => _busy = true);
       try {
-        final db = await ref.read(recognize.databaseProvider.future);
-        final repo = WeightLogRepository(db);
+        final repo = await ref.read(recognize.weightLogRepoProvider.future);
         await repo.update(
           id: log.id,
           weightKg: result.weightKg,
@@ -561,7 +559,9 @@ class WeightPageState extends ConsumerState<WeightPage> {
         // 若改的是最新一条体重，同步 profile.weightKg（与 _save 一致逻辑）
         final isLatest = _logs.isEmpty || log.id == _logs.last.id;
         if (isLatest) {
-          await ProfileRepository(db).update(weightKg: result.weightKg);
+          final profileRepo =
+              await ref.read(recognize.profileRepoProvider.future);
+          await profileRepo.update(weightKg: result.weightKg);
         }
         await _load();
         RefreshBus.instance.notify();
@@ -584,8 +584,7 @@ class WeightPageState extends ConsumerState<WeightPage> {
   /// 注：不做 Undo SnackBar——已用 confirmDismiss 二次确认，再 Undo 流程冗余
   Future<void> _deleteWeight(WeightLog log) async {
     try {
-      final db = await ref.read(recognize.databaseProvider.future);
-      final repo = WeightLogRepository(db);
+      final repo = await ref.read(recognize.weightLogRepoProvider.future);
       await repo.delete(log.id);
       // 若删的是最新一条体重，profile.weightKg 不自动回退
       // （用户删最新记录的场景是"输错"，profile 维持旧值是合理的，

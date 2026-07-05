@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_version_provider.dart';
 import '../../core/widgets/m3_widgets.dart';
-import '../../data/database/database.dart';
 import '../../data/repositories/profile_repository.dart';
 import '../backup/backup_page.dart';
 import '../profile/profile_page.dart';
@@ -34,8 +33,8 @@ class _MePageState extends ConsumerState<MePage> {
   }
 
   Future<Profile> _loadProfile() async {
-    final db = await ref.read(recognize.databaseProvider.future);
-    return ProfileRepository(db).get();
+    final repo = await ref.read(recognize.profileRepoProvider.future);
+    return repo.get();
   }
 
   /// 跳转子页，返回后刷新用户卡片

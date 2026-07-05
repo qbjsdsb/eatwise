@@ -8,11 +8,7 @@ import '../../ai/prompts.dart';
 import '../../core/util/date_format.dart';
 import '../../core/util/food_name.dart';
 import '../../core/widgets/m3_widgets.dart';
-import '../../data/database/database.dart';
-import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
-import '../../data/repositories/pending_recognition_repository.dart';
-import '../../data/repositories/recognition_feedback_repository.dart';
 import '../recognize/providers.dart' as recognize;
 import 'meal_edit_dialog.dart';
 
@@ -53,8 +49,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       final mealRepo = await ref.read(recognize.mealLogRepoProvider.future);
       final meals = await mealRepo.getMealsByDate(_selectedDate);
       // 批量反查食物名（原 N+1 逐条 getById → 1 次 IN 查询）
-      final db = await ref.read(recognize.databaseProvider.future);
-      final foodRepo = FoodItemRepository(db);
+      final foodRepo = await ref.read(recognize.foodItemRepoProvider.future);
       final names = <int, String>{};
       final uniqueIds = meals.map((m) => m.foodItemId).toSet().toList();
       if (uniqueIds.isNotEmpty) {
@@ -561,8 +556,8 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
 
   Future<void> _showFeedbackDialog(MealLog m) async {
     try {
-      final db = await ref.read(recognize.databaseProvider.future);
-      final feedbackRepo = RecognitionFeedbackRepository(db);
+      final feedbackRepo =
+          await ref.read(recognize.recognitionFeedbackRepoProvider.future);
       if (await feedbackRepo.hasFeedback(m.id)) {
         if (mounted) {
           showAppToast(context, '已反馈过');
@@ -649,7 +644,8 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       // 拍照识别的 meal_log 有 original_image_path，对应 pending_recognition.image_path
       String promptVersion = Prompts.version;
       if (m.originalImagePath != null) {
-        final pendingRepo = PendingRecognitionRepository(db);
+        final pendingRepo =
+            await ref.read(recognize.pendingRecognitionRepoProvider.future);
         final pending = await pendingRepo.getByImagePath(m.originalImagePath!);
         if (pending?.promptVersion != null) {
           promptVersion = pending!.promptVersion!;
@@ -669,7 +665,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       // best-effort：失败不影响反馈记录（反馈已落库），仅放弃别名学习
       if (!isCorrect && correctedDishName != null && correctedDishName.isNotEmpty) {
         try {
-          final foodRepo = FoodItemRepository(db);
+          final foodRepo = await ref.read(recognize.foodItemRepoProvider.future);
           final aiName = _foodNames[m.foodItemId];
           // AI 识别名有效且与纠正名不同（归一化比较）→ 加别名或创建新条目
           if (aiName != null &&

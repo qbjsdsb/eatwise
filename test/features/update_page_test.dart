@@ -96,6 +96,90 @@ void main() {
     expect(find.textContaining('下载并安装'), findsOneWidget);
   });
 
+  testWidgets('默认折叠显示前 10 行 + 展开按钮', (tester) async {
+    // 构造超过 10 行的 release notes，触发折叠 + 展开按钮显示
+    final release = ReleaseInfo(
+      tagName: 'v0.18.0',
+      version: '0.18.0',
+      name: 'EatWise v0.18.0',
+      body: List.generate(15, (i) => '- 更新条目 ${i + 1}').join('\n'),
+      publishedAt: '2026-07-05',
+      apkDownloadUrl: 'https://x.apk',
+      apkSize: 25000000,
+    );
+    when(() => service.checkForUpdate()).thenAnswer(
+        (_) async => UpdateAvailable(currentVersion: '0.17.0', release: release));
+
+    // 调大测试 surface，避免 release notes Card 撑爆 Scaffold body
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer(overrides: [
+      recognize.updateServiceProvider.overrideWith((ref) async => service),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: UpdatePage()),
+    ));
+    await tester.pump();
+
+    await tester.tap(find.text('检查更新'));
+    await tester.pumpAndSettle();
+
+    // 默认折叠时显示"展开全文"按钮
+    expect(find.text('展开全文'), findsOneWidget);
+    // 不应显示"收起"按钮
+    expect(find.text('收起'), findsNothing);
+  });
+
+  testWidgets('点击展开显示完整内容', (tester) async {
+    final release = ReleaseInfo(
+      tagName: 'v0.18.0',
+      version: '0.18.0',
+      name: 'EatWise v0.18.0',
+      body: List.generate(15, (i) => '- 更新条目 ${i + 1}').join('\n'),
+      publishedAt: '2026-07-05',
+      apkDownloadUrl: 'https://x.apk',
+      apkSize: 25000000,
+    );
+    when(() => service.checkForUpdate()).thenAnswer(
+        (_) async => UpdateAvailable(currentVersion: '0.17.0', release: release));
+
+    // 调大测试 surface，避免展开后完整内容撑爆 Scaffold body
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final container = ProviderContainer(overrides: [
+      recognize.updateServiceProvider.overrideWith((ref) async => service),
+    ]);
+    addTearDown(container.dispose);
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: const MaterialApp(home: UpdatePage()),
+    ));
+    await tester.pump();
+
+    await tester.tap(find.text('检查更新'));
+    await tester.pumpAndSettle();
+
+    // 折叠状态下不应有 SingleChildScrollView 包裹 release notes
+    expect(find.byType(SingleChildScrollView), findsNothing);
+
+    // 点击展开
+    await tester.tap(find.text('展开全文'));
+    await tester.pumpAndSettle();
+
+    // 展开后按钮变为"收起"
+    expect(find.text('收起'), findsOneWidget);
+    expect(find.text('展开全文'), findsNothing);
+
+    // 展开后用 SingleChildScrollView 包裹完整内容（无 maxLines 限制）
+    expect(find.byType(SingleChildScrollView), findsOneWidget);
+  });
+
   testWidgets('检查失败显示错误信息 + 重试按钮', (tester) async {
     when(() => service.checkForUpdate())
         .thenAnswer((_) async => const CheckFailed('网络错误'));

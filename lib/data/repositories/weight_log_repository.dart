@@ -2,6 +2,9 @@ import 'package:drift/drift.dart';
 import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/core/util/date_format.dart';
 
+// M24 Task B1：feature 层不再直接 import database.dart，WeightLog 类型从此处走
+export 'package:eatwise/data/database/database.dart' show WeightLog;
+
 class WeightLogRepository {
   final EatWiseDatabase _db;
   WeightLogRepository(this._db);

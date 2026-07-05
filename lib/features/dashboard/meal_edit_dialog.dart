@@ -4,7 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/util/date_format.dart';
 import '../../core/util/food_name.dart';
 import '../../core/widgets/m3_widgets.dart';
-import '../../data/database/database.dart';
+import '../../data/repositories/food_item_repository.dart';
+import '../../data/repositories/meal_log_repository.dart';
 import '../food_library/food_library_page.dart';
 
 /// 餐次编辑 dialog 的返回结果

@@ -1,6 +1,11 @@
 import 'package:drift/drift.dart';
 import 'package:eatwise/data/database/database.dart';
 
+// M24 Task B1：feature 层不再直接 import database.dart，
+// PendingRecognition 类型 + EatWiseDatabase（offline_queue_controller _db 字段用）从此处走
+export 'package:eatwise/data/database/database.dart'
+    show PendingRecognition, EatWiseDatabase;
+
 /// 离线识别队列 Repository
 /// 离线拍照时入队，联网后由 OfflineQueueController 触发回补识别
 class PendingRecognitionRepository {

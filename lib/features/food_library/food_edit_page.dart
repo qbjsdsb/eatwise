@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/util/food_name.dart';
 import '../../core/widgets/m3_widgets.dart';
-import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../recognize/providers.dart' as recognize;
 
@@ -165,8 +164,7 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
     }
     setState(() => _busy = true);
     try {
-      final db = await ref.read(recognize.databaseProvider.future);
-      final repo = FoodItemRepository(db);
+      final repo = await ref.read(recognize.foodItemRepoProvider.future);
       await repo.updateDefaultServing(widget.foodItem.id, serving);
       if (mounted) {
         showAppToast(context, '已保存默认份量');
@@ -197,8 +195,7 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
     }
     setState(() => _busy = true);
     try {
-      final db = await ref.read(recognize.databaseProvider.future);
-      final repo = FoodItemRepository(db);
+      final repo = await ref.read(recognize.foodItemRepoProvider.future);
       await repo.updateDefaultServing(widget.foodItem.id, serving);
       await repo.updateNutrients(
         id: widget.foodItem.id,

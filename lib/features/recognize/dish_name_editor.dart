@@ -12,7 +12,6 @@ import 'package:flutter/material.dart';
 
 import '../../ai/nutrition_lookup.dart';
 import '../../core/widgets/m3_widgets.dart';
-import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 
 /// 改菜名→搜库→重算 的共享逻辑

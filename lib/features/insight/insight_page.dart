@@ -6,11 +6,6 @@ import '../../ai/glm_flash_provider.dart';
 import '../../core/util/date_format.dart';
 import '../../core/util/refresh_bus.dart';
 import '../../core/widgets/m3_widgets.dart';
-import '../../data/repositories/food_item_repository.dart';
-import '../../data/repositories/insight_repository.dart';
-import '../../data/repositories/meal_log_repository.dart';
-import '../../data/repositories/profile_repository.dart';
-import '../../data/repositories/weight_log_repository.dart';
 import '../recognize/providers.dart' as recognize;
 
 /// AI 周报页：周/月视图切换 + GLM-4-Flash 生成中文建议（去重 + 可编辑）
@@ -39,6 +34,10 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   // M2 修复：SegmentedButton 快速切换时，旧 _loadExisting 的 setState 被版本号守卫丢弃
   // 根因：_loadExisting 是 async，切换时旧调用未完成，完成后 setState 旧结果覆盖新状态
   int _loadVersion = 0;
+  // M24 Task A6：图表区 loading 标志，周/月切换 + 初次加载时显示 LoadingState，
+  // 配合 AnimatedSwitcher 平滑过渡，避免图表直接消失再出现的突兀感
+  // 默认 true：initState 立即调 _loadExisting，初次加载也显示 loading
+  bool _chartLoading = true;
 
   @override
   void initState() {
@@ -114,11 +113,10 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     double coverageRate,
     List<String> preferenceFoods,
   })> _aggregatePeriod() async {
-    final db = await ref.read(recognize.databaseProvider.future);
-    final mealRepo = MealLogRepository(db);
-    final weightRepo = WeightLogRepository(db);
-    final profileRepo = ProfileRepository(db);
-    final foodRepo = FoodItemRepository(db);
+    final mealRepo = await ref.read(recognize.mealLogRepoProvider.future);
+    final weightRepo = await ref.read(recognize.weightLogRepoProvider.future);
+    final profileRepo = await ref.read(recognize.profileRepoProvider.future);
+    final foodRepo = await ref.read(recognize.foodItemRepoProvider.future);
 
     final meals = await mealRepo.getRange(_periodStart, _periodEnd);
     final weights = await weightRepo.getRange(_periodStart, _periodEnd);
@@ -207,19 +205,24 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   Future<void> _loadExisting() async {
     // M2 修复：每次调用版本号 +1，setState 前检查版本，不匹配说明用户已切换周期，丢弃这次结果
     final myVersion = ++_loadVersion;
-    // 先聚当前周期数据填充图表 state 字段
-    await _aggregatePeriod();
-    final db = await ref.read(recognize.databaseProvider.future);
-    final repo = InsightRepository(db);
-    final existing = await repo.find(_periodType, _periodStart, _periodEnd);
-    if (!mounted) return;
-    // M2 修复：版本号不匹配说明用户已切换周期，丢弃这次结果避免旧数据覆盖新状态
-    if (myVersion != _loadVersion) return;
-    if (existing != null) {
-      setState(() {
-        _summary = existing.summaryText;
-        _error = null; // 加载到已有汇总，清掉历史错误（如上次生成失败的提示）
-      });
+    try {
+      // 先聚当前周期数据填充图表 state 字段
+      await _aggregatePeriod();
+      final repo = await ref.read(recognize.insightRepoProvider.future);
+      final existing = await repo.find(_periodType, _periodStart, _periodEnd);
+      if (!mounted) return;
+      // M2 修复：版本号不匹配说明用户已切换周期，丢弃这次结果避免旧数据覆盖新状态
+      if (myVersion != _loadVersion) return;
+      if (existing != null) {
+        setState(() {
+          _summary = existing.summaryText;
+          _error = null; // 加载到已有汇总，清掉历史错误（如上次生成失败的提示）
+        });
+      }
+    } finally {
+      // M24 Task A6：加载完成清掉 loading 标志（mounted 检查防 async gap 后 widget 已销毁）
+      // 覆盖 initState 初次加载 + onSelectionChanged 切换两条路径，单一来源避免重复
+      if (mounted) setState(() => _chartLoading = false);
     }
   }
 
@@ -288,8 +291,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
           ? await provider.generateWeeklySummary(data)
           : await provider.generateMonthlySummary(data);
 
-      final db = await ref.read(recognize.databaseProvider.future);
-      final insightRepo = InsightRepository(db);
+      final insightRepo = await ref.read(recognize.insightRepoProvider.future);
       await insightRepo.regenerate(
         periodType: _periodType,
         periodStart: _periodStart,
@@ -340,8 +342,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         ),
       );
       if (edited == null) return;
-      final db = await ref.read(recognize.databaseProvider.future);
-      final repo = InsightRepository(db);
+      final repo = await ref.read(recognize.insightRepoProvider.future);
       final existing = await repo.find(_periodType, _periodStart, _periodEnd);
       if (existing != null) {
         await repo.updateText(existing.id, edited);
@@ -401,8 +402,11 @@ class _InsightPageState extends ConsumerState<InsightPage> {
                   _dailyWeight = [];
                   _recordedDays = 0;
                   _totalDays = v.first == 'weekly' ? 7 : 30;
-                  _loadExisting();
+                  // M24 Task A6：切换周期时立即显示 loading，_loadExisting
+                  // finally 内置 _chartLoading=false（async gap 后 mounted 已检查）
+                  _chartLoading = true;
                 });
+                _loadExisting();
               },
             ),
           ),
@@ -412,21 +416,41 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         padding: const EdgeInsets.all(16),
         children: [
           // 热量折线图（含目标/均值参考线，至少 2 天数据才渲染）
-          if (_dailyCal.length >= 2) ...[
-            SizedBox(height: 200, child: _buildCaloriesChart()),
-            const SizedBox(height: 16),
-          ] else ...[
-            const EmptyChartHint('暂无足够热量数据，至少记录 2 天'),
-            const SizedBox(height: 16),
-          ],
+          // M24 Task A6：AnimatedSwitcher 包裹 loading/chart/empty 三态，300ms 过渡
+          // 避免 周/月切换时图表直接消失再出现的突兀感
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: _chartLoading
+                ? const LoadingState(key: ValueKey('insight-calories-loading'))
+                : _dailyCal.length >= 2
+                    ? SizedBox(
+                        key: const ValueKey('insight-calories-chart'),
+                        height: 200,
+                        child: _buildCaloriesChart(),
+                      )
+                    : const EmptyChartHint(
+                        '暂无足够热量数据，至少记录 2 天',
+                        key: ValueKey('insight-calories-empty'),
+                      ),
+          ),
+          const SizedBox(height: 16),
           // 体重趋势折线图（至少 2 条记录才渲染）
-          if (_dailyWeight.length >= 2) ...[
-            SizedBox(height: 150, child: _buildWeightChart()),
-            const SizedBox(height: 16),
-          ] else ...[
-            const EmptyChartHint('暂无足够体重数据，至少记录 2 次'),
-            const SizedBox(height: 16),
-          ],
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: _chartLoading
+                ? const LoadingState(key: ValueKey('insight-weight-loading'))
+                : _dailyWeight.length >= 2
+                    ? SizedBox(
+                        key: const ValueKey('insight-weight-chart'),
+                        height: 150,
+                        child: _buildWeightChart(),
+                      )
+                    : const EmptyChartHint(
+                        '暂无足够体重数据，至少记录 2 次',
+                        key: ValueKey('insight-weight-empty'),
+                      ),
+          ),
+          const SizedBox(height: 16),
           // v1.11：覆盖率提示（让用户知道数据完整度，覆盖率低时建议多记录）
           // 守卫已保证 recordedDays >= 1 才调 AI，但提示仍展示完整度供用户参考
           if (_totalDays > 0 && _recordedDays < _totalDays)

@@ -391,6 +391,142 @@ void main() {
     expect(food.caloriesPer100g, closeTo(125, 0.5),
         reason: '库 per100g 应被 AI 反算值更新（纠正脏库）');
   });
+
+  // ============================================================
+  // M24 B3 安全网测试：守护 AI 兜底哨兵替换 + markFailed 关键路径
+  // 拆分 processPending 前必须建立安全网，确保哨兵替换（硬约束 2）+ per100g 反算
+  // （硬约束 4）逻辑在拆分前后行为零变更
+  // 覆盖原 processPending 4 个未测分支：
+  //   - 单品库未命中 + AI 估算 → 哨兵分支 + upsertAiRecognized 替换 foodItemId=0
+  //   - 单品库未命中 + 无 AI 估算 → markFailed（v1.4 行为）
+  //   - 复合菜组分全 miss + AI 估算 → AI 兜底哨兵分支
+  //   - 复合菜组分全 miss + 无 AI 估算 → markFailed
+  // ============================================================
+
+  group('M24 B3 安全网：AI 兜底哨兵替换路径', () {
+    test('单品库未命中 + AI 估算 → 哨兵分支 + upsertAiRecognized 替换 foodItemId=0',
+        () async {
+      // 不种种子（库里没有"蓝莓蛋糕"），强制走 L219-250 哨兵分支
+      final imgPath = await writeFakeImage('blueberry_cake');
+      await pendingRepo.enqueue(
+          imagePath: imgPath, mealType: 'breakfast', date: '2026-07-02');
+
+      final controller = OfflineQueueController(
+        db: db,
+        visionProvider: _FakeBlueberryCakeProvider(),
+        nutritionLookup: NutritionLookup(FoodItemRepository(db)),
+      );
+      await controller.processPending();
+
+      // pending 应清空（哨兵替换 + 写 meal_log + markDone）
+      expect(await pendingRepo.countPending(), 0);
+
+      final meals = await db.mealLogs.select().get();
+      expect(meals.length, 1);
+      // 硬约束 2 关键断言：food_item_id 不能是 0（哨兵已被 upsert 替换为真实 id）
+      expect(meals.first.foodItemId, greaterThan(0),
+          reason: '哨兵 foodItemId=0 必须由 upsertAiRecognized 替换为真实 id，'
+              '否则 meal_log.food_item_id 非空外键约束违规崩溃');
+
+      // 验证：meal_log.food_item_id 指向真实 food_item 行
+      final foodItem = await (db.foodItems.select()
+            ..where((f) => f.id.equals(meals.first.foodItemId)))
+          .getSingle();
+      expect(foodItem.name, '蓝莓蛋糕');
+      // 硬约束 4 关键断言：per100g 反算基于 estimatedWeightGMid（150g）
+      // AI 估 300kcal/150g → per100g=200
+      expect(foodItem.caloriesPer100g, closeTo(200, 0.5),
+          reason: 'per100g 反算应基于 estimatedWeightGMid=150');
+      // actualCalories = per100g * mid / 100 = 200 * 150 / 100 = 300
+      expect(meals.first.actualCalories, closeTo(300, 0.5));
+
+      // pending 标记 done 且 resultFoodItemId 与 meal_log 一致
+      final all = await db.pendingRecognitions.select().get();
+      expect(all.first.status, 'done');
+      expect(all.first.resultFoodItemId, meals.first.foodItemId);
+    });
+
+    test('单品库未命中 + 无 AI 估算 → markFailed（不写 meal_log）', () async {
+      // 不种种子 + Provider 无 estimatedCalories（旧 prompt）
+      final imgPath = await writeFakeImage('unknown_no_ai');
+      await pendingRepo.enqueue(
+          imagePath: imgPath, mealType: 'breakfast', date: '2026-07-02');
+
+      final controller = OfflineQueueController(
+        db: db,
+        visionProvider: _FakeUnknownNoAiProvider(),
+        nutritionLookup: NutritionLookup(FoodItemRepository(db)),
+      );
+      await controller.processPending();
+
+      // markFailed 1 次：retryCount=1，仍 pending（非 permanent）
+      expect(await pendingRepo.countPending(), 1);
+      final meals = await db.mealLogs.select().get();
+      expect(meals.length, 0, reason: '库未命中且无 AI 估算不应写 meal_log');
+
+      final all = await db.pendingRecognitions.select().get();
+      expect(all.first.retryCount, 1);
+      expect(all.first.errorMessage,
+          contains('AI 无估算且库未命中，需手动录入或改菜名重试'));
+    });
+
+    test('复合菜组分全 miss + AI 估算 → AI 兜底哨兵分支 + upsert 替换', () async {
+      // 不种对应组分种子（组分名"鳕鱼"+"芝士"库中不存在），强制走 L266-321 全 miss + AI 兜底
+      final imgPath = await writeFakeImage('composite_full_miss_ai');
+      await pendingRepo.enqueue(
+          imagePath: imgPath, mealType: 'dinner', date: '2026-07-02');
+
+      final controller = OfflineQueueController(
+        db: db,
+        visionProvider: _FakeCompositeFullMissAiProvider(),
+        nutritionLookup: NutritionLookup(FoodItemRepository(db)),
+      );
+      await controller.processPending();
+
+      expect(await pendingRepo.countPending(), 0);
+
+      final meals = await db.mealLogs.select().get();
+      expect(meals.length, 1);
+      // 硬约束 2：哨兵 0 必须被替换
+      expect(meals.first.foodItemId, greaterThan(0),
+          reason: '复合菜 AI 兜底哨兵分支也必须 upsert 替换 foodItemId=0');
+      expect(meals.first.actualCalories, greaterThan(0));
+
+      // food_item 应被 upsert 创建（"芝士鳕鱼"）
+      final foodItem = await (db.foodItems.select()
+            ..where((f) => f.id.equals(meals.first.foodItemId)))
+          .getSingle();
+      expect(foodItem.name, '芝士鳕鱼');
+
+      // pending 标记 done
+      final all = await db.pendingRecognitions.select().get();
+      expect(all.first.status, 'done');
+      expect(all.first.resultFoodItemId, meals.first.foodItemId);
+    });
+
+    test('复合菜组分全 miss + 无 AI 估算 → markFailed（不写 meal_log）', () async {
+      final imgPath = await writeFakeImage('composite_full_miss_no_ai');
+      await pendingRepo.enqueue(
+          imagePath: imgPath, mealType: 'dinner', date: '2026-07-02');
+
+      final controller = OfflineQueueController(
+        db: db,
+        visionProvider: _FakeCompositeFullMissNoAiProvider(),
+        nutritionLookup: NutritionLookup(FoodItemRepository(db)),
+      );
+      await controller.processPending();
+
+      // markFailed 1 次：仍 pending
+      expect(await pendingRepo.countPending(), 1);
+      final meals = await db.mealLogs.select().get();
+      expect(meals.length, 0, reason: '复合菜组分全 miss 且无 AI 估算不应写 meal_log');
+
+      final all = await db.pendingRecognitions.select().get();
+      expect(all.first.retryCount, 1);
+      expect(all.first.errorMessage,
+          contains('复合菜组分全 miss 且 AI 无估算，需手动录入或改菜名重试'));
+    });
+  });
 }
 
 /// M16.8 测试用：模拟识别"番茄炒蛋"（200g/250kcal），库 per100g=80 偏差大
@@ -456,5 +592,121 @@ class _ThrowingProvider implements VisionProvider {
   @override
   Future<VisionRecognitionResult> recognize(String imageBase64) async {
     throw Exception('识别异常：模拟网络失败');
+  }
+}
+
+/// M24 B3 安全网用：单品库未命中 + AI 估算（蓝莓蛋糕 150g/300kcal）
+/// 触发 L219-250 哨兵分支：CalibratedNutritionCalculator.compute 哨兵路径
+/// + upsertAiRecognized 替换 foodItemId=0
+/// per100g 反算：300 * 100 / 150 = 200（验证硬约束 4：基于 estimatedWeightGMid）
+class _FakeBlueberryCakeProvider implements VisionProvider {
+  @override
+  String get name => 'FakeBlueberryCake';
+
+  @override
+  String get promptVersion => 'v1.10';
+
+  @override
+  Future<VisionRecognitionResult> recognize(String imageBase64) async {
+    return const VisionRecognitionResult(
+      dishName: '蓝莓蛋糕',
+      estimatedWeightGLow: 130,
+      estimatedWeightGMid: 150,
+      estimatedWeightGHigh: 170,
+      estimatedCalories: 300,
+      estimatedProteinG: 5,
+      estimatedFatG: 12,
+      estimatedCarbsG: 45,
+      foodComponents: [],
+      cookingMethod: 'bake',
+      isSingleItem: true,
+      confidence: 0.85,
+      promptVersion: 'v1.10',
+    );
+  }
+}
+
+/// M24 B3 安全网用：单品库未命中 + 无 AI 估算（旧 prompt）
+/// 触发 L251-258 markFailed 分支
+class _FakeUnknownNoAiProvider implements VisionProvider {
+  @override
+  String get name => 'FakeUnknownNoAi';
+
+  @override
+  String get promptVersion => 'v1.0';
+
+  @override
+  Future<VisionRecognitionResult> recognize(String imageBase64) async {
+    return const VisionRecognitionResult(
+      dishName: '神秘菜品',
+      estimatedWeightGLow: 100,
+      estimatedWeightGMid: 120,
+      estimatedWeightGHigh: 140,
+      foodComponents: [],
+      cookingMethod: 'unknown',
+      isSingleItem: true,
+      confidence: 0.5,
+      promptVersion: 'v1.0',
+    );
+  }
+}
+
+/// M24 B3 安全网用：复合菜组分全 miss + AI 估算（芝士鳕鱼，组分不在库中）
+/// 触发 L266-321 全 miss + AI 兜底哨兵分支
+class _FakeCompositeFullMissAiProvider implements VisionProvider {
+  @override
+  String get name => 'FakeCompositeFullMissAi';
+
+  @override
+  String get promptVersion => 'v1.10';
+
+  @override
+  Future<VisionRecognitionResult> recognize(String imageBase64) async {
+    return const VisionRecognitionResult(
+      dishName: '芝士鳕鱼',
+      estimatedWeightGLow: 180,
+      estimatedWeightGMid: 200,
+      estimatedWeightGHigh: 220,
+      estimatedCalories: 400,
+      estimatedProteinG: 30,
+      estimatedFatG: 20,
+      estimatedCarbsG: 10,
+      foodComponents: [
+        FoodComponent(name: '鳕鱼', estimatedG: 150),
+        FoodComponent(name: '芝士', estimatedG: 50),
+      ],
+      cookingMethod: 'bake',
+      isSingleItem: false,
+      confidence: 0.85,
+      promptVersion: 'v1.10',
+    );
+  }
+}
+
+/// M24 B3 安全网用：复合菜组分全 miss + 无 AI 估算（旧 prompt）
+/// 触发 L322-328 markFailed 分支
+class _FakeCompositeFullMissNoAiProvider implements VisionProvider {
+  @override
+  String get name => 'FakeCompositeFullMissNoAi';
+
+  @override
+  String get promptVersion => 'v1.0';
+
+  @override
+  Future<VisionRecognitionResult> recognize(String imageBase64) async {
+    return const VisionRecognitionResult(
+      dishName: '神秘复合菜',
+      estimatedWeightGLow: 200,
+      estimatedWeightGMid: 250,
+      estimatedWeightGHigh: 300,
+      foodComponents: [
+        FoodComponent(name: '未知食材A', estimatedG: 150),
+        FoodComponent(name: '未知食材B', estimatedG: 100),
+      ],
+      cookingMethod: 'stew',
+      isSingleItem: false,
+      confidence: 0.5,
+      promptVersion: 'v1.0',
+    );
   }
 }

@@ -18,7 +18,6 @@
 import 'dart:convert';
 
 import 'package:eatwise/ai/glm_flash_provider.dart';
-import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/data/repositories/food_item_repository.dart';
 import 'package:eatwise/data/repositories/meal_log_repository.dart';
 import 'package:eatwise/data/repositories/profile_repository.dart';

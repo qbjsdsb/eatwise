@@ -36,6 +36,77 @@
 
 **最后更新**：2026-07-05
 
+**M24 全部完成（2026-07-05）—— v0.22.0+34 P1 清零（13 项 P1 修复 + 21 新测试）**：M23 全面细致审查发现 67 项问题（0 P0 / 13 P1 / 54 P2），本里程碑一次性修完全部 13 项 P1，代码健康度从 B+ 提升到 A-。用户指令"好的，按照建议来，严谨仔细，反复检查"，全程严格 TDD（Red-Green-Refactor）+ sub-agent 二次审查 + 6 硬约束核查。
+
+修复清单（8 项快速修复 + 5 项架构重构）：
+- **A1** sentry_scrub.dart 补 `event.tags` 脱敏（注释承诺但代码漏处理，与 extra 同模式）
+- **A2** dashboard `_regenerateButton` 触控目标 32→48dp（移除 minimumSize + tapTargetSize: shrinkWrap）
+- **A3** update_page release notes 展开/收起（提取 `_ExpandableReleaseNotes` StatefulWidget + AnimatedSize 300ms 过渡）
+- **A4** food_library 搜索失败 toast（`_doSearch` catch 补 showAppToast）
+- **A5** backup_page 导入弹窗补"⚠️ 离线队列中 N 条待识别记录将被清空"（弹窗前调 `countPending()`）+ 修复 ctrl.dispose() 时序 bug（延迟 300ms 释放）
+- **A6** insight 周/月切换 loading + AnimatedSwitcher（新增 `_chartLoading` 标志 + 300ms 过渡）
+- **A7** food_library 加载失败 ErrorState（`_loadError` 标志 + 重试按钮 + `ref.invalidate(databaseProvider)`）
+- **A8** profile 加载失败 ErrorState（同 A7 模式，跨页一致性）
+- **B1** 跨层依赖统一用 Repository Provider（feature 层不再直接 import `data/database/database.dart`，新增 6 个 FutureProvider；offline_queue_controller 是 isolate 例外，保留 `_db` 注入）
+- **B2** recognize_page `_pickAndRecognize` 190→26 行（拆为 `_pickImage` / `_runRecognize` / `_showResultAndWaitConfirm` / `_writeMealLog`）
+- **B3** offline_queue_controller `processPending` 396→29 行（拆为 `_processOnePending` 单条处理 + `_processSingleItem` / `_processComposite` 分发 + `_ProcessResult` 数据类；主方法仅做遍历 + 断路器 break + 调用子方法）
+- **B4** multi_dish_page 986→542 行（拆出 `dish_card` / `ai_estimate_card` / `total_summary_bar` / `nutrition_preview` 到 `multi_dish/` 子目录）
+- **B5** dashboard_page 940→304 行（拆出 `dashboard_data` / `regenerate_button` / `status_card_section` / `today_meals_section` / `ai_rec_item` / `recommendation_section` 到 `dashboard/` 子目录）
+
+C1 验证（反复检查后发现并修复 1 处遗漏）：recognize_page L224 `PendingRecognitionRepository(db)` 在 B1 时被遗漏（原 grep 正则 `(FoodItemRepository|MealLogRepository|ProfileRepository)\(db\)` 未匹配 `PendingRecognitionRepository`），C1 复查时发现并修复为 `ref.read(pendingRecognitionRepoProvider.future)` + 移除冗余 `db` 变量 + 移除 unused import。
+
+最终验证（C1 全量）：
+- `flutter analyze` → No issues found (3.4s)
+- `flutter test` → 1032 passed / 3 skipped / 0 failed（基线 1010 → +22 新测试，0 回归；github_release_smoke 偶发 403 限流与改动无关）
+- 6 硬约束全部满足：
+  1. `isMinifyEnabled=false` + `isShrinkResources=false` ✓
+  2. `meal_log.food_item_id` 非空外键，11 处 `upsertAiRecognized` 哨兵替换全保留（recognize_page 2 + multi_dish_page 3 + offline_queue_controller 6）✓
+  3. AI 兜底三路径全覆盖（recognize_page / multi_dish_page / offline_queue_controller）✓
+  4. per100g 反算基于 `estimatedWeightGMid` ✓
+  5. `SecureConfigStore.instance` 全 lib 无匹配 ✓
+  6. `initSentryAndRunApp` 命名参数 `container:` + `app:` ✓
+- B1 跨层依赖：feature 层仅 `recognize/providers.dart` import database.dart（Provider 定义本身）+ offline_queue_controller 6 处 `Repository(_db)`（isolate 例外）；无其他 `Repository(db)` 直接构造
+- 文件行数全部达标：multi_dish_page 542 < 600 / dashboard_page 304 < 600 / `_pickAndRecognize` 26 < 50 / `processPending` 29 < 80
+- 哨兵检查数零回归：`foodItemId == 0` 检查 M24 前后总数 3 = 3（recognize_page 1 + multi_dish_page 主文件 1 + multi_dish/ai_estimate_card 1，最后 1 处在 B4 拆分时移到子文件）
+
+**工作区状态**：v0.22.0+34 待发布（M24 全部 13 项 P1 清零完成）。M22 已 push + tag v0.21.0（commit 13701c5）；M23 全面细致审查完成（4 维度报告 67 项发现）；**M24 P1 清零已完成（待 push + tag v0.22.0，详见上方"M24 全部完成"段；用户指令"好的，按照建议来，严谨仔细，反复检查"；1032 全量测试通过 + 22 新测试 + analyze No issues + 6 硬约束全部满足 + 0 回归）**。远端 main 已 force push 覆盖旧 v0.8.0 线为 v0.20.x 主线（M20 期间执行）。v0.18.x 及之前版本历史见 git log + tag 列表。
+
+**当前分支**：trae/agent-wX1X6Q（本地 HEAD = M22 commit b7955c5 + 工作区 M24 全部改动未 commit；远端 origin/main HEAD = b7955c5（v0.21.0）；tag v0.21.0 指向 13701c5，v0.22.0 待创建；**待用户确认后 commit + push + tag v0.22.0**）
+
+**待用户执行的收尾项**（沙箱无法完成）：
+1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）
+2. **删除 classic PAT** `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`：访问 https://github.com/settings/tokens 手动删除（classic PAT 无法通过 API 自删，已用完上传 secrets 的使命，不应保留）
+3. **本地真机验证 v0.22.0**：
+   - 装 v0.22.0 APK（v0.18.0 起可覆盖安装）
+   - 验证 M24 修复点：错误态覆盖（profile/food_library 加载失败显示 ErrorState + 重试）/ insight 周/月切换 loading 过渡 / update release notes 展开/收起 / 备份导入弹窗离线队列提示 / 搜索失败 toast
+   - 验证架构重构无回归：识别主流程（单品 + 多菜 + 后台回补三路径）/ dashboard 推荐刷新 / 食物库增删改查
+
+---
+
+**M24 Task B5 dashboard_page 拆分（2026-07-05）**：已完成。`lib/features/dashboard/dashboard_page.dart` 940 行 → 304 行（< 600 目标达成），业务逻辑零改动。拆出 6 个文件到 `lib/features/dashboard/dashboard/` 子目录：`dashboard_data.dart`（35 行纯数据类）/ `regenerate_button.dart`（51 行）/ `status_card_section.dart`（120 行）/ `today_meals_section.dart`（114 行）/ `ai_rec_item.dart`（205 行）/ `recommendation_section.dart`（268 行）。所有拆出 widget 为 StatelessWidget，通过构造函数注入数据 + 回调上拱，不直接访问父 State。dashboard_page_test 从 1 测试扩到 4 测试。验证：flutter analyze No issues；flutter test 1031 passed / 0 回归；6 硬约束全部满足。
+
+**M24 Task B4 multi_dish_page 拆分（2026-07-05）**：已完成。`lib/features/recognize/multi_dish_page.dart` 986 行 → 542 行（< 600 目标达成），业务逻辑零改动，仅 widget 结构重构。拆出 4 个文件到 `lib/features/recognize/multi_dish/` 子目录：
+- `dish_card.dart`（214 行）—— `DishCard` StatelessWidget，构造注入数据 + 回调上拱；含 `sliderMaxFor` 静态方法（原 `_sliderMaxFor` 迁移）+ 内部 `_buildQuantityStepper`
+- `ai_estimate_card.dart`（177 行）—— `AiEstimateCard` StatelessWidget，AI 估算/查库命中差异/推理过程展示
+- `total_summary_bar.dart`（78 行）—— `TotalSummaryBar` StatelessWidget，底部总计 + 全部记录按钮
+- `nutrition_preview.dart`（210 行）—— `NutritionPreview` 静态类，原 `_calcNutrition` / `_computeLookupHitCalibrated` / `_computeCompositeLookupHitCalibrated` 三方法字节级迁移；数据通过参数注入（不访问 StatefulWidget 状态），独立可测
+
+主文件保留薄包装方法（`_calcNutrition` / `_computeLookupHitCalibrated` / `_computeCompositeLookupHitCalibrated` 一行 `=>` 委托 NutritionPreview），`_recordAll` / `_handleRename` / `_onServingChanged` / `_onQuantityChanged` / `_getSingleNutrition` / `_getCompositeNutrition` / `_getAiFallback` / `_encodeComponents` 字节级保留。
+
+TDD 安全网：先补 1 个 characterization 测试 `M24 B4: 包装 OCR 优先路径——哨兵 + 包装数据时用包装换算值记录（不是 AI 估算）`（速冻水饺 packageServingG=50/packageServingKcal=100，验证 actualCalories=400 不是 AI 估算 500，food_item.caloriesPer100g=200 不是 AI 反算 250）。multi_dish_page_test 总数 14 → 15。
+
+自审 diff 验证：
+- `_recordAll` 字节级 IDENTICAL（硬约束 #2 哨兵替换 + #3 三路径之一 + #4 per100g 反算 + mounted 检查 + _isRecording 防重入 全保留）
+- `_handleRename` / `_getSingleNutrition` / `_getCompositeNutrition` / `_getAiFallback` / `_encodeComponents` 字节级 IDENTICAL
+- `_onServingChanged` 从 inline slider onChanged lambda 抽出为命名方法，方法体字节级一致
+- `_onQuantityChanged` 唯一差异：`_sliderMaxFor(dish)` → `DishCard.sliderMaxFor(dish)`（静态方法迁移）
+- `initState` 唯一差异：`_sliderMaxFor(d)` → `DishCard.sliderMaxFor(d)`（静态方法迁移）
+- `_calcNutrition` / `_computeLookupHitCalibrated` / `_computeCompositeLookupHitCalibrated` body 字节级迁移到 NutritionPreview（仅数据访问从 state 字段改为参数注入）
+
+验证：flutter analyze No issues found；flutter test 1029 passed / 3 skipped（≥1027，0 回归）；6 硬约束全部满足。文件路径：`/workspace/lib/features/recognize/multi_dish_page.dart` + `/workspace/lib/features/recognize/multi_dish/{dish_card,ai_estimate_card,total_summary_bar,nutrition_preview}.dart`。
+
+**M24 Task B1 跨层依赖统一用 Repository Provider（2026-07-05）**：已完成。feature 层不再直接 import `data/database/database.dart`，4 个直接 `new Repo(db)` 的文件改用 Provider 注入。新增 6 个 FutureProvider（profileRepoProvider / weightLogRepoProvider / pendingRecognitionRepoProvider / recommendationFeedbackRepoProvider / recognitionFeedbackRepoProvider / insightRepoProvider）到 providers.dart；6 个 repository 文件添加 `export ... show <Type>` 让 feature 层从 repository 文件取数据库类型。offline_queue_controller 是后台 isolate（无 ProviderContainer），仅移除 db import，保留 `_db` 构造注入 + 内部 `Repo(_db)` 构造不动（硬约束 3 AI 兜底三路径逻辑零改动）。验证：1024 passed / 0 failed / 3 skipped（与基线一致，0 回归），flutter analyze No issues found。6 硬约束全部满足。
+
 **工作区状态**：v0.20.1 已发布（项目全面审查 P0+P1 修复）。M19 AI 推荐去重+菜名归一化+多样性 已 push + tag v0.19.1（commit da36c5a，详见下方"M19"章节；987 全量测试通过，新增 35 个 TDD 测试；6 条硬约束全部满足）；M20 Google Lens 风图标+识别思考流程 UI 已 push + tag v0.20.0（commit c412479，详见下方"M20"章节；987 全量测试通过，新增 10 个 widget 测试 + 更新 6 个图标测试；6 条硬约束全部满足）；**M21 项目全面审查+P0/P1 修复 已完成（待 push + tag v0.20.1，详见下方"M21"章节；用户指令"全面审查整个项目看看还有哪里有问题，反复严肃检查"；审查结论：代码层面无问题（987 测试全过 + analyze No issues + 6 硬约束全部通过 + M19/M20 无回归）；P0 修复 HANDOFF.md 第 1/2 节严重不同步；P1 补 glm_4v_provider + qwen_vl_provider isRefusalForTest 单测共 16 个；6 条硬约束全部满足）**。远端 main 已 force push 覆盖旧 v0.8.0 线为 v0.20.x 主线（M20 期间执行）。v0.18.x 及之前版本历史见 git log + tag 列表。
 
 **当前分支**：trae/agent-wX1X6Q（本地 HEAD = 即将 bump v0.20.1 commit；远端 origin/main 已 force push 覆盖为 v0.20.x 主线，HEAD = c412479（v0.20.0）；tag v0.19.1 指向 da36c5a，v0.20.0 指向 c412479，v0.20.1 待创建；v0.19.0 指向 fe9a746；v0.18.x 及之前 tag 详见 git tag -l；**待用户确认后 push + tag v0.20.1**）

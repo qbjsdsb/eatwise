@@ -3,7 +3,6 @@
 // 此测试验证 callbackDispatcher 的逻辑分支（用 Fake DB + 内存 DB）
 import 'package:drift/native.dart';
 import 'package:eatwise/background/background_tasks.dart';
-import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/data/repositories/pending_recognition_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
 

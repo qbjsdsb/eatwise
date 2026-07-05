@@ -654,6 +654,101 @@ void main() {
   });
 
   // ============================================================
+  // M24 B4: 包装 OCR 优先路径 characterization test（拆分前安全网）
+  // 验证 multi_dish_page 哨兵分支（foodItemId=0）+ 有包装营养表数据时，
+  // meal_log.actualCalories 用包装换算值（per100g × serving / 100），
+  // food_item.caloriesPer100g 用包装换算值，不走 AI 估算/品类校准。
+  // 硬约束 4：per100g 反算基于 estimatedWeightGMid（包装路径用 packageServingG 换算）
+  // ============================================================
+  testWidgets(
+      'M24 B4: 包装 OCR 优先路径——哨兵 + 包装数据时用包装换算值记录（不是 AI 估算）',
+      (tester) async {
+    final container = ProviderContainer(overrides: [
+      recognize.databaseProvider.overrideWith((ref) async => db),
+    ]);
+    addTearDown(container.dispose);
+
+    // 速冻水饺：包装营养表（单份 50g / 100kcal / 蛋白3g / 脂肪2g / 碳水15g）
+    // estimatedWeightGMid=200g（用户份量），AI 估算 500kcal（应被包装路径短路）
+    const r = VisionRecognitionResult(
+      dishName: '速冻水饺',
+      estimatedWeightGLow: 180,
+      estimatedWeightGMid: 200,
+      estimatedWeightGHigh: 220,
+      foodComponents: [],
+      cookingMethod: 'steam',
+      isSingleItem: true,
+      confidence: 0.9,
+      promptVersion: 'v1.10',
+      estimatedCalories: 500, // AI 估算（应被包装路径短路）
+      estimatedProteinG: 10,
+      estimatedFatG: 5,
+      estimatedCarbsG: 50,
+      foodCategory: 'solid',
+      packageServingG: 50, // 单份 50g
+      packageServingKcal: 100, // 单份 100kcal
+      packageServingProteinG: 3,
+      packageServingFatG: 2,
+      packageServingCarbsG: 15,
+    );
+    final aiFallback = NutritionResult(
+      foodItemId: 0, // 哨兵：写库前必须 upsertAiRecognized 替换为真实 id
+      calories: 500, // AI 估算整菜（mid=200g）
+      proteinG: 10,
+      fatG: 5,
+      carbsG: 50,
+      oilG: 0,
+      source: NutritionSource.aiEstimate,
+    );
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(
+          home: MultiDishPage(
+        mainDish: r,
+        // 哨兵路径：mainSingle 非空 + foodItemId=0 触发 _hitFlags=true + 哨兵分支
+        // （与 M16.6 beerDish 用 singleNutrition=beerAiFallback 同模式）
+        mainSingle: aiFallback,
+        additionalItems: const [],
+        mealType: 'dinner',
+      )),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('全部记录'));
+    await tester.pumpAndSettle();
+
+    final meals = await db.mealLogs.select().get();
+    expect(meals.length, 1, reason: '速冻水饺应写入 1 条 meal_log');
+
+    // 包装换算：per100g kcal = 100 * 100 / 50 = 200
+    // actualCalories = 200 * 200 / 100 = 400（不是 AI 估算的 500）
+    expect(meals.first.actualCalories, closeTo(400, 0.5),
+        reason: '包装 OCR 优先：actualCalories 用包装换算值（400），不是 AI 估算（500）');
+    // 包装换算宏量：per100g = 单份值 * 100 / 50
+    // actualProteinG = 6 * 200 / 100 = 12
+    expect(meals.first.actualProteinG, closeTo(12, 0.1),
+        reason: '包装换算蛋白 = 3*100/50 * 200/100 = 12');
+    expect(meals.first.actualFatG, closeTo(8, 0.1),
+        reason: '包装换算脂肪 = 2*100/50 * 200/100 = 8');
+    expect(meals.first.actualCarbsG, closeTo(60, 0.1),
+        reason: '包装换算碳水 = 15*100/50 * 200/100 = 60');
+
+    // food_item.caloriesPer100g 应为包装换算值 200（不是 AI 反算的 250）
+    final food = await (db.foodItems.select()
+          ..where((f) => f.name.equals('速冻水饺') & f.source.equals('ai_recognized')))
+        .getSingle();
+    expect(food.caloriesPer100g, closeTo(200, 0.5),
+        reason: 'food_item.caloriesPer100g 用包装换算值 200');
+    expect(food.proteinPer100g, closeTo(6, 0.1),
+        reason: 'food_item.proteinPer100g = 3*100/50 = 6');
+    expect(food.fatPer100g, closeTo(4, 0.1),
+        reason: 'food_item.fatPer100g = 2*100/50 = 4');
+    expect(food.carbsPer100g, closeTo(30, 0.1),
+        reason: 'food_item.carbsPer100g = 15*100/50 = 30');
+  });
+
+  // ============================================================
   // M18 Task 2: AI 估算卡片 UI 测试（5 个）
   // 验证 multi_dish_page 新增 _buildAiEstimateCard 渲染：
   // - 置信度百分比（<60% 红色警告）

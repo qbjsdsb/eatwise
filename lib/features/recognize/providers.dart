@@ -12,7 +12,13 @@ import '../../core/update/github_release_client.dart';
 import '../../core/update/update_service.dart';
 import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
+import '../../data/repositories/insight_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
+import '../../data/repositories/pending_recognition_repository.dart';
+import '../../data/repositories/profile_repository.dart';
+import '../../data/repositories/recommendation_feedback_repository.dart';
+import '../../data/repositories/recognition_feedback_repository.dart';
+import '../../data/repositories/weight_log_repository.dart';
 import 'circuit_breaker.dart';
 
 // export database.dart：让用 `import 'providers.dart' as recognize;` 的页面
@@ -69,6 +75,43 @@ final foodItemRepoProvider = FutureProvider<FoodItemRepository>((ref) async {
 final mealLogRepoProvider = FutureProvider<MealLogRepository>((ref) async {
   final db = await ref.watch(databaseProvider.future);
   return MealLogRepository(db);
+});
+
+// M24 Task B1：补齐缺失的 Repository Provider，feature 层不再直接 new Repo(db)
+// 模式与 foodItemRepoProvider / mealLogRepoProvider 一致：FutureProvider 包裹，
+// feature 层用 `ref.read(recognize.xxxRepoProvider.future)` 拿实例
+final profileRepoProvider = FutureProvider<ProfileRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return ProfileRepository(db);
+});
+
+final weightLogRepoProvider = FutureProvider<WeightLogRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return WeightLogRepository(db);
+});
+
+final pendingRecognitionRepoProvider =
+    FutureProvider<PendingRecognitionRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return PendingRecognitionRepository(db);
+});
+
+final recommendationFeedbackRepoProvider =
+    FutureProvider<RecommendationFeedbackRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return RecommendationFeedbackRepository(db);
+});
+
+final recognitionFeedbackRepoProvider =
+    FutureProvider<RecognitionFeedbackRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return RecognitionFeedbackRepository(db);
+});
+
+// M24 Task B1：InsightRepository Provider（insight_page AI 周报页用）
+final insightRepoProvider = FutureProvider<InsightRepository>((ref) async {
+  final db = await ref.watch(databaseProvider.future);
+  return InsightRepository(db);
 });
 
 final nutritionLookupProvider = FutureProvider<NutritionLookup>((ref) async {

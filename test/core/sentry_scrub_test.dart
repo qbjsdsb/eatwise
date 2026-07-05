@@ -63,5 +63,33 @@ void main() {
       final event = SentryEvent();
       expect(scrubBeforeSend(event, Hint()), isNotNull);
     });
+
+    test('event.tags 含敏感 key 时脱敏', () {
+      final event = SentryEvent(tags: {
+        'api_key': 'sk-xxx',
+        'food_name': 'rice',
+        'os_version': '14',
+      });
+      final result = scrubBeforeSend(event, Hint())!;
+      // 敏感 key（api_key/food_name）应被删除
+      expect(result.tags!.containsKey('api_key'), isFalse);
+      expect(result.tags!.containsKey('food_name'), isFalse);
+      // 非敏感 key 保留
+      expect(result.tags!.containsKey('os_version'), isTrue);
+      expect(result.tags!['os_version'], '14');
+    });
+
+    test('event.tags 无敏感 key 时保留', () {
+      final event = SentryEvent(tags: {
+        'os_version': '14',
+        'device': 'pixel',
+      });
+      final result = scrubBeforeSend(event, Hint())!;
+      // 无敏感 key 时 tags 保留不变
+      expect(result.tags, isNotNull);
+      expect(result.tags!.length, 2);
+      expect(result.tags!['os_version'], '14');
+      expect(result.tags!['device'], 'pixel');
+    });
   });
 }

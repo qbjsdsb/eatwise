@@ -1,4 +1,3 @@
-import 'package:eatwise/data/database/database.dart';
 import 'package:eatwise/data/repositories/food_item_repository.dart';
 import 'off_provider.dart';
 import 'vision_provider.dart';

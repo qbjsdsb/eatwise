@@ -208,10 +208,10 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
                 padding: const EdgeInsets.all(12),
                 child: SizedBox(
                   width: double.maxFinite,
-                  child: Text(r.release.body,
-                      style: tt.bodySmall,
-                      maxLines: 10,
-                      overflow: TextOverflow.ellipsis),
+                  child: _ExpandableReleaseNotes(
+                    body: r.release.body,
+                    style: tt.bodySmall,
+                  ),
                 ),
               ),
             ),
@@ -283,5 +283,60 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
           ),
         ];
     }
+  }
+}
+
+/// 可展开/收起的 release notes 组件。
+///
+/// 折叠时：Text(maxLines: 10, overflow: ellipsis) + "展开全文" 按钮
+/// 展开后：SingleChildScrollView + Text（无 maxLines）+ "收起" 按钮
+/// 用 AnimatedSize 实现 300ms 平滑过渡。
+class _ExpandableReleaseNotes extends StatefulWidget {
+  const _ExpandableReleaseNotes({required this.body, required this.style});
+
+  final String body;
+  final TextStyle? style;
+
+  @override
+  State<_ExpandableReleaseNotes> createState() =>
+      _ExpandableReleaseNotesState();
+}
+
+class _ExpandableReleaseNotesState extends State<_ExpandableReleaseNotes> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedSize(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+          child: _expanded
+              ? SingleChildScrollView(
+                  child: Text(widget.body, style: widget.style),
+                )
+              : Text(
+                  widget.body,
+                  style: widget.style,
+                  maxLines: 10,
+                  overflow: TextOverflow.ellipsis,
+                ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            onPressed: () => setState(() => _expanded = !_expanded),
+            child: Text(
+              _expanded ? '收起' : '展开全文',
+              style: TextStyle(color: cs.secondary),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

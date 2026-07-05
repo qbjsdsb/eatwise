@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/util/food_name.dart';
 import '../../core/widgets/m3_widgets.dart';
-import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../recognize/providers.dart' as recognize;
 import 'food_edit_page.dart';
@@ -29,6 +28,7 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
   bool _searching = false; // 是否处于搜索模式（输入框非空）
   bool _searchLoading = false; // 搜索查询进行中（debounce + 异步查询期间）
   bool _initialLoading = true; // 首屏常吃列表加载中（避免数据未到时误显"暂无常用食物"）
+  bool _loadError = false; // 加载失败标志：与"暂无常用食物"空态严格区分（避免误导用户）
   // 搜索防抖 + 竞态保护：debounce 计时器 + 请求序列号
   Timer? _debounce;
   int _searchSeq = 0;
@@ -48,12 +48,14 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
 
   Future<void> _loadFrequent() async {
     try {
-      final db = await ref.read(recognize.databaseProvider.future);
-      final repo = FoodItemRepository(db);
+      final repo = await ref.read(recognize.foodItemRepoProvider.future);
       _frequent = await repo.listFrequent();
+      _loadError = false; // 加载成功：清错误标志（重试成功后兜底）
       if (mounted) setState(() {});
     } catch (_) {
-      // 加载失败保持空列表，UI 显示空态
+      // DB 异常：置 _loadError 标志让 build 显 ErrorState + 重试按钮
+      // （不静默显"暂无常用食物"空态误导用户，与 profile_page _loadError 同构）
+      _loadError = true;
     } finally {
       if (mounted) setState(() => _initialLoading = false);
     }
@@ -83,8 +85,7 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
   Future<void> _doSearch(String keyword) async {
     final seq = ++_searchSeq;
     try {
-      final db = await ref.read(recognize.databaseProvider.future);
-      final repo = FoodItemRepository(db);
+      final repo = await ref.read(recognize.foodItemRepoProvider.future);
       final results = await repo.searchByName(keyword);
       // 序列号校验：若期间用户又输入了新关键词，丢弃本次结果
       if (seq != _searchSeq || !mounted) return;
@@ -93,17 +94,41 @@ class _FoodLibraryPageState extends ConsumerState<FoodLibraryPage> {
         _searchLoading = false;
       });
     } catch (_) {
-      // 查询异常：关闭 loading，清空结果，避免 UI 永久卡转圈
+      // 查询异常：关闭 loading，清空结果，避免 UI 永久卡转圈；
+      // 同时弹 toast 提示用户搜索失败可重试（避免静默吞错显示"未找到相关食物"误导）
       if (seq != _searchSeq || !mounted) return;
       setState(() {
         _searchResults = [];
         _searchLoading = false;
       });
+      showAppToast(context, '搜索失败，请重试');
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // 加载失败：显 ErrorState + 重试按钮（不显空态"暂无常用食物"误导用户）
+    // 与 profile_page.dart 的 _loadError + ErrorState 模式同构
+    if (_loadError) {
+      return Scaffold(
+        body: ErrorState(
+          message: '常用食物加载失败',
+          onRetry: () {
+            setState(() {
+              _loadError = false;
+              _initialLoading = true;
+            });
+            // 失败可能源于 databaseProvider 缓存的错误（如 DB 打开失败），
+            // invalidate 后下次 read 会重新执行 create 函数，让重试真正生效
+            // M24 Task B1：同时 invalidate foodItemRepoProvider（它缓存了 error 态，
+            // 仅 invalidate databaseProvider 不会立即刷新 foodItemRepoProvider 的缓存）
+            ref.invalidate(recognize.databaseProvider);
+            ref.invalidate(recognize.foodItemRepoProvider);
+            _loadFrequent();
+          },
+        ),
+      );
+    }
     final list = _searching ? _searchResults : _frequent;
     final cs = Theme.of(context).colorScheme;
     return Scaffold(

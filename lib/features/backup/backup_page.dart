@@ -146,16 +146,30 @@ class _BackupPageState extends ConsumerState<BackupPage> {
         ),
       );
     } finally {
-      ctrl.dispose();
+      // showDialog 返回时弹窗退出动画仍在进行（~200ms），立即 dispose 会让
+      // TextField 在动画期间引用已释放的 controller（"used after being disposed"）。
+      // 延迟到退出动画结束后再 dispose。
+      Future.delayed(const Duration(milliseconds: 300), ctrl.dispose);
     }
     if (jsonStr == null || jsonStr.trim().isEmpty) return;
     if (!mounted) return;
 
-    // 二次确认：导入会先清空当前所有数据（DELETE FROM 6 张表），破坏性操作需用户明确确认
+    // 查询离线队列 pending 数：导入会 DELETE FROM pending_recognitions，
+    // 破坏性操作需在确认弹窗中告知用户具体条数（M24 Task A5 知情同意）
+    final pendingRepo =
+        await ref.read(recognize.pendingRecognitionRepoProvider.future);
+    final pendingCount = await pendingRepo.countPending();
+    if (!mounted) return;
+
+    // 二次确认：导入会先清空当前所有数据（DELETE FROM 8 张表，含 pending_recognitions），
+    // 破坏性操作需用户明确知情同意。pending>0 时额外提示离线队列将被清空
+    final pendingHint = pendingCount > 0
+        ? '\n\n⚠️ 离线队列中 $pendingCount 条待识别记录将被清空'
+        : '';
     final confirmed = await confirmAction(
       context,
       title: '确认导入',
-      content: '导入将清空当前所有数据（档案、食物库、餐次记录、体重、汇总、反馈），此操作不可撤销。\n\n确定继续？',
+      content: '导入将清空当前所有数据（档案、食物库、餐次记录、体重、汇总、反馈），此操作不可撤销。$pendingHint\n\n确定继续？',
       confirmLabel: '确定导入',
       icon: Icons.warning_amber_rounded,
     );
@@ -163,6 +177,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
 
     setState(() => _busy = true);
     try {
+      // JsonImporter 不是 Repository，直接用 databaseProvider 拿 db 实例
       final db = await ref.read(recognize.databaseProvider.future);
       final importer = JsonImporter(db);
       final stats = await importer.importFromString(jsonStr);

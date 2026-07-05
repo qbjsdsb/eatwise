@@ -10,6 +10,9 @@ import '../../core/widgets/m3_widgets.dart';
 import '../manual_entry/manual_entry_page.dart';
 import 'calibrated_nutrition_calculator.dart';
 import 'dish_name_editor.dart';
+import 'multi_dish/dish_card.dart';
+import 'multi_dish/nutrition_preview.dart';
+import 'multi_dish/total_summary_bar.dart';
 import 'providers.dart';
 import 'recognize_controller.dart';
 
@@ -17,6 +20,9 @@ import 'recognize_controller.dart';
 ///
 /// 拍一桌菜识别出多个菜后，显示所有菜品列表，每菜可单独校准份量，
 /// 最后"全部记录"合并写入 meal_log（每菜一条记录，同餐次同日期）。
+///
+/// M24 B4：拆出 DishCard / AiEstimateCard / TotalSummaryBar 到 multi_dish/ 子目录，
+/// 主文件聚焦编排（StatefulWidget 状态管理 + 业务逻辑：哨兵替换 / 包装 OCR / 校准 / 写库）。
 class MultiDishPage extends ConsumerStatefulWidget {
   final VisionRecognitionResult mainDish;
   final NutritionResult? mainSingle;
@@ -70,7 +76,7 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
     ];
     // 份量初值 clamp 到滑块范围 [0, _sliderMaxFor] 防 Slider 越界崩溃
     _servings = allDishes
-        .map((d) => d.estimatedWeightGMid.clamp(0.0, _sliderMaxFor(d)))
+        .map((d) => d.estimatedWeightGMid.clamp(0.0, DishCard.sliderMaxFor(d)))
         .toList();
     // v1.3：数量初值取 AI 识别的 quantity（默认 1）
     _quantities = allDishes.map((d) => d.quantity).toList();
@@ -120,221 +126,76 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
         }
       },
       child: Scaffold(
-      appBar: AppBar(
-        title: Text('一桌多菜（共 ${allDishes.length} 道）'),
-        actions: [
-          // 识别不准？转手动录入（避免用户被迫记录错误识别结果）
-          TextButton.icon(
-            onPressed: _isRecording
-                ? null
-                : () async {
-                    // M16.7: dirty 状态下转手动应确认（避免静默丢失未保存滑块改动）
-                    if (_dirty && !(await confirmDiscardChanges(context))) {
-                      return; // 用户取消
-                    }
-                    if (!context.mounted) return;
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(
-                          builder: (_) => const ManualEntryPage()),
-                    );
-                  },
-            icon: const Icon(Icons.edit_outlined),
-            label: const Text('转手动'),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(16),
-              itemCount: allDishes.length,
-              itemBuilder: (ctx, i) => _buildDishCard(i, allDishes[i]),
+        appBar: AppBar(
+          title: Text('一桌多菜（共 ${allDishes.length} 道）'),
+          actions: [
+            // 识别不准？转手动录入（避免用户被迫记录错误识别结果）
+            TextButton.icon(
+              onPressed: _isRecording
+                  ? null
+                  : () async {
+                      // M16.7: dirty 状态下转手动应确认（避免静默丢失未保存滑块改动）
+                      if (_dirty && !(await confirmDiscardChanges(context))) {
+                        return; // 用户取消
+                      }
+                      if (!context.mounted) return;
+                      Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(
+                            builder: (_) => const ManualEntryPage()),
+                      );
+                    },
+              icon: const Icon(Icons.edit_outlined),
+              label: const Text('转手动'),
             ),
-          ),
-          // 总计卡片
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              border: Border(
-                  top: BorderSide(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .outlineVariant)),
-            ),
-            child: Column(
-              children: [
-                Text('本餐合计：${totalCal.toStringAsFixed(0)} kcal',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(
-                            fontFeatures: const [
-                              FontFeature.tabularFigures()
-                            ])),
-                Text(
-                    '蛋白质 ${totalProtein.toStringAsFixed(1)} g · 脂肪 ${totalFat.toStringAsFixed(0)} g · 碳水 ${totalCarbs.toStringAsFixed(0)} g',
-                    style: TextStyle(
-                        fontFeatures: const [
-                          FontFeature.tabularFigures()
-                        ],
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurfaceVariant)),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    // 防重入：记录中禁用按钮
-                    onPressed: _isRecording ? null : _recordAll,
-                    child: _isRecording
-                        ? SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onPrimary))
-                        : const Text('全部记录'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    ),
-    );
-  }
-
-  Widget _buildDishCard(int index, VisionRecognitionResult dish) {
-    final hit = _hitFlags[index];
-    final (cal, p, f, c) = hit ? _calcNutrition(index, dish) : (0.0, 0.0, 0.0, 0.0);
-    // 改菜名按钮显示条件：单品路径（_currentSingles 非空）或完全未命中（无 composite 数据）
-    // 复合菜命中（componentHits 非空）不显示，因为多组分改单名语义复杂
-    final composite = _getCompositeNutrition(index);
-    final canRename = _currentSingles[index] != null ||
-        composite == null || composite.componentHits.isEmpty;
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          ],
+        ),
+        body: Column(
           children: [
-            Row(
-              children: [
-                Expanded(
-                  // v1.3：多份时菜名后显示 ×数量（用 state _quantities，步进器改后同步）
-                  // 改菜名后用 _currentNames[index] 实时刷新
-                  child: Text(
-                      '${_currentNames[index]}${_quantities[index] > 1 ? " ×${_quantities[index]}" : ""}',
-                      style: Theme.of(context).textTheme.titleMedium),
-                ),
-                if (!hit)
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .tertiaryContainer,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text('未命中',
-                        style: TextStyle(
-                            fontSize: 11,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .tertiary)),
-                  ),
-                // 改菜名按钮（icon button，紧凑布局）
-                if (canRename)
-                  IconButton(
-                    icon: _isRenamingFlags[index]
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.drive_file_rename_outline,
-                            size: 20),
-                    onPressed: _isRenamingFlags[index]
-                        ? null
-                        : () => _handleRename(index),
-                    tooltip: '改菜名',
-                    // 触控目标 ≥48dp（Material 3 可访问性标准）；
-                    // 保留 padding: EdgeInsets.zero 维持紧凑视觉，仅放大 constraints
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                        minWidth: 48, minHeight: 48),
-                  ),
-              ],
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: allDishes.length,
+                itemBuilder: (ctx, i) => _buildDishCard(i, allDishes[i]),
+              ),
             ),
-            if (hit) ...[
-              const SizedBox(height: 8),
-              Text('份量：${_servings[index].toStringAsFixed(0)} g'),
-              Slider(
-                value: _servings[index],
-                min: 0,
-                max: _sliderMaxFor(dish),
-                divisions: (_sliderMaxFor(dish) / 10).round(),
-                label: '${_servings[index].toStringAsFixed(0)} g',
-                onChanged: (v) => setState(() {
-                  _servings[index] = v;
-                  _dirty = true; // 用户拖滑块改份量，标记 dirty（PopScope 未保存确认）
-                  // v1.3：仅单品路径 + perUnitG > 0 时反推数量（复合菜无步进器，不写 _quantities）
-                  if (_getSingleNutrition(index) != null && dish.perUnitG > 0) {
-                    final q = (v / dish.perUnitG).round();
-                    if (q >= 1 && q <= 20 && q != _quantities[index]) {
-                      _quantities[index] = q;
-                    }
-                  }
-                }),
-              ),
-              // v1.3：数量步进器（仅单品命中 + perUnitG > 0 显示）
-              _buildQuantityStepper(index, dish),
-              Text(
-                  '${cal.toStringAsFixed(0)} kcal · 蛋白 ${p.toStringAsFixed(1)} g · 脂肪 ${f.toStringAsFixed(0)} g · 碳水 ${c.toStringAsFixed(0)} g',
-                  style: TextStyle(
-                      fontFeatures: const [
-                        FontFeature.tabularFigures()
-                      ],
-                      fontSize: 12,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurfaceVariant)),
-              // M18 Task2: AI 估算卡片（置信度 + 来源徽章 + AI vs 库值对比 + reasoning）
-              // 与 calibration_page 风格一致，让用户验证 AI 精度
-              const SizedBox(height: 8),
-              _buildAiEstimateCard(index, dish),
-            ] else
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text('库中未找到「${_currentNames[index]}」，记录时将跳过此菜',
-                    style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurfaceVariant)),
-              ),
+            TotalSummaryBar(
+              totalCal: totalCal,
+              totalProtein: totalProtein,
+              totalFat: totalFat,
+              totalCarbs: totalCarbs,
+              isRecording: _isRecording,
+              onRecord: _recordAll,
+            ),
           ],
         ),
       ),
     );
   }
 
-  /// v1.3：动态滑块上限（每菜独立）。perUnitG>0 时按 perUnitG×20 扩到 5000 防多份 clamp 少算
-  double _sliderMaxFor(VisionRecognitionResult dish) {
-    if (dish.perUnitG > 0) {
-      return (dish.perUnitG * 20).clamp(1000.0, 5000.0);
-    }
-    return 1000.0;
+  /// 构建单菜卡片（M24 B4：委托给 DishCard widget，数据注入 + 回调上拱）
+  Widget _buildDishCard(int index, VisionRecognitionResult dish) {
+    final hit = _hitFlags[index];
+    final nutrition = hit
+        ? _calcNutrition(index, dish)
+        : (0.0, 0.0, 0.0, 0.0);
+    return DishCard(
+      dish: dish,
+      hit: hit,
+      currentName: _currentNames[index],
+      servings: _servings[index],
+      quantity: _quantities[index],
+      isRenaming: _isRenamingFlags[index],
+      single: _getSingleNutrition(index),
+      composite: _getCompositeNutrition(index),
+      aiFallback: _getAiFallback(index),
+      nutrition: nutrition,
+      onServingChanged: (v) => _onServingChanged(index, dish, v),
+      onQuantityChanged: (newQ) => _onQuantityChanged(index, newQ, dish),
+      onRenameTap: () => _handleRename(index),
+    );
   }
 
-  /// v1.3：获取某菜的单品查库结果（判断是否单品路径用）
+  /// 获取某菜的单品查库结果（判断是否单品路径用）
   /// 改菜名后用 _currentSingles[index]（rename 后实时刷新）
   NutritionResult? _getSingleNutrition(int index) => _currentSingles[index];
 
@@ -358,372 +219,67 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
     return null;
   }
 
-  /// M16.8：查库命中分支差异检测计算（_calcNutrition 预览 + _recordAll 记录共用，
-  /// 保证预览=记录）。
-  ///
-  /// 条件：_currentSingles[index] 非空 + foodItemId > 0（查库命中）+ aiFallback 非空 +
-  ///       无包装营养表（包装是精确值，不走差异检测）。
+  /// M16.8：查库命中分支差异检测（_calcNutrition 预览 + _recordAll 记录共用，保证预览=记录）。
+  /// M24 B4：委托 [NutritionPreview.computeLookupHitCalibrated]，逻辑字节级保留。
   /// 返回 null 表示不满足条件，调用方走原逻辑（n.* * ratio）。
   CalibratedNutrition? _computeLookupHitCalibrated(
-      int index, VisionRecognitionResult dish, double serving) {
-    // 包装营养表优先（精确值，不走差异检测）
-    if (dish.hasPackageNutrition) return null;
-    final n = _currentSingles[index];
-    if (n == null || n.foodItemId <= 0) return null;
-    final aiFallback = _getAiFallback(index);
-    if (aiFallback == null) return null;
-    return CalibratedNutritionCalculator.compute(
-      recognitionResult: dish,
-      aiFallback: aiFallback,
-      servingG: serving,
-      lookupHitNutrition: n,
-    );
-  }
+          int index, VisionRecognitionResult dish, double serving) =>
+      NutritionPreview.computeLookupHitCalibrated(
+        dish: dish,
+        serving: serving,
+        currentSingle: _currentSingles[index],
+        aiFallback: _getAiFallback(index),
+      );
 
-  /// M16.9：复合菜查库命中 + AI 整菜估算 → AI 绝对优先
-  /// M18：抽取为 CalibratedNutritionCalculator.computeCompositeLookupHit 公共方法
-  /// 三路径（recognize_page / multi_dish_page / offline_queue_controller）共用
-  /// per100g 从 0 占位改为 AI 反算值，让 AI 估算进入食物库
+  /// M16.9：复合菜查库命中 + AI 整菜估算 → AI 绝对优先。
+  /// M24 B4：委托 [NutritionPreview.computeCompositeLookupHitCalibrated]，逻辑字节级保留。
   CalibratedNutrition? _computeCompositeLookupHitCalibrated(
-      int index, VisionRecognitionResult dish, double serving) {
-    // 包装营养表优先（精确值，不走差异检测）
-    if (dish.hasPackageNutrition) return null;
-    final composite = _getCompositeNutrition(index);
-    if (composite == null) return null;
-    final aiFallback = _getAiFallback(index);
-    if (aiFallback == null) return null;
-    // 委托公共方法：AI 有效返回 per100g=AI 反算值 + actualXxx；AI 无效返回 null
-    return CalibratedNutritionCalculator.computeCompositeLookupHit(
-      aiFallback: aiFallback,
-      servingG: serving,
-      mid: dish.estimatedWeightGMid,
-    );
-  }
+          int index, VisionRecognitionResult dish, double serving) =>
+      NutritionPreview.computeCompositeLookupHitCalibrated(
+        dish: dish,
+        serving: serving,
+        composite: _getCompositeNutrition(index),
+        aiFallback: _getAiFallback(index),
+      );
 
-  // ============================================================
-  // M18 Task2: AI 估算卡片 UI
-  // 显示置信度 + 来源徽章 + AI vs 库值对比 + reasoning 折叠面板
-  // 与 calibration_page 风格一致，让用户验证 AI 精度
-  // ============================================================
+  /// 计算某菜当前份量的营养素（基于查库结果按比例缩放，单品/复合菜同 ratio）。
+  /// M24 B4：委托 [NutritionPreview.calc]，逻辑字节级保留（含包装 OCR 优先 / 哨兵差异检测 / 复合菜 AI 优先）。
+  (double, double, double, double) _calcNutrition(
+          int index, VisionRecognitionResult dish) =>
+      NutritionPreview.calc(
+        index: index,
+        dish: dish,
+        serving: _servings[index],
+        currentSingle: _currentSingles[index],
+        aiFallback: _getAiFallback(index),
+        composite: _getCompositeNutrition(index),
+        mainComposite: widget.mainComposite,
+        additionalItems: widget.additionalItems,
+      );
 
-  /// M18: AI 估算卡片——显示置信度 + 来源徽章 + AI vs 库值对比 + reasoning
-  ///
-  /// 显示规则：
-  /// - 行 1（置信度 + 来源徽章）：所有命中菜品显示
-  ///   - 置信度 < 60% 显示"待确认"红色警告
-  ///   - 来源徽章：AI 优先（查库命中 + AI 有效）/ 库匹配（查库命中 + AI 无效）/ AI 估算（哨兵）
-  /// - 行 2（AI vs 库值对比）：仅查库命中时显示
-  /// - 行 3（reasoning 折叠面板）：reasoning 非空时显示
-  Widget _buildAiEstimateCard(int index, VisionRecognitionResult dish) {
-    final cs = Theme.of(context).colorScheme;
-    final bodySmall = Theme.of(context).textTheme.bodySmall!;
-    final single = _getSingleNutrition(index);
-    final composite = _getCompositeNutrition(index);
-    final aiFallback = _getAiFallback(index);
-
-    // 判断来源
-    final bool isAiSentinel =
-        single != null && single.foodItemId == 0 && composite == null;
-    final bool isLookupHit =
-        (single != null && single.foodItemId > 0) || composite != null;
-    final bool isAiPriority =
-        isLookupHit && aiFallback != null && _isAiValid(dish, aiFallback);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 行 1: AI 估算 + 置信度 + 来源徽章
-        Row(
-          children: [
-            Icon(Icons.insights_outlined, size: 14, color: cs.primary),
-            const SizedBox(width: 4),
-            Text('AI 估算', style: bodySmall),
-            const SizedBox(width: 8),
-            // 置信度：< 60% 显示"待确认"红色警告，否则显示百分比
-            if (dish.confidence < 0.6)
-              Text('待确认',
-                  style: bodySmall.copyWith(
-                    color: cs.error,
-                    fontWeight: FontWeight.w600,
-                  ))
-            else
-              Text('置信度 ${(dish.confidence * 100).toStringAsFixed(0)}%',
-                  style: bodySmall.copyWith(
-                    color: cs.onSurfaceVariant,
-                  )),
-            const SizedBox(width: 8),
-            _buildSourceBadge(isAiSentinel, isAiPriority),
-          ],
-        ),
-        // 行 2: AI vs 库值对比（仅查库命中 + 有 AI 估算时显示）
-        if (isLookupHit && aiFallback != null) ...[
-          const SizedBox(height: 4),
-          _buildAiVsDbComparison(dish, aiFallback, single, composite),
-        ],
-        // 行 3: reasoning 折叠面板（reasoning 非空时显示）
-        if (dish.reasoning != null && dish.reasoning!.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          _buildReasoningExpansionTile(dish.reasoning!),
-        ],
-      ],
-    );
-  }
-
-  /// M18: 来源徽章
-  /// - AI 估算（哨兵）：橙色 tertiaryContainer
-  /// - AI 优先（查库命中 + AI 有效）：紫色 primaryContainer
-  /// - 库匹配（查库命中 + AI 无效）：蓝色 secondaryContainer
-  Widget _buildSourceBadge(bool isAiSentinel, bool isAiPriority) {
-    final cs = Theme.of(context).colorScheme;
-    final (label, bgColor, fgColor) = isAiSentinel
-        ? ('AI 估算', cs.tertiaryContainer, cs.onTertiaryContainer)
-        : isAiPriority
-            ? ('AI 优先', cs.primaryContainer, cs.onPrimaryContainer)
-            : ('库匹配', cs.secondaryContainer, cs.onSecondaryContainer);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(label,
-          style: TextStyle(fontSize: 10, color: fgColor, fontWeight: FontWeight.w500)),
-    );
-  }
-
-  /// M18: AI vs 库值对比行
-  /// 显示 AI 反算 per100g vs 库 per100g + 偏差百分比
-  /// 偏差 > 50% 时红色高亮（AI 估算与库值差异显著，提示用户关注）
-  Widget _buildAiVsDbComparison(
-    VisionRecognitionResult dish,
-    NutritionResult aiFallback,
-    NutritionResult? single,
-    CompositeNutritionResult? composite,
-  ) {
-    final cs = Theme.of(context).colorScheme;
-    final bodySmall = Theme.of(context).textTheme.bodySmall!;
-    final mid = dish.estimatedWeightGMid;
-    if (mid <= 0) return const SizedBox.shrink();
-    final aiPer100 = aiFallback.calories * 100 / mid;
-    final dbPer100 = single != null
-        ? single.calories * 100 / mid
-        : (composite != null ? composite.calories * 100 / mid : 0.0);
-    final diff = dbPer100 > 0
-        ? ((aiPer100 - dbPer100) / dbPer100 * 100).abs()
-        : 0.0;
-    final diffStr = diff > 50
-        ? '⚠ 偏差 ${diff.toStringAsFixed(0)}%'
-        : '偏差 ${diff.toStringAsFixed(0)}%';
-    return Text(
-      'AI: ${aiPer100.toStringAsFixed(0)} kcal/100g · 库: ${dbPer100.toStringAsFixed(0)} ($diffStr)',
-      style: bodySmall.copyWith(
-        fontSize: 11,
-        color: diff > 50 ? cs.error : cs.onSurfaceVariant,
-      ),
-    );
-  }
-
-  /// M18: reasoning 折叠面板（与 calibration_page 风格一致）
-  /// 默认折叠避免占空间，用户主动展开查看 AI 推理过程
-  Widget _buildReasoningExpansionTile(String reasoning) {
-    final cs = Theme.of(context).colorScheme;
-    return ExpansionTile(
-      tilePadding: EdgeInsets.zero,
-      dense: true,
-      title: Row(
-        children: [
-          Icon(Icons.psychology_outlined, size: 16, color: cs.primary),
-          const SizedBox(width: 4),
-          Text('AI 推理过程',
-              style: Theme.of(context).textTheme.bodySmall),
-        ],
-      ),
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text(
-            reasoning,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(fontSize: 11),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// M18: AI 估算有效性判断（与 CalibratedNutritionCalculator.computeCompositeLookupHit 一致）
-  /// AI per100g ∈ [0, 900] 且 mid > 0 时有效
-  bool _isAiValid(VisionRecognitionResult dish, NutritionResult aiFallback) {
-    final mid = dish.estimatedWeightGMid;
-    if (mid <= 0) return false;
-    final aiPer100 = aiFallback.calories * 100 / mid;
-    return aiPer100 >= 0 && aiPer100 <= 900;
-  }
-
-  /// v1.3：数量步进器（同物多份场景，仅单品命中 + perUnitG > 0 显示）
-  /// − / 数量+单位 / + 三段式，范围 1-20；改数量时同步 _servings[index] = perUnitG × quantity
-  Widget _buildQuantityStepper(int index, VisionRecognitionResult dish) {
-    if (_getSingleNutrition(index) == null) return const SizedBox.shrink();
-    if (dish.perUnitG <= 0) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: 4, bottom: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.remove_circle_outline),
-            tooltip: '减少数量',
-            onPressed: _quantities[index] > 1
-                ? () => _onQuantityChanged(index, _quantities[index] - 1, dish)
-                : null,
-          ),
-          Text('${_quantities[index]} ${dish.unit}',
-              style: Theme.of(context).textTheme.bodyMedium),
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline),
-            tooltip: '增加数量',
-            onPressed: _quantities[index] < 20
-                ? () => _onQuantityChanged(index, _quantities[index] + 1, dish)
-                : null,
-          ),
-          const SizedBox(width: 8),
-          Text('（每${dish.unit} ${dish.perUnitG.toStringAsFixed(0)} g）',
-              style: TextStyle(
-                  fontFeatures: const [
-                    FontFeature.tabularFigures()
-                  ],
-                  fontSize: 11,
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurfaceVariant)),
-        ],
-      ),
-    );
-  }
-
-  /// v1.3：数量变更联动份量（perUnitG × quantity，clamp 到 _sliderMaxFor 防滑块越界）
-  void _onQuantityChanged(int index, int newQ, VisionRecognitionResult dish) {
+  /// 份量滑块变更：更新 _servings + _dirty + 可能反推 _quantities（仅单品 + perUnitG>0）
+  /// M24 B4：从原 _buildDishCard 内联的 slider onChanged 抽出，DishCard 通过回调上拱
+  void _onServingChanged(int index, VisionRecognitionResult dish, double v) {
     setState(() {
-      _quantities[index] = newQ;
-      _servings[index] = (dish.perUnitG * newQ).clamp(0.0, _sliderMaxFor(dish));
-      _dirty = true; // 用户改数量，标记 dirty（PopScope 未保存确认）
+      _servings[index] = v;
+      _dirty = true; // 用户拖滑块改份量，标记 dirty（PopScope 未保存确认）
+      // v1.3：仅单品路径 + perUnitG > 0 时反推数量（复合菜无步进器，不写 _quantities）
+      if (_getSingleNutrition(index) != null && dish.perUnitG > 0) {
+        final q = (v / dish.perUnitG).round();
+        if (q >= 1 && q <= 20 && q != _quantities[index]) {
+          _quantities[index] = q;
+        }
+      }
     });
   }
 
-  /// 计算某菜当前份量的营养素（基于查库结果按比例缩放）
-  /// 单品和复合菜都按 ratio = serving / estimatedWeightGMid 缩放
-  (double, double, double, double) _calcNutrition(
-      int index, VisionRecognitionResult dish) {
-    final serving = _servings[index];
-    // 防除零：estimatedWeightGMid <= 0 时 ratio=1（用原值）
-    final mid = dish.estimatedWeightGMid;
-    final ratio = mid > 0 ? serving / mid : 1.0;
-    // v1.9：有包装营养表数据时，按包装 per100g 换算（精确值），跳过库值/AI 估算
-    // 包装换算热量 = per100g × serving / 100（直接用份量，与单品 ratio 缩放结果一致）
-    // v1.10：包装换算宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ 不返回 0，继续走下游路径
-    if (dish.hasPackageNutrition) {
-      final per100 = dish.computePackageNutritionPer100g(
-        estimatedProteinG: dish.estimatedProteinG,
-        estimatedFatG: dish.estimatedFatG,
-        estimatedCarbsG: dish.estimatedCarbsG,
-      );
-      // v1.10：仅当宏量非全 0 才用包装换算结果（含糖饮料兜底走下游 n.* ratio）
-      if (per100 != null && (per100.$2 > 0 || per100.$3 > 0 || per100.$4 > 0)) {
-        return (
-          per100.$1 * serving / 100,
-          per100.$2 * serving / 100,
-          per100.$3 * serving / 100,
-          per100.$4 * serving / 100,
-        );
-      }
-    }
-    if (index == 0) {
-      // 主菜
-      // M16.8：查库命中 + aiFallback → 差异检测（与 _recordAll 一致，保证预览=记录）
-      final calibrated = _computeLookupHitCalibrated(0, dish, serving);
-      if (calibrated != null) {
-        return (
-          calibrated.actualCalories,
-          calibrated.actualProteinG,
-          calibrated.actualFatG,
-          calibrated.actualCarbsG,
-        );
-      }
-      // 改菜名后用 _currentSingles[0]（rename 后实时刷新）
-      if (_currentSingles[0] != null) {
-        final n = _currentSingles[0]!;
-        return (
-          n.calories * ratio,
-          n.proteinG * ratio,
-          n.fatG * ratio,
-          n.carbsG * ratio,
-        );
-      }
-      // M16.9：复合菜查库命中 + AI 整菜估算 → AI 绝对优先
-      final compositeCalibrated = _computeCompositeLookupHitCalibrated(0, dish, serving);
-      if (compositeCalibrated != null) {
-        return (
-          compositeCalibrated.actualCalories,
-          compositeCalibrated.actualProteinG,
-          compositeCalibrated.actualFatG,
-          compositeCalibrated.actualCarbsG,
-        );
-      }
-      if (widget.mainComposite != null) {
-        final n = widget.mainComposite!;
-        return (
-          n.calories * ratio,
-          n.proteinG * ratio,
-          n.fatG * ratio,
-          n.carbsG * ratio,
-        );
-      }
-    } else {
-      // additionalDishes（index-1 对应 additionalItems）
-      // M16.8：查库命中 + aiFallback → 差异检测（与 _recordAll 一致，保证预览=记录）
-      final calibrated = _computeLookupHitCalibrated(index, dish, serving);
-      if (calibrated != null) {
-        return (
-          calibrated.actualCalories,
-          calibrated.actualProteinG,
-          calibrated.actualFatG,
-          calibrated.actualCarbsG,
-        );
-      }
-      // 改菜名后用 _currentSingles[index]（rename 后实时刷新）
-      if (_currentSingles[index] != null) {
-        final n = _currentSingles[index]!;
-        return (
-          n.calories * ratio,
-          n.proteinG * ratio,
-          n.fatG * ratio,
-          n.carbsG * ratio,
-        );
-      }
-      // M16.9：复合菜查库命中 + AI 整菜估算 → AI 绝对优先
-      final compositeCalibrated = _computeCompositeLookupHitCalibrated(index, dish, serving);
-      if (compositeCalibrated != null) {
-        return (
-          compositeCalibrated.actualCalories,
-          compositeCalibrated.actualProteinG,
-          compositeCalibrated.actualFatG,
-          compositeCalibrated.actualCarbsG,
-        );
-      }
-      final item = widget.additionalItems[index - 1];
-      if (item.compositeNutrition != null) {
-        final n = item.compositeNutrition!;
-        return (
-          n.calories * ratio,
-          n.proteinG * ratio,
-          n.fatG * ratio,
-          n.carbsG * ratio,
-        );
-      }
-    }
-    return (0, 0, 0, 0);
+  /// v1.3：数量变更联动份量（perUnitG × quantity，clamp 到 sliderMaxFor 防滑块越界）
+  void _onQuantityChanged(int index, int newQ, VisionRecognitionResult dish) {
+    setState(() {
+      _quantities[index] = newQ;
+      _servings[index] = (dish.perUnitG * newQ).clamp(0.0, DishCard.sliderMaxFor(dish));
+      _dirty = true; // 用户改数量，标记 dirty（PopScope 未保存确认）
+    });
   }
 
   /// 改菜名→搜库→重算 单菜（多菜列表页）

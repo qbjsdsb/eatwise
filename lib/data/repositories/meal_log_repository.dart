@@ -2,6 +2,9 @@ import 'package:eatwise/data/database/database.dart';
 import 'package:drift/drift.dart';
 import 'package:eatwise/core/util/date_format.dart';
 
+// M24 Task B1：feature 层不再直接 import database.dart，MealLog 类型从此处走
+export 'package:eatwise/data/database/database.dart' show MealLog;
+
 class MealLogRepository {
   final EatWiseDatabase _db;
 

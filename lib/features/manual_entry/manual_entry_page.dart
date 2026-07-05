@@ -3,9 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/util/date_format.dart';
 import '../../core/widgets/m3_widgets.dart';
-import '../../data/database/database.dart';
 import '../../data/repositories/food_item_repository.dart';
-import '../../data/repositories/meal_log_repository.dart';
 import '../recognize/providers.dart' as recognize;
 import '../food_library/food_library_page.dart';
 
@@ -234,8 +232,7 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
     setState(() => _busy = true);
     try {
       final ratio = serving / 100;
-      final db = await ref.read(recognize.databaseProvider.future);
-      final mealRepo = MealLogRepository(db);
+      final mealRepo = await ref.read(recognize.mealLogRepoProvider.future);
       final today = todayYmd();
       await mealRepo.insertMealLog(
         date: today,
@@ -284,9 +281,8 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
     }
     setState(() => _busy = true);
     try {
-      final db = await ref.read(recognize.databaseProvider.future);
-      final foodRepo = FoodItemRepository(db);
-      final mealRepo = MealLogRepository(db);
+      final foodRepo = await ref.read(recognize.foodItemRepoProvider.future);
+      final mealRepo = await ref.read(recognize.mealLogRepoProvider.future);
 
       // 先存库（source=manual，用 T9 新增的 insertManual 方法）
       // 自动学习：若 modelDishName 非空且与用户输入 name 不同，存为 alias，

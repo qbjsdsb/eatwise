@@ -12,7 +12,6 @@ import '../../core/util/date_format.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../../data/repositories/meal_log_repository.dart';
-import '../../data/repositories/pending_recognition_repository.dart';
 import '../manual_entry/manual_entry_page.dart';
 import 'calibration_page.dart';
 import 'calibrated_nutrition_calculator.dart';
@@ -210,7 +209,6 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
     final qwen = ref.read(qwenVlProviderProvider);
     final glm = ref.read(glm4vProviderProvider);
     final lookup = await ref.read(nutritionLookupProvider.future);
-    final db = await ref.read(databaseProvider.future);
     final breaker = ref.read(circuitBreakerProvider); // T37：注入断路器
     final store = ref.read(secureConfigStoreProvider); // T43：月度计数
     // Sprint 2 T14：注入离线入队回调（网络异常时入 pending_recognition 队列）
@@ -221,7 +219,8 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
       onOfflineEnqueue: (imagePath, mealType, date, promptVersion) async {
         // 把图片从临时缓存目录复制到持久目录，避免系统清缓存后回补时图片丢失
         final persistentPath = await _persistImage(imagePath);
-        final repo = PendingRecognitionRepository(db);
+        // B1：通过 Provider 注入 Repository（不直接 new Repository(db)）
+        final repo = await ref.read(pendingRecognitionRepoProvider.future);
         await repo.enqueue(
           imagePath: persistentPath,
           mealType: mealType,
@@ -377,13 +376,11 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
     );
   }
 
+  /// M24 Task B2：_pickAndRecognize 拆分为编排主方法 + 4 子方法
+  /// （_pickImage / _runRecognize / _showResultAndWaitConfirm / _writeMealLog）。
+  /// 主方法仅做编排，子方法之间通过参数/返回值传递数据，状态机不变。
   Future<void> _pickAndRecognize(ImageSource source) async {
-    if (_isRecognizing) return; // 防重入
-    _lastSource = source; // 记录来源供错误态重试
-    setState(() {
-      _isRecognizing = true;
-      _currentRecognizeState = RecognizeState.pickingImage;
-    });
+    if (!_pickImage(source)) return; // 防重入 + 状态切换
     // M20：监听 controller.state 变化，实时更新进度卡片 UI
     // StateNotifier.addListener 接受 Listener<RecognizeUiState>（带 state 参数）
     void onStateChanged(RecognizeUiState state) {
@@ -392,179 +389,10 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
         _currentRecognizeState = state.state;
       });
     }
-
     try {
-      final controller = await _ensureController();
-      final removeListener = controller.addListener(onStateChanged);
-      try {
-        await controller.pickAndRecognize(source, mealType: _mealType);
-      } finally {
-        removeListener();
-      }
-
-      // 监听状态变化跳转校准页
-      final state = controller.current;
-      if (state.state == RecognizeState.done &&
-          state.recognitionResult != null) {
-        // M22：done 态成功停留，让用户看到 4 阶段全勾 + 成功反馈动画再跳转
-        await Future.delayed(RecognizePage.doneSuccessDwell);
-        if (!mounted) return;
-        // 持久化原图：image_picker 临时缓存会被系统清理，复制到 app 私有目录避免 broken image
-        // （与离线入队 _persistImage 一致，回写 state.imagePath 让后续 meal_log 引用持久路径）
-        if (state.imagePath != null) {
-          final persistent = await _persistImage(state.imagePath!);
-          controller.updateImagePath(persistent);
-        }
-        // v1.2 一桌多菜：additionalItems 非空 → 跳多菜列表页（每菜可校准+合并记录）
-        if (state.additionalItems.isNotEmpty) {
-          if (!mounted) return;
-          // M16.8：为主菜 + 每个附加菜计算 AI 兜底估算，传给 MultiDishPage
-          // 查库命中时用于差异检测（偏差 > 50% 用 AI 反算 per100g 写库 + 用 AI 值记 meal_log）
-          final mainAiFallback =
-              controller.aiFallbackNutrition(state.recognitionResult!);
-          final additionalItemsWithFallback = state.additionalItems
-              .map((item) => MultiDishItem(
-                    dish: item.dish,
-                    singleNutrition: item.singleNutrition,
-                    compositeNutrition: item.compositeNutrition,
-                    aiFallback: controller.aiFallbackNutrition(item.dish),
-                  ))
-              .toList();
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => MultiDishPage(
-                mainDish: state.recognitionResult!,
-                mainSingle: state.singleNutrition,
-                mainComposite: state.compositeNutrition,
-                mainAiFallback: mainAiFallback,
-                additionalItems: additionalItemsWithFallback,
-                mealType: state.mealType,
-                imagePath: controller.current.imagePath,
-              ),
-            ),
-          );
-          return;
-        }
-        // Sprint 4 T29：单品 + 复合菜均未命中 → 弹窗（改菜名重试 / 转手动录入）
-        // v1.4：复合菜组分全 miss 且 AI 兜底返回 null（旧 prompt）时 componentHits 为空，也算未命中
-        if (state.singleNutrition == null &&
-            (state.compositeNutrition == null ||
-                state.compositeNutrition!.componentHits.isEmpty)) {
-          await _showNotFoundDialog(
-            state.recognitionResult!,
-            mealType: state.mealType,
-            imagePath: controller.current.imagePath,
-            // M16.8：传 AI 兜底估算，改菜名重试命中后走差异检测（与主路径一致）
-            aiFallbackNutrition:
-                controller.aiFallbackNutrition(state.recognitionResult!),
-          );
-          return;
-        }
-        final foodItemRepo = await ref.read(foodItemRepoProvider.future);
-        if (!mounted) return;
-        // 智能份量校准：单品路径查历史中位数作滑块初值（B 功能）
-        // v1.3：多份场景跳过（CalibrationPage 会用 AI mid，查了也浪费 DB 调用）
-        // v1.4：AI 兜底（foodItemId=0 哨兵）跳过，库里还没有这条食物
-        double? suggestedServingG;
-        if (state.singleNutrition != null &&
-            state.singleNutrition!.foodItemId > 0 &&
-            !state.recognitionResult!.isMultiQuantity) {
-          final mealRepo = await ref.read(mealLogRepoProvider.future);
-          suggestedServingG = await mealRepo.getMedianServing(
-            state.singleNutrition!.foodItemId,
-          );
-        }
-        if (!mounted) return;
-        // 改菜名支持：注入 NutritionLookup 供 calibration_page 调用（5 级模糊兜底 + OFF 云查）
-        final nutritionLookup = await ref.read(nutritionLookupProvider.future);
-        if (!mounted) return;
-        // M16.8：计算 AI 兜底估算，传给 CalibrationPage 让查库命中分支预览走差异检测
-        final mainAiFallback =
-            controller.aiFallbackNutrition(state.recognitionResult!);
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => CalibrationPage(
-              recognitionResult: state.recognitionResult!,
-              singleNutrition: state.singleNutrition,
-              compositeNutrition: state.compositeNutrition,
-              foodItemRepo: foodItemRepo,
-              suggestedServingG: suggestedServingG,
-              nutritionLookup: nutritionLookup,
-              aiFallbackNutrition: mainAiFallback,
-              onConfirm:
-                  (
-                    servingG,
-                    calories,
-                    protein,
-                    fat,
-                    carbs, {
-                    componentsSnapshot,
-                  }) async {
-                    final mealRepo = await ref.read(mealLogRepoProvider.future);
-                    final foodRepo = await ref.read(
-                      foodItemRepoProvider.future,
-                    );
-                    final result = state.recognitionResult!;
-                    final actualCalories = await RecognizePage.writeCalibratedMealLog(
-                      foodRepo: foodRepo,
-                      mealRepo: mealRepo,
-                      result: result,
-                      singleNutrition: state.singleNutrition,
-                      aiFallbackNutrition: mainAiFallback,
-                      compositeNutrition: state.compositeNutrition,
-                      mealType:
-                          state.mealType, // Sprint 2 T0：从 controller state 读餐次
-                      servingG: servingG,
-                      calories: calories,
-                      protein: protein,
-                      fat: fat,
-                      carbs: carbs,
-                      componentsSnapshot: componentsSnapshot,
-                      imagePath: controller.current.imagePath,
-                    );
-                    if (mounted && actualCalories != null) {
-                      showAppToast(
-                        context,
-                        '已记录：${actualCalories.toStringAsFixed(0)} kcal',
-                      );
-                    }
-                  },
-            ),
-          ),
-        );
-      } else if (state.state == RecognizeState.error) {
-        if (!mounted) return;
-        final msg = state.errorMessage ?? '未知错误';
-        // 判断是否可重试：
-        // - 操作太快（限流 30s，立即重试只会再触发限流，需用户等待）
-        // - 已转手动录入（L3 已导航到 ManualEntryPage，重试无意义）
-        // - 安全过滤（内容被 AI 拒识，重试同图结果不变）
-        // 上述三类不显示重试按钮；其余错误（压缩失败/模糊图/API 异常/入队失败等）可重试
-        final source = _lastSource;
-        final canRetry = source != null &&
-            !msg.contains('操作太快') &&
-            !msg.contains('已转手动录入') &&
-            !msg.contains('安全过滤');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('识别失败：$msg'),
-            duration: const Duration(seconds: 6),
-            action: canRetry
-                ? SnackBarAction(
-                    label: '重试',
-                    onPressed: () {
-                      if (!mounted) return;
-                      _pickAndRecognize(source);
-                    },
-                  )
-                : null,
-          ),
-        );
-      } else if (state.state == RecognizeState.queued) {
-        // Sprint 2 T14：离线已入队提示
-        if (!mounted) return;
-        showAppToast(context, state.errorMessage ?? '已加入离线队列');
-      }
+      final controller = await _runRecognize(source, onStateChanged);
+      if (!mounted) return;
+      await _showResultAndWaitConfirm(controller);
     } finally {
       if (mounted) {
         setState(() {
@@ -572,6 +400,236 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
           _currentRecognizeState = RecognizeState.idle;
         });
       }
+    }
+  }
+
+  /// 子方法 1：防重入检查 + 记录来源 + 状态切换（pickingImage）。
+  /// 返回 false 表示防重入拦截，主方法应直接返回。
+  bool _pickImage(ImageSource source) {
+    if (_isRecognizing) return false; // 防重入
+    _lastSource = source; // 记录来源供错误态重试
+    setState(() {
+      _isRecognizing = true;
+      _currentRecognizeState = RecognizeState.pickingImage;
+    });
+    return true;
+  }
+
+  /// 子方法 2：识别 + 容灾链路（实际选图/压缩/AI 推理/查库回填都在
+  /// controller.pickAndRecognize 内部完成；哨兵替换逻辑在写库阶段
+  /// writeCalibratedMealLog 中保留不变）。
+  /// 添加 state 监听以便进度卡片 UI 实时刷新；listener 在识别结束后移除。
+  Future<RecognizeController> _runRecognize(
+    ImageSource source,
+    void Function(RecognizeUiState) onStateChanged,
+  ) async {
+    final controller = await _ensureController();
+    final removeListener = controller.addListener(onStateChanged);
+    try {
+      await controller.pickAndRecognize(source, mealType: _mealType);
+    } finally {
+      removeListener();
+    }
+    return controller;
+  }
+
+  /// 子方法 3：根据识别结果状态分发（done/error/queued）。
+  /// - done：持久化原图 → 跳多菜页 / 未命中弹窗 / 跳校准页（onConfirm 写库）
+  /// - error：SnackBar 提示 + 可重试入口
+  /// - queued：toast 提示离线已入队
+  Future<void> _showResultAndWaitConfirm(RecognizeController controller) async {
+    final state = controller.current;
+    if (state.state == RecognizeState.done &&
+        state.recognitionResult != null) {
+      // M22：done 态成功停留，让用户看到 4 阶段全勾 + 成功反馈动画再跳转
+      await Future.delayed(RecognizePage.doneSuccessDwell);
+      if (!mounted) return;
+      // 持久化原图：image_picker 临时缓存会被系统清理，复制到 app 私有目录避免 broken image
+      // （与离线入队 _persistImage 一致，回写 state.imagePath 让后续 meal_log 引用持久路径）
+      if (state.imagePath != null) {
+        final persistent = await _persistImage(state.imagePath!);
+        controller.updateImagePath(persistent);
+      }
+      // v1.2 一桌多菜：additionalItems 非空 → 跳多菜列表页（每菜可校准+合并记录）
+      if (state.additionalItems.isNotEmpty) {
+        if (!mounted) return;
+        // M16.8：为主菜 + 每个附加菜计算 AI 兜底估算，传给 MultiDishPage
+        // 查库命中时用于差异检测（偏差 > 50% 用 AI 反算 per100g 写库 + 用 AI 值记 meal_log）
+        final mainAiFallback =
+            controller.aiFallbackNutrition(state.recognitionResult!);
+        final additionalItemsWithFallback = state.additionalItems
+            .map((item) => MultiDishItem(
+                  dish: item.dish,
+                  singleNutrition: item.singleNutrition,
+                  compositeNutrition: item.compositeNutrition,
+                  aiFallback: controller.aiFallbackNutrition(item.dish),
+                ))
+            .toList();
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => MultiDishPage(
+              mainDish: state.recognitionResult!,
+              mainSingle: state.singleNutrition,
+              mainComposite: state.compositeNutrition,
+              mainAiFallback: mainAiFallback,
+              additionalItems: additionalItemsWithFallback,
+              mealType: state.mealType,
+              imagePath: controller.current.imagePath,
+            ),
+          ),
+        );
+        return;
+      }
+      // Sprint 4 T29：单品 + 复合菜均未命中 → 弹窗（改菜名重试 / 转手动录入）
+      // v1.4：复合菜组分全 miss 且 AI 兜底返回 null（旧 prompt）时 componentHits 为空，也算未命中
+      if (state.singleNutrition == null &&
+          (state.compositeNutrition == null ||
+              state.compositeNutrition!.componentHits.isEmpty)) {
+        await _showNotFoundDialog(
+          state.recognitionResult!,
+          mealType: state.mealType,
+          imagePath: controller.current.imagePath,
+          // M16.8：传 AI 兜底估算，改菜名重试命中后走差异检测（与主路径一致）
+          aiFallbackNutrition:
+              controller.aiFallbackNutrition(state.recognitionResult!),
+        );
+        return;
+      }
+      final foodItemRepo = await ref.read(foodItemRepoProvider.future);
+      if (!mounted) return;
+      // 智能份量校准：单品路径查历史中位数作滑块初值（B 功能）
+      // v1.3：多份场景跳过（CalibrationPage 会用 AI mid，查了也浪费 DB 调用）
+      // v1.4：AI 兜底（foodItemId=0 哨兵）跳过，库里还没有这条食物
+      double? suggestedServingG;
+      if (state.singleNutrition != null &&
+          state.singleNutrition!.foodItemId > 0 &&
+          !state.recognitionResult!.isMultiQuantity) {
+        final mealRepo = await ref.read(mealLogRepoProvider.future);
+        suggestedServingG = await mealRepo.getMedianServing(
+          state.singleNutrition!.foodItemId,
+        );
+      }
+      if (!mounted) return;
+      // 改菜名支持：注入 NutritionLookup 供 calibration_page 调用（5 级模糊兜底 + OFF 云查）
+      final nutritionLookup = await ref.read(nutritionLookupProvider.future);
+      if (!mounted) return;
+      // M16.8：计算 AI 兜底估算，传给 CalibrationPage 让查库命中分支预览走差异检测
+      final mainAiFallback =
+          controller.aiFallbackNutrition(state.recognitionResult!);
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => CalibrationPage(
+            recognitionResult: state.recognitionResult!,
+            singleNutrition: state.singleNutrition,
+            compositeNutrition: state.compositeNutrition,
+            foodItemRepo: foodItemRepo,
+            suggestedServingG: suggestedServingG,
+            nutritionLookup: nutritionLookup,
+            aiFallbackNutrition: mainAiFallback,
+            onConfirm:
+                (
+                  servingG,
+                  calories,
+                  protein,
+                  fat,
+                  carbs, {
+                componentsSnapshot,
+              }) async {
+                await _writeMealLog(
+                  result: state.recognitionResult!,
+                  singleNutrition: state.singleNutrition,
+                  compositeNutrition: state.compositeNutrition,
+                  aiFallbackNutrition: mainAiFallback,
+                  mealType:
+                      state.mealType, // Sprint 2 T0：从 controller state 读餐次
+                  imagePath: controller.current.imagePath,
+                  servingG: servingG,
+                  calories: calories,
+                  protein: protein,
+                  fat: fat,
+                  carbs: carbs,
+                  componentsSnapshot: componentsSnapshot,
+                );
+              },
+          ),
+        ),
+      );
+    } else if (state.state == RecognizeState.error) {
+      if (!mounted) return;
+      final msg = state.errorMessage ?? '未知错误';
+      // 判断是否可重试：
+      // - 操作太快（限流 30s，立即重试只会再触发限流，需用户等待）
+      // - 已转手动录入（L3 已导航到 ManualEntryPage，重试无意义）
+      // - 安全过滤（内容被 AI 拒识，重试同图结果不变）
+      // 上述三类不显示重试按钮；其余错误（压缩失败/模糊图/API 异常/入队失败等）可重试
+      final source = _lastSource;
+      final canRetry = source != null &&
+          !msg.contains('操作太快') &&
+          !msg.contains('已转手动录入') &&
+          !msg.contains('安全过滤');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('识别失败：$msg'),
+          duration: const Duration(seconds: 6),
+          action: canRetry
+              ? SnackBarAction(
+                  label: '重试',
+                  onPressed: () {
+                    if (!mounted) return;
+                    _pickAndRecognize(source);
+                  },
+                )
+              : null,
+        ),
+      );
+    } else if (state.state == RecognizeState.queued) {
+      // Sprint 2 T14：离线已入队提示
+      if (!mounted) return;
+      showAppToast(context, state.errorMessage ?? '已加入离线队列');
+    }
+  }
+
+  /// 子方法 4：写库（writeCalibratedMealLog 内部处理哨兵替换 +
+  /// 包装 OCR 优先 + 品类校准，硬约束 2/3/4 逻辑保留不变）+ 成功 toast。
+  /// 由 CalibrationPage.onConfirm 回调调用；离线入队已在 _ensureController
+  /// 的 onOfflineEnqueue 回调中处理（网络异常时 controller 自动入队）。
+  Future<void> _writeMealLog({
+    required VisionRecognitionResult result,
+    required NutritionResult? singleNutrition,
+    required CompositeNutritionResult? compositeNutrition,
+    required NutritionResult? aiFallbackNutrition,
+    required String mealType,
+    required String? imagePath,
+    required double servingG,
+    required double calories,
+    required double protein,
+    required double fat,
+    required double carbs,
+    String? componentsSnapshot,
+  }) async {
+    final mealRepo = await ref.read(mealLogRepoProvider.future);
+    final foodRepo = await ref.read(foodItemRepoProvider.future);
+    final actualCalories = await RecognizePage.writeCalibratedMealLog(
+      foodRepo: foodRepo,
+      mealRepo: mealRepo,
+      result: result,
+      singleNutrition: singleNutrition,
+      aiFallbackNutrition: aiFallbackNutrition,
+      compositeNutrition: compositeNutrition,
+      mealType: mealType,
+      servingG: servingG,
+      calories: calories,
+      protein: protein,
+      fat: fat,
+      carbs: carbs,
+      componentsSnapshot: componentsSnapshot,
+      imagePath: imagePath,
+    );
+    if (mounted && actualCalories != null) {
+      showAppToast(
+        context,
+        '已记录：${actualCalories.toStringAsFixed(0)} kcal',
+      );
     }
   }
 
