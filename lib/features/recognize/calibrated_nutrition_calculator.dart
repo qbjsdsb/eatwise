@@ -5,16 +5,18 @@ import 'package:eatwise/data/seed/food_category_defaults.dart';
 /// AI 兜底哨兵路径（foodItemId=0）+ 查库命中路径（foodItemId>0）下，
 /// 用品类校准后的 per100g 计算 actualNutrition。
 ///
-/// M16.8 扩展：查库命中分支增加差异检测——AI 估算与库 per100g × mid / 100 偏差 > 50%
-/// 时用 AI 反算 per100g（更新库 + 用 AI 值记录）；偏差 ≤ 50% 用库值。
+/// M16.9：查库命中分支改为 AI 估算绝对优先——AI 估算有效（per100g ∈ [0, 900]）时
+/// 始终用 AI 反算 per100g 写库 + 用 AI 值记 meal_log；AI 无效（null / 负 / >900）时
+/// 用库值兜底。库值重要性大幅降低，仅作 sanity check 兜底。
 ///
 /// 三路径（recognize_page / multi_dish_page / offline_queue_controller）共用此方法，
-/// 保证 actualCalories 与食物库 per100g 一致，避免数据脱节。
+/// 保证 actualCalories 与 AI 估算一致（用户感知"AI 准=记录准"）。
 ///
 /// 逻辑：
 /// 1. 查库命中分支（lookupHitNutrition != null && foodItemId > 0）：
-///    - 偏差 > 50%：用 AI 反算 per100g，标记 shouldUpdateFoodItem=true
-///    - 偏差 ≤ 50%：用库 per100g，不更新库
+///    - AI 有效（per100g ∈ [0, 900]）：用 AI 反算 per100g 写库 + 用 AI 值记录
+///      shouldUpdateFoodItem：diffRatio > 5% 时为 true（避免无意义写库）
+///    - AI 无效：用库值兜底，不更新库
 /// 2. AI 兜底哨兵分支（foodItemId == 0）：
 ///    - 有包装数据且包装换算宏量非全 0 → 用 packagePer100（精确值，不走品类校准）
 ///    - 无包装数据 / 包装换算宏量全 0 → 用 FoodCategoryDefaults.calibrate 校准 per100g
@@ -45,7 +47,10 @@ class CalibratedNutritionCalculator {
     // 防除零：mid <= 0 时 per100Ratio = 0（per100g 全部归 0）
     final per100Ratio = mid > 0 ? 100.0 / mid : 0.0;
 
-    // M16.8：查库命中分支（foodItemId > 0）—— 差异检测决定信任 AI 还是库
+    // M16.9：查库命中分支（foodItemId > 0）—— AI 估算绝对优先
+    // 策略：AI 估算有效（per100g ∈ [0, 900]）时始终用 AI 反算 per100g 写库 + 用 AI 值记 meal_log
+    //       AI 估算无效（null / 负 / >900）时用库值兜底（不更新库）
+    // shouldUpdateFoodItem：AI 有效 + diffRatio > 5% 时为 true（避免无意义写库）
     if (lookupHitNutrition != null && lookupHitNutrition.foodItemId > 0) {
       // lookupHit.calories 已是 per100g × mid / 100（参见 nutrition_lookup.dart）
       // 反算库 per100g = lookupHit.calories * 100 / mid = lookupHit.calories * per100Ratio
@@ -60,28 +65,13 @@ class CalibratedNutritionCalculator {
       final aiPer100Fat = aiFallback.fatG * per100Ratio;
       final aiPer100Carbs = aiFallback.carbsG * per100Ratio;
 
-      // 差异检测：|AI - 库| / 库 > 0.5 → 信任 AI 反算
-      // 库值 0 时若 AI 非 0 也算偏差大（用 AI 反算）；库值 0 且 AI 0 视为无偏差
-      final diffRatio = dbPer100Calories > 0
-          ? (aiPer100Calories - dbPer100Calories).abs() / dbPer100Calories
-          : (aiPer100Calories > 0 ? 1.0 : 0.0);
+      // sanity check：AI per100g 有效区间 [0, 900]
+      // 上限 900：纯脂肪油 889，solid clamp 上限 900（food_category_defaults.dart L112）
+      // AI per100g > 900 视为离谱（如 AI 把水估成 5000 kcal/100g）
+      final aiValid = aiPer100Calories >= 0 && aiPer100Calories <= 900;
 
-      if (diffRatio > 0.5) {
-        // 偏差大：用 AI 反算 per100g，标记更新库
-        return CalibratedNutrition(
-          caloriesPer100g: aiPer100Calories,
-          proteinPer100g: aiPer100Protein,
-          fatPer100g: aiPer100Fat,
-          carbsPer100g: aiPer100Carbs,
-          actualCalories: aiPer100Calories * servingG / 100,
-          actualProteinG: aiPer100Protein * servingG / 100,
-          actualFatG: aiPer100Fat * servingG / 100,
-          actualCarbsG: aiPer100Carbs * servingG / 100,
-          foodItemId: lookupHitNutrition.foodItemId,
-          shouldUpdateFoodItem: true,
-        );
-      } else {
-        // 偏差小：用库 per100g，不更新库
+      if (!aiValid) {
+        // AI 离谱：用库值兜底，不更新库
         return CalibratedNutrition(
           caloriesPer100g: dbPer100Calories,
           proteinPer100g: dbPer100Protein,
@@ -95,6 +85,24 @@ class CalibratedNutritionCalculator {
           shouldUpdateFoodItem: false,
         );
       }
+
+      // AI 绝对优先：始终用 AI 反算 per100g 写库 + 用 AI 值记 meal_log
+      // shouldUpdateFoodItem：仅当 AI 与库有 > 5% 差异时才写库（避免无意义写库）
+      final diffRatio = dbPer100Calories > 0
+          ? (aiPer100Calories - dbPer100Calories).abs() / dbPer100Calories
+          : (aiPer100Calories > 0 ? 1.0 : 0.0);
+      return CalibratedNutrition(
+        caloriesPer100g: aiPer100Calories,
+        proteinPer100g: aiPer100Protein,
+        fatPer100g: aiPer100Fat,
+        carbsPer100g: aiPer100Carbs,
+        actualCalories: aiPer100Calories * servingG / 100,
+        actualProteinG: aiPer100Protein * servingG / 100,
+        actualFatG: aiPer100Fat * servingG / 100,
+        actualCarbsG: aiPer100Carbs * servingG / 100,
+        foodItemId: lookupHitNutrition.foodItemId,
+        shouldUpdateFoodItem: diffRatio > 0.05,
+      );
     }
 
     // AI 兜底哨兵分支（foodItemId == 0）：原 M16.6 逻辑

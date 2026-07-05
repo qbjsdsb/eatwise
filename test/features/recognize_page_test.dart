@@ -275,9 +275,9 @@ void main() {
         reason: 'meal_log.actualCalories 应为 AI 估算值');
   });
 
-  test('M16.8: 查库命中 + AI 偏差小时 actualCalories 用库值 + 不更新库', () async {
-    // 库 per100g=80, AI 估 200g/170kcal（库值 160 vs AI 170，偏差 6% < 50%）
-    // 期望：用库值 actualCalories=160，food_item.caloriesPer100g 保持 80 不更新
+  test('M16.9: 查库命中 + AI 偏差小时 actualCalories 用 AI 估算（AI 绝对优先）', () async {
+    // 库 per100g=80, AI 估 200g/170kcal（库值 160 vs AI 170，偏差 6%）
+    // M16.9：AI 绝对优先，偏差小也用 AI 估算 + 更新库 per100g 为 AI 反算值（85）
     await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
           name: '番茄炒蛋',
           defaultServingG: 100,
@@ -295,7 +295,7 @@ void main() {
       estimatedWeightGLow: 180,
       estimatedWeightGMid: 200,
       estimatedWeightGHigh: 220,
-      estimatedCalories: 170, // AI 估 170，库值 160，偏差 6% < 50%
+      estimatedCalories: 170, // AI 估 170，库值 160，偏差 6%
       estimatedProteinG: 7,
       estimatedFatG: 10,
       estimatedCarbsG: 13,
@@ -333,7 +333,7 @@ void main() {
       compositeNutrition: null,
       mealType: 'lunch',
       servingG: 200,
-      calories: 160, // onConfirm 传库值
+      calories: 160, // onConfirm 传库值（M16.9 会被 AI 值覆盖）
       protein: 6,
       fat: 10,
       carbs: 12,
@@ -341,11 +341,17 @@ void main() {
       imagePath: null,
     );
 
-    expect(actualCalories, closeTo(160, 0.5), reason: '偏差小用库值（160）');
+    expect(actualCalories, closeTo(170, 0.5),
+        reason: 'M16.9 AI 绝对优先：偏差小也用 AI 估算值（170）');
 
-    // food_item.per100g 不更新（保持 80）
+    // food_item.per100g 应被更新为 AI 反算值 85（= 170 * 100 / 200）
     final foods = await db.foodItems.select().get();
-    expect(foods.first.caloriesPer100g, 80, reason: '偏差小时库 per100g 不更新');
+    expect(foods.first.caloriesPer100g, closeTo(85, 0.5),
+        reason: 'M16.9 库 per100g 应被 AI 反算值（85）更新');
+
+    // meal_log 应记 170（与 reasoning 一致）
+    final meals = await db.mealLogs.select().get();
+    expect(meals.first.actualCalories, closeTo(170, 0.5));
   });
 
   // M16.8 Task 8：验证 writeCalibratedMealLog 记录 recognitionConfidence + componentsSnapshotJson
