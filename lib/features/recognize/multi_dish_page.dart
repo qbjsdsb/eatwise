@@ -7,9 +7,8 @@ import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
 import '../../core/util/date_format.dart';
 import '../../core/widgets/m3_widgets.dart';
-import '../../data/repositories/food_item_repository.dart';
-import '../../data/seed/food_category_defaults.dart';
 import '../manual_entry/manual_entry_page.dart';
+import 'calibrated_nutrition_calculator.dart';
 import 'dish_name_editor.dart';
 import 'providers.dart';
 import 'recognize_controller.dart';
@@ -507,80 +506,12 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
       double totalCal = 0;
       // 事务包裹：所有菜品 upsert + insertMealLog 原子化，任一失败整体回滚不产生部分记录
       await db.transaction(() async {
-        // v1.9：单品哨兵分支的 foodItemId 解析（包装 OCR 优先 + 品类校准兜底）
-        // i==0 主菜和 i>0 附加菜共用同一逻辑，避免代码重复
-        // 改菜名支持：nameOverride 非空时用新菜名写 food_item（rename + OFF 兜底场景）
-        Future<int> resolveSingleFoodItemId(
-          VisionRecognitionResult dish,
-          NutritionResult n,
-          FoodItemRepository foodRepo, {
-          String? nameOverride,
-        }) async {
-          final mid = dish.estimatedWeightGMid;
-          final per100 = mid > 0 ? 100.0 / mid : 0.0;
-          // v1.9：包装食品 OCR 优先路径——有包装营养表数据时按包装换算，
-          // 跳过品类校准（包装数据是精确值，不需要校准）
-          // 参考 prompts.dart v1.9 规则 10 + 示例 7（珍宝珠酸条）
-          // v1.10：包装换算后宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ 回退品类校准
-          final packagePer100 = dish.hasPackageNutrition
-              ? dish.computePackageNutritionPer100g(
-                  // v1.9：哨兵分支 n.foodItemId==0 来自 _aiFallbackNutrition，
-                  // n.proteinG 等于 r.estimatedProteinG ?? 0，三元死代码简化为直传
-                  estimatedProteinG: dish.estimatedProteinG,
-                  estimatedFatG: dish.estimatedFatG,
-                  estimatedCarbsG: dish.estimatedCarbsG,
-                )
-              : null;
-          // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
-          final packageMacrosAllZero = packagePer100 != null &&
-              packagePer100.$2 == 0 &&
-              packagePer100.$3 == 0 &&
-              packagePer100.$4 == 0;
-          final (caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g) =
-              (packagePer100 != null && !packageMacrosAllZero)
-                  ? packagePer100
-                  : (() {
-                      // 无包装数据 / 包装换算宏量全 0 → 走 AI 估算 + 品类校准路径
-                      // P0：品类默认值校准——AI 估算的 per100g 偏离品类默认值 2 倍以上
-                      // 用默认值替代（防 AI 离谱估算，如啤酒估成 200 kcal/100g 实际 43）
-                      final rawCalPer100 = n.calories * per100;
-                      return FoodCategoryDefaults.calibrate(
-                        aiCaloriesPer100g: rawCalPer100,
-                        aiProteinPer100g: n.proteinG * per100,
-                        aiFatPer100g: n.fatG * per100,
-                        aiCarbsPer100g: n.carbsG * per100,
-                        category: dish.foodCategory,
-                      );
-                    })();
-          final effectiveName = nameOverride ?? dish.dishName;
-          if (!dish.hasPackageNutrition) {
-            final rawCalPer100 = n.calories * per100;
-            if (caloriesPer100g != rawCalPer100) {
-              debugPrint(
-                  '[FoodCategoryDefaults] $effectiveName(${dish.foodCategory}) '
-                  'AI per100g=$rawCalPer100 偏离品类默认值，校准为 $caloriesPer100g');
-            }
-          } else {
-            debugPrint(
-                '[PackageOCR] $effectiveName 使用包装营养表换算 per100g=$caloriesPer100g '
-                '(serving=${dish.packageServingG}g/${dish.packageServingKj}kJ/${dish.packageServingKcal}kcal)');
-          }
-          return foodRepo.upsertAiRecognized(
-            name: effectiveName,
-            brand: dish.brand,
-            caloriesPer100g: caloriesPer100g,
-            proteinPer100g: proteinPer100g,
-            fatPer100g: fatPer100g,
-            carbsPer100g: carbsPer100g,
-            confidence: dish.confidence,
-          );
-        }
-
         for (var i = 0; i < allDishes.length; i++) {
           if (!_hitFlags[i]) continue; // 未命中跳过
           final dish = allDishes[i];
           final serving = _servings[i];
-          final (cal, p, f, c) = _calcNutrition(i, dish);
+          // 注意：哨兵分支会覆盖为校准后的 actualXxx，其他分支保留 _calcNutrition 原值
+          var (cal, p, f, c) = _calcNutrition(i, dish);
           // 改菜名后用 _currentNames[i] 写库（rename + 兜底场景才走 upsert）
           final effectiveName = _currentNames[i];
 
@@ -595,10 +526,29 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
             final n = _currentSingles[i]!;
             if (n.foodItemId == 0) {
               // 哨兵：AI 兜底 / 改菜名 + OFF 兜底 → 创建 ai_recognized food_item
-              // v1.9：包装 OCR 优先 + 品类校准兜底（共用 resolveSingleFoodItemId）
-              // 改菜名：传 effectiveName 让新建 food_item 用新菜名
-              foodItemId = await resolveSingleFoodItemId(dish, n, foodRepo,
-                  nameOverride: effectiveName);
+              // M16.6：用 CalibratedNutritionCalculator 统一计算 per100g（写库）+ actualXxx（写 meal_log），
+              // 保证 meal_log.actualCalories 与 food_item.caloriesPer100g 数据一致，
+              // 避免推理过程数值与最终记录数值脱节（包装 OCR / 品类校准由 calculator 内部处理）
+              final calibrated = CalibratedNutritionCalculator.compute(
+                recognitionResult: dish,
+                aiFallback: n,
+                servingG: serving,
+              );
+              foodItemId = await foodRepo.upsertAiRecognized(
+                name: effectiveName,
+                brand: dish.brand,
+                caloriesPer100g: calibrated.caloriesPer100g,
+                proteinPer100g: calibrated.proteinPer100g,
+                fatPer100g: calibrated.fatPer100g,
+                carbsPer100g: calibrated.carbsPer100g,
+                confidence: dish.confidence,
+              );
+              // 用校准后的 actualXxx 覆盖 _calcNutrition 返回的未校准值，
+              // 不变量：actualXxx = 校准后 per100g * servingG / 100
+              cal = calibrated.actualCalories;
+              p = calibrated.actualProteinG;
+              f = calibrated.actualFatG;
+              c = calibrated.actualCarbsG;
             } else {
               foodItemId = n.foodItemId;
             }

@@ -7,6 +7,7 @@ import '../../ai/vision_provider.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../manual_entry/manual_entry_page.dart';
+import 'calibrated_nutrition_calculator.dart';
 import 'dish_name_editor.dart';
 
 /// 校准页：按置信度分级
@@ -387,17 +388,49 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
     );
   }
 
+  /// 单品路径：根据 servingG 计算 (calories, protein, fat, carbs) 实际摄入值。
+  ///
+  /// M16.6 Task 5：AI 兜底哨兵路径（foodItemId=0）必须用品类校准后的 per100g 计算，
+  /// 与 recognize_page 写食物库 per100g 逻辑一致（CalibratedNutritionCalculator），
+  /// 否则预览/记录值与食物库 per100g 数据脱节，用户感知"数值乱跳"。
+  /// 查库命中路径（foodItemId>0）保持原 ratio 逻辑（DB per100g 已是真实值，无需校准）。
+  ///
+  /// 预览（_buildNutritionPreview）和确认（_confirmWithServing）共用此方法，
+  /// 保证显示值与记录值完全一致。
+  (double, double, double, double) _computeSingleItemActual(double servingG) {
+    final n = _currentNutrition!;
+    if (n.foodItemId == 0) {
+      // AI 兜底哨兵：用品类校准后的 per100g 反算 actualXxx（与 recognize_page 一致）
+      final calibrated = CalibratedNutritionCalculator.compute(
+        recognitionResult: widget.recognitionResult,
+        aiFallback: n,
+        servingG: servingG,
+      );
+      return (
+        calibrated.actualCalories,
+        calibrated.actualProteinG,
+        calibrated.actualFatG,
+        calibrated.actualCarbsG,
+      );
+    }
+    // 查库命中：DB per100g 已是真实值，按 servingG/mid 比例换算即可
+    // 防除零：AI 返回 estimatedWeightGMid <= 0 时 ratio=1（用原值，不按比例换算）
+    final mid = widget.recognitionResult.estimatedWeightGMid;
+    final ratio = mid > 0 ? servingG / mid : 1.0;
+    return (
+      n.calories * ratio,
+      n.proteinG * ratio,
+      n.fatG * ratio,
+      n.carbsG * ratio,
+    );
+  }
+
   Widget _buildNutritionPreview() {
     if (_currentNutrition != null) {
-      // 单品路径：按总份量滑块比例重算（改菜名后用 _currentNutrition，营养会随之刷新）
-      // 防除零：AI 返回 estimatedWeightGMid <= 0 时 ratio=1（用原值，不按比例换算）
-      final mid = widget.recognitionResult.estimatedWeightGMid;
-      final ratio = mid > 0 ? _servingG / mid : 1.0;
-      final cal = _currentNutrition!.calories * ratio;
-      final protein = _currentNutrition!.proteinG * ratio;
-      final fat = _currentNutrition!.fatG * ratio;
-      final carbs = _currentNutrition!.carbsG * ratio;
+      // 单品路径：用 _computeSingleItemActual 重算（改菜名后用 _currentNutrition，营养会随之刷新）
+      final (cal, protein, fat, carbs) = _computeSingleItemActual(_servingG);
       // 防除零：mid <= 0 时 lowRatio/highRatio = 1（不显示区间）
+      final mid = widget.recognitionResult.estimatedWeightGMid;
       final lowRatio = mid > 0 ? widget.recognitionResult.estimatedWeightGLow / mid : 1.0;
       final highRatio = mid > 0 ? widget.recognitionResult.estimatedWeightGHigh / mid : 1.0;
       final calRange = ' (${(cal * lowRatio).toStringAsFixed(0)}-${(cal * highRatio).toStringAsFixed(0)})';
@@ -664,17 +697,12 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
     setState(() => _isRecording = true);
     try {
       if (_currentNutrition != null) {
-        // 防除零：AI 返回 estimatedWeightGMid <= 0 时 ratio=1
-        // 改菜名后用 _currentNutrition 的热量/宏量（已按 AI mid 份量反算）
-        final mid = widget.recognitionResult.estimatedWeightGMid;
-        final ratio = mid > 0 ? servingG / mid : 1.0;
-        await widget.onConfirm(
-          servingG,
-          _currentNutrition!.calories * ratio,
-          _currentNutrition!.proteinG * ratio,
-          _currentNutrition!.fatG * ratio,
-          _currentNutrition!.carbsG * ratio,
-        );
+        // 与 _buildNutritionPreview 共用 _computeSingleItemActual，
+        // 保证预览显示值与 onConfirm 传入值完全一致
+        // （AI 兜底哨兵路径用品类校准后 per100g，查库命中路径用原 ratio 逻辑）
+        final (cal, protein, fat, carbs) =
+            _computeSingleItemActual(servingG);
+        await widget.onConfirm(servingG, cal, protein, fat, carbs);
       } else if (widget.compositeNutrition != null) {
         // 复合菜用总组分份量之和
         final totalG = _componentServings.values.fold<double>(0, (s, g) => s + g);

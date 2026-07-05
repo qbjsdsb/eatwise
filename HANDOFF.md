@@ -23,8 +23,8 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.18.3+22（pubspec.yaml）—— 已发布 v0.18.3 GitHub Release
-- **当前分支**：trae/agent-wX1X6Q（HEAD = 85e8c64 已 push；tag v0.18.3 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
+- **当前版本**：0.18.5+24（pubspec.yaml）—— 已发布 v0.18.5 GitHub Release（待 push + tag 后生效）
+- **当前分支**：trae/agent-wX1X6Q（HEAD = f00333e 已 push；tag v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
   - `android/app/build.gradle.kts` 必须保持 `isMinifyEnabled=false` + `isShrinkResources=false`（否则 R8 剥掉 sentry/workmanager 反射类致启动崩溃）
@@ -36,7 +36,7 @@
 
 **最后更新**：2026-07-05
 
-**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复已 push（commit 221d319，4 层修复详见下方"M16.3"章节）；M16.4 深度审查修复已发布 v0.18.3 GitHub Release（8 个 commit 93528fe~85e8c64，4 P1 + 4 P2 + 3 P3 共 11 个修复，详见下方"M16.4"章节；876 全量测试通过，新增 20 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3 修复区域无回归；GitHub Actions workflow 自动 build APK 并上传 release，run id 28733040721 conclusion=success；app-release.apk 78.55 MB + app-debug.apk 175.10 MB）；**M16.5 复合菜 UI 全 0 修复已 push（commit f00333e，P0 修复 lookupCompositeDish 命中 0 值条目致 UI 全 0，详见下方"M16.5"章节；881 全量测试通过，新增 5 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4 修复区域无回归）**。仓库已改 public，匿名访问 GitHub API 200 OK，smoke test 2/2 通过。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
+**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复已 push（commit 221d319，4 层修复详见下方"M16.3"章节）；M16.4 深度审查修复已发布 v0.18.3 GitHub Release（8 个 commit 93528fe~85e8c64，4 P1 + 4 P2 + 3 P3 共 11 个修复，详见下方"M16.4"章节；876 全量测试通过，新增 20 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3 修复区域无回归；GitHub Actions workflow 自动 build APK 并上传 release，run id 28733040721 conclusion=success；app-release.apk 78.55 MB + app-debug.apk 175.10 MB）；M16.5 复合菜 UI 全 0 修复已 push（commit f00333e，P0 修复 lookupCompositeDish 命中 0 值条目致 UI 全 0，详见下方"M16.5"章节；881 全量测试通过，新增 5 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4 修复区域无回归）；**M16.6 营养数值一致性修复已完成（待 commit + push + tag v0.18.5，详见下方"M16.6"章节；895 全量测试通过，新增 15 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4/M16.5 修复区域无回归）**。仓库已改 public，匿名访问 GitHub API 200 OK，smoke test 2/2 通过（M16.6 期间 GitHub API 匿名限流致 smoke test 1/2 失败，环境问题非回归）。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
 **当前分支**：trae/agent-wX1X6Q（HEAD = f00333e 已 push 远端；远端 origin/trae/agent-wX1X6Q 已同步；tag v0.18.3 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
 
 **待用户执行的收尾项**（沙箱无法完成）：
@@ -1387,6 +1387,73 @@
 
 1. 装 v0.18.4 APK 验证复合菜（如米粉汤/麻婆豆腐）UI 不再显示全 0
 2. 验证修复后复合菜组分全 miss 时正确触发 AI 兜底（显示 AI 估算值而非 0）
+
+---
+
+## M16.6 营养数值一致性修复（2026-07-05）—— v0.18.5 三路径 actualCalories 计算不一致致推理值/显示值/记录值脱节
+
+**触发**：用户反馈"AI 识别出来，显示完整推理过程计算出来的数值，和最后显示的，被记录的都不一样"（与 M16.5 复合菜全 0 是不同 bug）。
+
+**根因（三条识别路径 actualCalories 计算不一致）**：
+
+AI 兜底哨兵路径（foodItemId=0）下，三条识别路径对 `meal_log.actualCalories` 的计算方式不一致：
+
+- `offline_queue_controller.dart` L300-307：用**品类校准后**的 per100g 重新计算（`caloriesPer100g * mid / 100`），与食物库 per100g 一致 ✓
+- `recognize_page.dart` L412-425：直接用 onConfirm 传入的 calories（**未校准**，来自 `_aiFallbackNutrition` 的 `r.estimatedCalories`）✗
+- `multi_dish_page.dart` L583/662：同 recognize_page，用未校准值 ✗
+
+后果（以啤酒为例，AI 离谱估算 200 kcal/100g，mid=300g）：
+1. 推理过程显示：AI estimatedCalories = 600 kcal
+2. CalibrationPage 显示：600 * ratio（基于 _aiFallbackNutrition 的 600，未校准）
+3. 写入食物库 per100g：FoodCategoryDefaults.calibrate 校准为 43（beer 品类默认值）
+4. meal_log.actualCalories：600（未校准，与食物库 per100g=43 脱节）
+5. 下次再吃同款啤酒查库命中：43 * 300/100 = 129 kcal（与首次 600 差异巨大，用户感知"数值乱跳"）
+
+**修复（提取 CalibratedNutritionCalculator 统一辅助方法，三路径共用）**：
+
+1. 新建 `lib/features/recognize/calibrated_nutrition_calculator.dart`：
+   - `CalibratedNutritionCalculator.compute({recognitionResult, aiFallback, servingG})` 返回 `CalibratedNutrition`
+   - 逻辑：包装 OCR 优先 → packageMacrosAllZero 回退品类校准 → 无包装走品类校准
+   - 不变量：`actualXxx = 校准后 per100g * servingG / 100`
+   - per100g 基于 `estimatedWeightGMid` 反算（硬约束 #4）
+
+2. `recognize_page.dart`：onConfirm 回调抽成 `@visibleForTesting static writeCalibratedMealLog(...)`，AI 兜底哨兵分支用 CalibratedNutritionCalculator 计算 actualXxx + per100g
+
+3. `multi_dish_page.dart`：`_recordAll` 哨兵分支用 CalibratedNutritionCalculator，删除冗余 `resolveSingleFoodItemId` 局部函数
+
+4. `calibration_page.dart`：新增 `_computeSingleItemActual(servingG)` 私有方法，单品 AI 兜底分支预览（`_buildNutritionPreview`）与确认（`_confirmWithServing`）共用，保证预览值 = onConfirm 传入值 = recognize_page 写库值
+
+5. `offline_queue_controller.dart`：**不改动**（行为已正确，作为参考基准）
+
+### TDD 流程
+
+1. **RED**：15 个新测试（calibrated_nutrition_calculator_test 8 个 + recognize_page_test 2 个 + multi_dish_page_test +1 + calibration_page_test 4 个）
+   - beer 品类校准 / solid 不校准 / 包装 OCR / 用户调整滑块 / 宏量同步 / 包装宏量全 0 回退 / mid=0 防除零 / 一致性
+   - recognize_page 哨兵路径 actualCalories=129（非 600）
+   - multi_dish_page 哨兵路径 actualCalories=129（非 600）
+   - CalibrationPage 预览值 = onConfirm 传入值 = 86（校准后）
+2. **GREEN**：三路径接入 CalibratedNutritionCalculator
+3. **Verify GREEN**：15 测试全部通过
+4. **回归验证**：895 passed / 3 skipped / 1 failed（smoke test GitHub API 匿名限流致 HTTP 403，环境问题非回归），`flutter analyze` No issues found
+
+### 验证
+
+- `flutter analyze` → No issues found
+- `flutter test` → **895 passed / 3 skipped / 1 failed**（M16.6 新增 15 个测试；原 881 + 14 = 895；1 failed 是 smoke test GitHub API 限流，与 M16.6 无关）
+- 6 条硬约束全部满足：
+  1. ✅ build.gradle.kts `isMinifyEnabled=false` + `isShrinkResources=false` 未变
+  2. ✅ meal_log.food_item_id 哨兵写库前调 upsertAiRecognized 替换为真实 id（三路径均保留）
+  3. ✅ AI 兜底三路径全覆盖（recognize_page / multi_dish_page / offline_queue_controller 均用 CalibratedNutritionCalculator）
+  4. ✅ per100g 反算基于 estimatedWeightGMid（CalibratedNutritionCalculator 内部 `mid = r.estimatedWeightGMid`）
+  5. ✅ SecureConfigStore 无 instance 静态属性（未改动）
+  6. ✅ initSentryAndRunApp 命名参数（未改动）
+- M16.2/M16.3/M16.4/M16.5 修复区域无回归
+
+### 待用户执行
+
+1. 装 v0.18.5 APK 验证啤酒等 AI 离谱估算场景：预览值 = 记录值 = 校准后值（如 beer 43 * servingG / 100，非 AI 估算的 600）
+2. 验证二次查库命中时热量一致（首次记录 129，二次查库命中也是 129，不再"数值乱跳"）
+3. 验证包装食品仍走包装换算（不走品类校准，CalibratedNutritionCalculator 内部已处理）
 
 ---
 

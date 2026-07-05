@@ -218,7 +218,7 @@ void main() {
 
   testWidgets('M12: 防重入——记录中按钮禁用', (tester) async {
     final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) async => db),
+      recognize.databaseProvider.overrideWith((ref) => db),
     ]);
     addTearDown(container.dispose);
 
@@ -247,5 +247,94 @@ void main() {
     final meals = await db.mealLogs.select().get();
     expect(meals.length, 1,
         reason: '防重入应阻止重复点击产生多条 meal_log');
+  });
+
+  // M16.6 Task 4：AI 兜底哨兵路径 actualCalories 一致性
+  // 复现 bug：附加菜"啤酒"走 AI 兜底哨兵（foodItemId=0），AI 估算整菜 600kcal（mid=300g），
+  // 品类校准后 per100g=43，但 meal_log.actualCalories 仍写未校准的 600（与 food_item 脱节）。
+  // 修复后：meal_log.actualCalories 应 = 校准后 per100g * servingG / 100 = 43 * 300 / 100 = 129
+  testWidgets('M16.6: AI 兜底哨兵路径 actualCalories 用校准后 per100g 计算（与 food_item 一致）',
+      (tester) async {
+    final container = ProviderContainer(overrides: [
+      recognize.databaseProvider.overrideWith((ref) => db),
+    ]);
+    addTearDown(container.dispose);
+
+    // 附加菜：啤酒，AI 兜底哨兵（foodItemId=0）
+    // estimatedCalories=600（mid=300g → per100g=200，偏离 beer 默认 43 的 4.65 倍 → 校准为 43）
+    // estimatedProteinG=2 / fatG=1 / carbsG=15
+    const beerDish = VisionRecognitionResult(
+      dishName: '啤酒',
+      estimatedWeightGLow: 250,
+      estimatedWeightGMid: 300,
+      estimatedWeightGHigh: 350,
+      foodComponents: [],
+      cookingMethod: '',
+      isSingleItem: true,
+      confidence: 0.9,
+      promptVersion: 'v1.10',
+      estimatedCalories: 600,
+      estimatedProteinG: 2,
+      estimatedFatG: 1,
+      estimatedCarbsG: 15,
+      foodCategory: 'beer',
+    );
+    final beerAiFallback = NutritionResult(
+      foodItemId: 0, // 哨兵：写库前必须 upsertAiRecognized 替换为真实 id
+      calories: 600, // AI 估算整菜热量（对应 mid=300g）
+      proteinG: 2,
+      fatG: 1,
+      carbsG: 15,
+      oilG: 0,
+      source: NutritionSource.aiEstimate,
+    );
+
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: container,
+      child: MaterialApp(home: MultiDishPage(
+        mainDish: mainDish, // 番茄（查库命中，foodItemId=1）
+        mainSingle: mainSingle,
+        additionalItems: [
+          MultiDishItem(
+              dish: beerDish, singleNutrition: beerAiFallback),
+        ],
+        mealType: 'dinner',
+      )),
+    ));
+    await tester.pumpAndSettle();
+
+    // 用户不调整滑块：serving = mid = 300
+    final recordButton = find.text('全部记录');
+    await tester.tap(recordButton);
+    await tester.pumpAndSettle();
+
+    // meal_log 应有 2 条（番茄 + 啤酒）
+    final meals = await db.mealLogs.select().get();
+    expect(meals.length, 2, reason: '番茄 + 啤酒 各一条');
+
+    // 找到啤酒对应的 meal_log（通过 food_item 名称匹配）
+    final beerFoodItem = await (db.foodItems.select()
+          ..where((f) => f.name.equals('啤酒') & f.source.equals('ai_recognized')))
+        .getSingleOrNull();
+    expect(beerFoodItem, isNotNull,
+        reason: '啤酒应通过 upsertAiRecognized 创建 food_item');
+    final beerMeal = meals.firstWhere((m) => m.foodItemId == beerFoodItem!.id);
+
+    // 啤酒 food_item.caloriesPer100g 应为校准后的 43（不是 AI 估算的 200）
+    expect(beerFoodItem!.caloriesPer100g, closeTo(43, 0.5),
+        reason: 'food_item.caloriesPer100g 应用品类校准为 beer 默认值 43');
+    expect(beerFoodItem.proteinPer100g, closeTo(0.5, 0.01));
+    expect(beerFoodItem.fatPer100g, closeTo(0, 0.01));
+    expect(beerFoodItem.carbsPer100g, closeTo(3.1, 0.01));
+
+    // 啤酒 meal_log.actualCalories 应 = 43 * 300 / 100 = 129（不是未校准的 600）
+    expect(beerMeal.actualCalories, closeTo(129, 0.5),
+        reason: 'meal_log.actualCalories 应基于校准后 per100g 计算，与 food_item 一致');
+    // actualMacros 也用校准后 per100g * servingG / 100
+    expect(beerMeal.actualProteinG, closeTo(0.5 * 300 / 100, 0.01)); // 1.5
+    expect(beerMeal.actualFatG, closeTo(0 * 300 / 100, 0.01)); // 0
+    expect(beerMeal.actualCarbsG, closeTo(3.1 * 300 / 100, 0.01)); // 9.3
+    // actualServingG 应 = 用户份量 300
+    expect(beerMeal.actualServingG, closeTo(300, 0.01));
   });
 }

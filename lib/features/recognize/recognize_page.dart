@@ -10,10 +10,12 @@ import '../../ai/vision_provider.dart';
 import '../../core/config/app_config.dart';
 import '../../core/util/date_format.dart';
 import '../../core/widgets/m3_widgets.dart';
+import '../../data/repositories/food_item_repository.dart';
+import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/pending_recognition_repository.dart';
-import '../../data/seed/food_category_defaults.dart';
 import '../manual_entry/manual_entry_page.dart';
 import 'calibration_page.dart';
+import 'calibrated_nutrition_calculator.dart';
 import 'dish_name_editor.dart';
 import 'multi_dish_page.dart';
 import 'providers.dart';
@@ -24,6 +26,127 @@ class RecognizePage extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<RecognizePage> createState() => _RecognizePageState();
+
+  /// 校准页 onConfirm 回调核心逻辑：写 food_item + meal_log。
+  ///
+  /// 抽成静态方法便于单测（M16.6 Task 3）：验证 AI 兜底哨兵路径（foodItemId=0）
+  /// 下 meal_log.actualCalories 与 food_item.caloriesPer100g 数据一致。
+  ///
+  /// 返回 actualCalories（用于 toast 显示）；返回 null 表示无营养数据未记录。
+  @visibleForTesting
+  static Future<double?> writeCalibratedMealLog({
+    required FoodItemRepository foodRepo,
+    required MealLogRepository mealRepo,
+    required VisionRecognitionResult result,
+    required NutritionResult? singleNutrition,
+    required CompositeNutritionResult? compositeNutrition,
+    required String mealType,
+    required double servingG,
+    required double calories,
+    required double protein,
+    required double fat,
+    required double carbs,
+    String? componentsSnapshot,
+    String? imagePath,
+  }) async {
+    // 获取 foodItemId：单品用查库命中，复合菜创建 ai_recognized 记录
+    // 必须有有效 food_item_id（meal_log.food_item_id 是非空 FK，
+    // Task 2 已启用 PRAGMA foreign_keys = ON，id=0 会触发外键约束违规）
+    int foodItemId;
+    // M16.6：actualXxx 默认用 onConfirm 传入值（查库命中 / 复合菜路径已基于 DB per100g，无脱节）；
+    // AI 兜底哨兵路径（foodItemId=0）下用 CalibratedNutritionCalculator 重算，
+    // 保证 meal_log.actualCalories 与 food_item.caloriesPer100g 同源
+    double actualCalories = calories;
+    double actualProteinG = protein;
+    double actualFatG = fat;
+    double actualCarbsG = carbs;
+    if (singleNutrition != null) {
+      final n = singleNutrition;
+      if (n.foodItemId == 0) {
+        // v1.4：单品库未命中，AI 估算兜底 → 创建 ai_recognized food_item
+        // M16.6 Task 3：用 CalibratedNutritionCalculator 统一计算 per100g + actualXxx，
+        // 保证 meal_log.actualCalories 与 food_item.caloriesPer100g 数据一致
+        // （之前 meal_log 直接用 onConfirm 传入的未校准 calories，与 food_item 脱节）
+        // per100g 基于 mid 反算（硬约束 #4），actualXxx = per100g * servingG / 100
+        // CalibratedNutritionCalculator 内部已处理包装 OCR 优先级 + 品类校准，
+        // 与 offline_queue_controller 三路径行为一致
+        final calibrated = CalibratedNutritionCalculator.compute(
+          recognitionResult: result,
+          aiFallback: n,
+          servingG: servingG,
+        );
+        // 校准日志（包装路径是精确值无需校准，仅 AI 估算路径打印）
+        if (!result.hasPackageNutrition) {
+          final mid = result.estimatedWeightGMid;
+          final rawCalPer100 = mid > 0 ? n.calories * 100.0 / mid : 0.0;
+          if (calibrated.caloriesPer100g != rawCalPer100) {
+            debugPrint(
+                '[FoodCategoryDefaults] ${result.dishName}(${result.foodCategory}) '
+                'AI per100g=$rawCalPer100 偏离品类默认值，校准为 ${calibrated.caloriesPer100g}');
+          }
+        } else {
+          debugPrint(
+              '[PackageOCR] ${result.dishName} 使用包装营养表换算 per100g=${calibrated.caloriesPer100g} '
+              '(serving=${result.packageServingG}g/${result.packageServingKj}kJ/${result.packageServingKcal}kcal)');
+        }
+        foodItemId = await foodRepo.upsertAiRecognized(
+          name: result.dishName,
+          brand: result.brand,
+          caloriesPer100g: calibrated.caloriesPer100g,
+          proteinPer100g: calibrated.proteinPer100g,
+          fatPer100g: calibrated.fatPer100g,
+          carbsPer100g: calibrated.carbsPer100g,
+          confidence: result.confidence,
+        );
+        // M16.6：actualXxx 用校准后 per100g * servingG / 100（与 food_item 同源）
+        actualCalories = calibrated.actualCalories;
+        actualProteinG = calibrated.actualProteinG;
+        actualFatG = calibrated.actualFatG;
+        actualCarbsG = calibrated.actualCarbsG;
+      } else {
+        foodItemId = n.foodItemId;
+      }
+    } else if (compositeNutrition != null) {
+      // 复合菜：存入 food_item（source=ai_recognized，components_json 存组分快照）
+      // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），
+      // per100g 用包装换算值（替代 0），actualCalories 在 CalibrationPage 按包装换算
+      final packagePer100 = result.hasPackageNutrition
+          ? result.computePackageNutritionPer100g(
+              estimatedProteinG: result.estimatedProteinG,
+              estimatedFatG: result.estimatedFatG,
+              estimatedCarbsG: result.estimatedCarbsG,
+            )
+          : null;
+      foodItemId = await foodRepo.upsertAiRecognized(
+        name: result.dishName,
+        brand: result.brand,
+        caloriesPer100g: packagePer100?.$1 ?? 0,
+        proteinPer100g: packagePer100?.$2 ?? 0,
+        fatPer100g: packagePer100?.$3 ?? 0,
+        carbsPer100g: packagePer100?.$4 ?? 0,
+        confidence: result.confidence,
+        componentsJson: componentsSnapshot,
+      );
+    } else {
+      // 无营养数据（查库未命中），不记录
+      return null;
+    }
+
+    await mealRepo.insertMealLog(
+      date: todayYmd(),
+      mealType: mealType,
+      foodItemId: foodItemId,
+      actualServingG: servingG,
+      actualCalories: actualCalories,
+      actualProteinG: actualProteinG,
+      actualFatG: actualFatG,
+      actualCarbsG: actualCarbsG,
+      originalImagePath: imagePath,
+      recognitionConfidence: result.confidence,
+      componentsSnapshotJson: componentsSnapshot,
+    );
+    return actualCalories;
+  }
 }
 
 class _RecognizePageState extends ConsumerState<RecognizePage>
@@ -310,123 +433,26 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
                       foodItemRepoProvider.future,
                     );
                     final result = state.recognitionResult!;
-
-                    // 获取 foodItemId：单品用查库命中，复合菜创建 ai_recognized 记录
-                    // 必须有有效 food_item_id（meal_log.food_item_id 是非空 FK，
-                    // Task 2 已启用 PRAGMA foreign_keys = ON，id=0 会触发外键约束违规）
-                    int foodItemId;
-                    if (state.singleNutrition != null) {
-                      final n = state.singleNutrition!;
-                      if (n.foodItemId == 0) {
-                        // v1.4：单品库未命中，AI 估算兜底 → 创建 ai_recognized food_item
-                        // per100g 必须基于 AI 估算的 mid 份量反算（n.calories 对应 mid 份量），
-                        // 不能用 servingG（用户校准后的份量），否则密度会随用户调整反向偏差
-                        final mid = result.estimatedWeightGMid;
-                        final per100 = mid > 0 ? 100.0 / mid : 0.0;
-                        // v1.9：包装食品 OCR 优先路径——有包装营养表数据时按包装换算，
-                        // 跳过品类校准（包装数据是精确值，不需要校准）
-                        // 参考 prompts.dart v1.9 规则 10 + 示例 7（珍宝珠酸条）
-                        // v1.10：包装换算后宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ 回退品类校准
-                        //   避免含糖饮料碳水显示 0（computePackageNutritionPer100g 三层兜底仍 0 时）
-                        final packagePer100 = result.hasPackageNutrition
-                            ? result.computePackageNutritionPer100g(
-                                // v1.9：哨兵分支 n.foodItemId==0 来自 _aiFallbackNutrition，
-                                // n.proteinG 等于 r.estimatedProteinG ?? 0，三元死代码简化为直传
-                                estimatedProteinG: result.estimatedProteinG,
-                                estimatedFatG: result.estimatedFatG,
-                                estimatedCarbsG: result.estimatedCarbsG,
-                              )
-                            : null;
-                        // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
-                        final packageMacrosAllZero = packagePer100 != null &&
-                            packagePer100.$2 == 0 &&
-                            packagePer100.$3 == 0 &&
-                            packagePer100.$4 == 0;
-                        final (caloriesPer100g, proteinPer100g, fatPer100g, carbsPer100g) =
-                            (packagePer100 != null && !packageMacrosAllZero)
-                                ? packagePer100
-                                : (() {
-                                    // 无包装数据 / 包装换算宏量全 0 → 走 AI 估算 + 品类校准路径
-                                    // P0：品类默认值校准——AI 估算的 per100g 偏离品类默认值 2 倍以上
-                                    // 用默认值替代（防 AI 离谱估算，如啤酒估成 200 kcal/100g 实际 43）
-                                    final rawCalPer100 = n.calories * per100;
-                                    return FoodCategoryDefaults.calibrate(
-                                      aiCaloriesPer100g: rawCalPer100,
-                                      aiProteinPer100g: n.proteinG * per100,
-                                      aiFatPer100g: n.fatG * per100,
-                                      aiCarbsPer100g: n.carbsG * per100,
-                                      category: result.foodCategory,
-                                    );
-                                  })();
-                        if (!result.hasPackageNutrition) {
-                          // 仅 AI 估算路径打印校准日志（包装路径是精确值无需校准）
-                          final rawCalPer100 = n.calories * per100;
-                          if (caloriesPer100g != rawCalPer100) {
-                            debugPrint(
-                                '[FoodCategoryDefaults] ${result.dishName}(${result.foodCategory}) '
-                                'AI per100g=$rawCalPer100 偏离品类默认值，校准为 $caloriesPer100g');
-                          }
-                        } else {
-                          debugPrint(
-                              '[PackageOCR] ${result.dishName} 使用包装营养表换算 per100g=$caloriesPer100g '
-                              '(serving=${result.packageServingG}g/${result.packageServingKj}kJ/${result.packageServingKcal}kcal)');
-                        }
-                        foodItemId = await foodRepo.upsertAiRecognized(
-                          name: result.dishName,
-                          brand: result.brand,
-                          caloriesPer100g: caloriesPer100g,
-                          proteinPer100g: proteinPer100g,
-                          fatPer100g: fatPer100g,
-                          carbsPer100g: carbsPer100g,
-                          confidence: result.confidence,
-                        );
-                      } else {
-                        foodItemId = n.foodItemId;
-                      }
-                    } else if (state.compositeNutrition != null) {
-                      // 复合菜：存入 food_item（source=ai_recognized，components_json 存组分快照）
-                      // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），
-                      // per100g 用包装换算值（替代 0），actualCalories 在 CalibrationPage 按包装换算
-                      final packagePer100 = result.hasPackageNutrition
-                          ? result.computePackageNutritionPer100g(
-                              estimatedProteinG: result.estimatedProteinG,
-                              estimatedFatG: result.estimatedFatG,
-                              estimatedCarbsG: result.estimatedCarbsG,
-                            )
-                          : null;
-                      foodItemId = await foodRepo.upsertAiRecognized(
-                        name: result.dishName,
-                        brand: result.brand,
-                        caloriesPer100g: packagePer100?.$1 ?? 0,
-                        proteinPer100g: packagePer100?.$2 ?? 0,
-                        fatPer100g: packagePer100?.$3 ?? 0,
-                        carbsPer100g: packagePer100?.$4 ?? 0,
-                        confidence: result.confidence,
-                        componentsJson: componentsSnapshot,
-                      );
-                    } else {
-                      // 无营养数据（查库未命中），不记录
-                      return;
-                    }
-
-                    await mealRepo.insertMealLog(
-                      date: todayYmd(),
+                    final actualCalories = await RecognizePage.writeCalibratedMealLog(
+                      foodRepo: foodRepo,
+                      mealRepo: mealRepo,
+                      result: result,
+                      singleNutrition: state.singleNutrition,
+                      compositeNutrition: state.compositeNutrition,
                       mealType:
                           state.mealType, // Sprint 2 T0：从 controller state 读餐次
-                      foodItemId: foodItemId,
-                      actualServingG: servingG,
-                      actualCalories: calories,
-                      actualProteinG: protein,
-                      actualFatG: fat,
-                      actualCarbsG: carbs,
-                      originalImagePath: controller.current.imagePath,
-                      recognitionConfidence: result.confidence,
-                      componentsSnapshotJson: componentsSnapshot,
+                      servingG: servingG,
+                      calories: calories,
+                      protein: protein,
+                      fat: fat,
+                      carbs: carbs,
+                      componentsSnapshot: componentsSnapshot,
+                      imagePath: controller.current.imagePath,
                     );
-                    if (mounted) {
+                    if (mounted && actualCalories != null) {
                       showAppToast(
                         context,
-                        '已记录：${calories.toStringAsFixed(0)} kcal',
+                        '已记录：${actualCalories.toStringAsFixed(0)} kcal',
                       );
                     }
                   },

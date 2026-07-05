@@ -1,0 +1,19 @@
+- [x] 根因验证：recognize_page AI 兜底哨兵路径测试失败（actualCalories 未校准，期望校准后值）
+- [x] 根因验证：multi_dish_page AI 兜底哨兵路径测试失败（同上）
+- [x] 根因验证：offline_queue_controller AI 兜底哨兵路径测试通过（参考基准，actualCalories 已校准）
+- [x] 统一辅助方法：computeCalibratedActualNutrition 提取并覆盖单元测试
+- [x] recognize_page 修复：AI 兜底哨兵分支 actualCalories 用校准后 per100g 计算
+- [x] multi_dish_page 修复：AI 兜底哨兵分支 actualCalories 用校准后 per100g 计算
+- [x] CalibrationPage 修复：单品哨兵路径 _buildNutritionPreview 预览 = _confirmWithServing onConfirm 传值
+- [x] 三路径行为一致性：同场景（beer, mid=300, servingG=300）下 actualCalories 三路径返回相同值
+- [x] 宏量同步：actualProteinG/FatG/CarbsG 与 actualCalories 用同一 per100g 计算（不脱节）
+- [x] 包装 OCR 路径不受影响：有包装数据时仍用 packagePer100，不走品类校准
+- [x] 查库命中路径不受影响：foodItemId > 0 时 actualCalories 基于数据库 per100g（无变化）
+- [x] 复合菜路径不受影响：无品类校准，actualCalories 基于组分累加（无变化）
+- [x] flutter analyze 无问题
+- [x] flutter test 全部通过（895 + 新增测试，1 failed 是 smoke test GitHub API 限流非回归）
+- [x] 6 条硬约束全部满足
+- [x] M16.2/M16.3/M16.4/M16.5 修复区域无回归
+- [x] pubspec.yaml 版本号 bump 到 0.18.5+24
+- [x] HANDOFF.md 第 2 节当前状态更新 + M16.6 章节回填
+- [ ] commit + push + tag v0.18.5 触发 GitHub Actions build APK
