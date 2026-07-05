@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-05
 
-**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复已 push（commit 221d319，4 层修复详见下方"M16.3"章节）；M16.4 深度审查修复已发布 v0.18.3 GitHub Release（8 个 commit 93528fe~85e8c64，4 P1 + 4 P2 + 3 P3 共 11 个修复，详见下方"M16.4"章节；876 全量测试通过，新增 20 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3 修复区域无回归；GitHub Actions workflow 自动 build APK 并上传 release，run id 28733040721 conclusion=success；app-release.apk 78.55 MB + app-debug.apk 175.10 MB）；M16.5 复合菜 UI 全 0 修复已 push（commit f00333e，P0 修复 lookupCompositeDish 命中 0 值条目致 UI 全 0，详见下方"M16.5"章节；881 全量测试通过，新增 5 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4 修复区域无回归）；M16.6 营养数值一致性修复已 push（commit d37cd4e，tag v0.18.5，三路径 actualCalories 计算统一，详见下方"M16.6"章节；895 全量测试通过，新增 15 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4/M16.5 修复区域无回归）；M16.7 Web Interface Guidelines 全 UI 审查修复已发布 v0.18.6（commit 4a4f7a7，tag v0.18.6，17 文件 195 问题修复，详见下方"M16.7"章节；911 全量测试通过，新增 15 个 TDD 测试 + 1 个源码扫描测试；6 条硬约束全部满足；M16.2~M16.6 修复区域无回归）；**M16.8 营养值不一致深度修复已完成（commit 499e820，bump v0.18.7+26 但未打 tag，详见下方"M16.8"章节；923 全量测试通过，新增 ~12 个 TDD 测试；6 条硬约束全部满足；M16.2~M16.7 修复区域无回归；根因 A 查库命中分支忽略 AI 估算 + 根因 B 品类校准 4 项全替换 + 根因 C 改菜名重试绕过统一写库，三个根因全部修复）**；**M16.9 减小库值重要性——AI 绝对优先已完成（待 push + tag v0.18.8，详见下方"M16.9"章节；928 全量测试通过，新增 6 个 TDD 测试；6 条硬约束全部满足；M16.2~M16.8 修复区域无回归；用户要求"把库值在这个项目中的重要性占比减小很多"，查库命中分支重写为 AI 绝对优先 + sanity check 兜底，复合菜残留路径同步修复）**。仓库已改 public，匿名访问 GitHub API 200 OK（M16.8 期间 GitHub API 匿名限流致 smoke test 失败，环境问题非回归）。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
-**当前分支**：trae/agent-wX1X6Q（HEAD = 即将 bump v0.18.8 commit；远端 origin/trae/agent-wX1X6Q 停在 d37cd4e；M16.8 + M16.9 共 13 个 commit 待 push：3d9e947 / a1a5ea8 / ecca11a / 96a2b04 / ef6fb9b / d67aa75 / be0d50f / a5ab6ab / 5df13ae / 499e820 / addb10e / ed4a74e / e37199d + bump v0.18.8 commit；tag v0.18.6 指向 4a4f7a7；v0.18.5 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb；v0.18.7 未打 tag（M16.8 中间状态，直接跳到 v0.18.8 发布）；**待用户确认后 push + tag v0.18.8**）
+**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复已 push（commit 221d319，4 层修复详见下方"M16.3"章节）；M16.4 深度审查修复已发布 v0.18.3 GitHub Release（8 个 commit 93528fe~85e8c64，4 P1 + 4 P2 + 3 P3 共 11 个修复，详见下方"M16.4"章节；876 全量测试通过，新增 20 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3 修复区域无回归；GitHub Actions workflow 自动 build APK 并上传 release，run id 28733040721 conclusion=success；app-release.apk 78.55 MB + app-debug.apk 175.10 MB）；M16.5 复合菜 UI 全 0 修复已 push（commit f00333e，P0 修复 lookupCompositeDish 命中 0 值条目致 UI 全 0，详见下方"M16.5"章节；881 全量测试通过，新增 5 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4 修复区域无回归）；M16.6 营养数值一致性修复已 push（commit d37cd4e，tag v0.18.5，三路径 actualCalories 计算统一，详见下方"M16.6"章节；895 全量测试通过，新增 15 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4/M16.5 修复区域无回归）；M16.7 Web Interface Guidelines 全 UI 审查修复已发布 v0.18.6（commit 4a4f7a7，tag v0.18.6，17 文件 195 问题修复，详见下方"M16.7"章节；911 全量测试通过，新增 15 个 TDD 测试 + 1 个源码扫描测试；6 条硬约束全部满足；M16.2~M16.6 修复区域无回归）；**M16.8 营养值不一致深度修复已完成（commit 499e820，bump v0.18.7+26 但未打 tag，详见下方"M16.8"章节；923 全量测试通过，新增 ~12 个 TDD 测试；6 条硬约束全部满足；M16.2~M16.7 修复区域无回归；根因 A 查库命中分支忽略 AI 估算 + 根因 B 品类校准 4 项全替换 + 根因 C 改菜名重试绕过统一写库，三个根因全部修复）**；**M16.9 减小库值重要性——AI 绝对优先已完成（待 push + tag v0.18.8，详见下方"M16.9"章节；928 全量测试通过，新增 6 个 TDD 测试；6 条硬约束全部满足；M16.2~M16.8 修复区域无回归；用户要求"把库值在这个项目中的重要性占比减小很多"，查库命中分支重写为 AI 绝对优先 + sanity check 兜底，复合菜残留路径同步修复）**；**M17 App 图标重设计已完成（待 push + tag v0.18.9，详见下方"M17"章节；用户反馈"图标实在太丑"要求重新设计；M3 抽象几何（同心圆环+中心圆点）+ 紫橙双色渐变；Skill 协作 brainstorming → canvas-design → 手工 vector drawable；6 条硬约束全部满足；flutter analyze No issues）**。仓库已改 public，匿名访问 GitHub API 200 OK（M16.8 期间 GitHub API 匿名限流致 smoke test 失败，环境问题非回归）。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
+**当前分支**：trae/agent-wX1X6Q（HEAD = 即将 bump v0.18.9 commit；远端 origin/trae/agent-wX1X6Q 停在 8971d79 / 3320828（v0.18.8 已 push + tag）；M17 图标重设计 commit 待 push；tag v0.18.8 指向 3320828；v0.18.6 指向 4a4f7a7；v0.18.5 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb；v0.18.7 未打 tag（M16.8 中间状态，跳过）；**待用户确认后 push + tag v0.18.9**）
 
 **待用户执行的收尾项**（沙箱无法完成）：
 1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）
@@ -1706,6 +1706,79 @@ AI 兜底哨兵路径（foodItemId=0）下，三条识别路径对 `meal_log.act
    - 拍一道查库命中的菜，AI 估算离谱时（如 AI 把水估成 5000 kcal），meal_log 应记库值（兜底），food_item.per100g 不更新
    - 拍一道复合菜（如宫保鸡丁），AI 整菜估算有效时，meal_log 应记 AI 值（不用组分累加库值），food_item.per100g=0 占位
 2. 验证三路径行为一致（recognize_page 单品 / multi_dish_page 多菜 / offline_queue 离线回补）
+
+---
+
+## M17 App 图标重设计——M3 抽象几何 + 紫橙双色渐变（2026-07-05）—— v0.18.9
+
+**触发**：用户反馈当前图标「实在太丑」，要求重新设计：简洁精致、耐看不俗套、严格安卓设计规范。使用 Skill 组合：brainstorming（创意发散）+ canvas-design（设计稿）+ byted-seedream-image-generate（AI 灵感参考，沙箱缺 ARK_API_KEY 跳过）。
+
+**核心决策**（用户通过 AskUserQuestion 两个决策）：
+1. **图标核心意象**：M3 抽象几何（无具体物象）—— Google Workspace 式纯几何抽象，靠色彩和构图传递品牌
+2. **配色方向**：双色渐变（紫主 #6750A4 + 橙辅 #FF6E40）—— M3 Expressive 大胆配色
+3. **最终方案**（用户从 3 候选中选定）：候选 A「同心圆环+中心圆点」
+
+### 实现（7 个 Task）
+
+#### Task 1: brainstorming 概念发散
+- 输出 8 个抽象几何概念，筛选 top 3：A 同心圆环+中心圆点 / B 三色块分割圆 / C 方+圆叠加
+
+#### Task 2: canvas-design 出 3 候选设计稿
+- 文件：`.trae/design/design-philosophy.md`（命名 "Chromatic Mindful" 色彩觉知）+ `generate_concepts.py`（Pillow 渲染）
+- 输出 1080 master + 192 预览 + 48 缩放 + 三合一 overview
+- 像素验证：192 看细节、48 看骨架，粗线条 ≥4dp 保证可识别性
+
+#### Task 3: Seedream AI 灵感参考（跳过）
+- 沙箱缺 ARK_API_KEY，Task 3 标记为可选，已跳过
+
+#### Task 4: 用户选定最终方案
+- 用户选定：候选 A「同心圆环+中心圆点」
+
+#### Task 5: 手工实现 Android vector drawable
+- `drawable/ic_launcher_background.xml`：紫→橙 135° 对角线线性渐变（用 `<aapt:attr name="android:fillColor">` 嵌入 `<gradient>`）
+- `drawable/ic_launcher_foreground.xml`：白色同心圆环+中心圆点
+  - 外环外径 50dp（半径 25dp），环宽 6dp，内径 19dp，顶部 8dp 缺口
+  - 中心圆点直径 16dp（半径 8dp）
+- `values/colors.xml`：新增 `ic_launcher_background_end` #FF6E40
+- `values-night/colors.xml`：暗色模式同步渐变色值
+- monochrome 兼容：前景纯白 alpha 通道，渐变只放背景层
+
+#### Task 6: 生成 5 套 dpi PNG
+- 文件：`.trae/design/generate_png_assets.py`（从 vector drawable 几何精确渲染）
+- 输出 10 个 PNG（5 dpi × 2 版本：普通 + 圆角）替换 mipmap 目录
+- 像素验证全部正确
+
+#### Task 7: 验证 + 发布（v0.18.9+28）
+- `flutter analyze` → No issues found
+- 6 条硬约束全部满足
+- pubspec.yaml bump 0.18.8+27 → 0.18.9+28
+- HANDOFF.md 回填 M17 章节
+- commit + push + tag v0.18.9
+
+### 核心设计不变量
+
+- **图标三层结构**：背景层（紫橙渐变 full-bleed）+ 前景层（白色同心圆环+圆点，安全区内）+ monochrome 层（复用前景，Android 13+ 主题图标染色）
+- **渐变只在背景层**：monochrome 染色时背景被忽略，前景独立可识别
+- **前景纯白 #FFFFFF**：在渐变背景上高对比，缩放最清晰
+- **几何参数**：外环外径 50dp + 环宽 6dp + 顶部 8dp 缺口 + 中心圆点直径 16dp，严格在安全区 (54,54) 半径 33 内
+
+### M17 用户感知变化
+
+| 元素 | 旧版 | 新版 |
+|------|------|------|
+| 背景 | 纯色橙 #FF6E40 | 紫橙双色 135° 对角线渐变 |
+| 前景 | 餐叉+餐刀几何符号 | 同心圆环+中心圆点抽象几何 |
+| 风格 | 具象餐具 | M3 抽象几何（Google Workspace 式） |
+| 配色 | 单色橙 | M3 Expressive 紫橙双色 |
+| monochrome | 餐叉餐刀 | 圆环+圆点（更易染色识别） |
+
+### 待用户执行
+
+1. 装 v0.18.9 APK 验证图标在启动器中显示正常：
+   - 不同 OEM 蒙版（圆/方/圆角方/squircle）下前景不被裁切
+   - 暗色模式 + Android 13+ 主题图标染色后前景仍可识别
+   - 48dp 小尺寸下圆环+圆点骨架清晰
+2. 验证 splash 启动过渡平滑（图标色与 splash_background 不冲突）
 
 ---
 

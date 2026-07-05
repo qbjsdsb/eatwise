@@ -4,7 +4,11 @@
          让 native splash → Flutter UI 过渡无颜色跳变（减少"黑/白屏一两秒"的突兀感）。
          用户若切了主题色，splash 仍是默认紫调 surface——native 启动太快读不到 secure_storage，可接受。 -->
     <color name="splash_background">#FCF9F9</color>
-    <!-- M15：图标颜色集中定义（替代 drawable 内硬编码，便于后续主题化） -->
-    <color name="ic_launcher_background">#FF6E40</color>
+    <!-- M17：图标重设计——M3 抽象几何（同心圆环+中心圆点）+ 紫橙双色渐变
+         渐变方向：左上紫（M3 基线紫 #6750A4，呼应 App 主题种子色）→ 右下橙（Deep Orange 400，食物色/食欲色）
+         135° 对角线渐变，视觉从"思考/识别"流向"享受/品味"，契合"慢慢吃"理念
+         紫色 = 觉知（识别营养），橙色 = 温度（品味食物），渐变 = 两者和解 -->
+    <color name="ic_launcher_background">#6750A4</color>
+    <color name="ic_launcher_background_end">#FF6E40</color>
     <color name="ic_launcher_foreground">#FFFFFF</color>
 </resources>
