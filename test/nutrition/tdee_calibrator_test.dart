@@ -168,4 +168,27 @@ void main() {
           reason: '未触发时 dailyCalorieTarget 应保持不变');
     });
   });
+
+  group('clampAndRound（P2-2 精度 rounding）', () {
+    // 这组测试验证 P2-2 修复：用 round() 代替 toInt() 保留 0.5 kcal 精度
+    // 注：通过 calibrate() 公开 API 无法触发 rawAdjustment ∈ (-100, 100) 的精度边界
+    // （deviationThresholdKgPerWeek=0.3 → 触发时 |rawAdjustment| > 330，恒被 clamp 到 ±100）
+    // 因此直接测试 clampAndRound 静态方法验证 rounding 行为
+
+    test('Test A: rawAdjustment = -99.7 → -100（round 半数远离零，非 toInt 截断 -99）', () {
+      expect(TdeeCalibrator.clampAndRound(-99.7), -100);
+    });
+
+    test('Test B: rawAdjustment = 50.4 → 50（round 向下）', () {
+      expect(TdeeCalibrator.clampAndRound(50.4), 50);
+    });
+
+    test('Test C: rawAdjustment = 50.5 → 51（round 半数远离零）', () {
+      expect(TdeeCalibrator.clampAndRound(50.5), 51);
+    });
+
+    test('Test D: rawAdjustment = 100.0 → 100（整数不变，回归）', () {
+      expect(TdeeCalibrator.clampAndRound(100.0), 100);
+    });
+  });
 }

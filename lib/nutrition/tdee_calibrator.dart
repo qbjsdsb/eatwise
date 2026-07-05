@@ -21,6 +21,14 @@ class TdeeCalibrator {
   final EatWiseDatabase _db;
   TdeeCalibrator(this._db);
 
+  /// 将 rawAdjustment 限幅到 ±maxAdjustmentKcal 并取整
+  /// P2-2: 用 round() 代替 toInt() 避免截断丢精度（如 -99.7 → -100 而非 -99）
+  static int clampAndRound(double rawAdjustment) {
+    return rawAdjustment
+        .clamp(-maxAdjustmentKcal.toDouble(), maxAdjustmentKcal.toDouble())
+        .round();
+  }
+
   /// 校准结果
   /// adjustmentKcal: 建议的 tdee_adjustment_kcal 增量（正=增目标，负=减目标）
   /// reason: 触发/未触发原因（UI 提示用）
@@ -80,7 +88,7 @@ class TdeeCalibrator {
     // 1 kg 体重 ≈ 7700 kcal，周偏差 × 7700 / 7 = 日热量调整
     final rawAdjustment = -deviation * 7700 / 7;
     // 限制单次 ±100 kcal
-    final adjustment = rawAdjustment.clamp(-maxAdjustmentKcal.toDouble(), maxAdjustmentKcal.toDouble()).toInt();
+    final adjustment = clampAndRound(rawAdjustment);
 
     return TdeeCalibrationResult(
       adjustmentKcal: adjustment,
