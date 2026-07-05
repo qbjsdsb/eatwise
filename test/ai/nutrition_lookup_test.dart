@@ -288,4 +288,165 @@ void main() {
           reason: '复合菜占位记录不应被单品区间查库命中');
     });
   });
+
+  // M16.5 修复 P0：复合菜占位记录污染 lookupCompositeDish
+  // 现象：用户从 v0.18.2 升级到 v0.18.3 后，AI 推理正确的复合菜（如米粉汤）
+  //       UI 显示蛋白/脂肪/碳水全 0。
+  // 根因：lookupSingleItem 有 componentsJson != null 保护（视为未命中返回 null），
+  //       但 lookupCompositeDish 没有同样保护。组分名 contains 命中历史 ai_recognized
+  //       占位记录（per100g=0, componentsJson 非空）→ 0 * g / 100 = 0 → 复合菜营养全 0。
+  // 场景：用户上次吃"米粉汤"创建占位记录"米粉汤"（per100g=0）。这次识别"米粉汤"
+  //       复合菜，组分"米粉"通过优先级 3 contains 命中"米粉汤"占位 → 0 计算。
+  group('M16.5 P0：复合菜占位记录不应污染 lookupCompositeDish', () {
+    test('组分 contains 命中复合菜占位记录时应视为 miss，不用 0 值计算', () async {
+      // 模拟用户历史识别"米粉汤"创建的 ai_recognized 占位记录
+      // per100g=0（实际热量在 meal_log.componentsSnapshotJson），componentsJson 非空
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+            name: '米粉汤',
+            defaultServingG: 350,
+            caloriesPer100g: 0,
+            proteinPer100g: 0,
+            fatPer100g: 0,
+            carbsPer100g: 0,
+            componentsJson:
+                const Value('[{"name":"米粉","estimated_g":80}]'),
+            source: 'ai_recognized',
+            sourceVersion: 'ai',
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          ));
+
+      // DB 里没有"米粉"正常数据，组分"米粉"会 contains 命中"米粉汤"占位
+      // 当前 bug：用占位记录的 0 值计算 → 营养全 0
+      // 期望：跳过占位记录，"米粉"加入 misses
+      final result = await lookup.lookupCompositeDish(
+        components: [FoodComponent(name: '米粉', estimatedG: 80)],
+        cookingMethod: 'boil',
+      );
+
+      expect(result.componentMisses, contains('米粉'),
+          reason: '组分命中复合菜占位记录（per100g=0, componentsJson 非空）时应视为 miss');
+      expect(result.componentHits, isEmpty,
+          reason: '占位记录不应作为营养计算源被加入 componentHits');
+    });
+
+    test('组分名与占位记录名相同时（精确命中）也应跳过', () async {
+      // 边界场景：用户上次吃"麻婆豆腐"创建占位记录 name="麻婆豆腐"（per100g=0）
+      // 这次识别"麻婆豆腐"复合菜，组分名 AI 错误返回"麻婆豆腐"（而非"豆腐"）
+      // 优先级 1 精确命中占位记录 → 当前 bug：用 0 值计算
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+            name: '麻婆豆腐',
+            defaultServingG: 300,
+            caloriesPer100g: 0,
+            proteinPer100g: 0,
+            fatPer100g: 0,
+            carbsPer100g: 0,
+            componentsJson:
+                const Value('[{"name":"豆腐","estimated_g":150}]'),
+            source: 'ai_recognized',
+            sourceVersion: 'ai',
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          ));
+
+      final result = await lookup.lookupCompositeDish(
+        components: [FoodComponent(name: '麻婆豆腐', estimatedG: 150)],
+        cookingMethod: 'stir-fry',
+      );
+
+      expect(result.componentMisses, contains('麻婆豆腐'),
+          reason: '精确命中复合菜占位记录也应视为 miss');
+      expect(result.componentHits, isEmpty);
+    });
+
+    test('占位记录被跳过后，其他正常组分仍能命中并计算', () async {
+      // 混合场景：组分"米粉"contains 命中占位记录"米粉汤"（跳过），
+      // 组分"鸡蛋"精确命中正常数据（计算）。验证跳过占位记录不影响其他组分。
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+            name: '米粉汤',
+            defaultServingG: 350,
+            caloriesPer100g: 0,
+            proteinPer100g: 0,
+            fatPer100g: 0,
+            carbsPer100g: 0,
+            componentsJson:
+                const Value('[{"name":"米粉","estimated_g":80}]'),
+            source: 'ai_recognized',
+            sourceVersion: 'ai',
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          ));
+
+      final result = await lookup.lookupCompositeDish(
+        components: [
+          FoodComponent(name: '米粉', estimatedG: 80),
+          FoodComponent(name: '鸡蛋', estimatedG: 120), // setUp 插入的正常数据
+        ],
+        cookingMethod: 'boil',
+      );
+
+      // "米粉"跳过（miss），"鸡蛋"命中（hit）
+      expect(result.componentMisses, contains('米粉'));
+      expect(result.componentHits.length, 1);
+      expect(result.componentHits.first.name, '鸡蛋');
+      // 鸡蛋 144 * 120/100 = 172.8，无油（boil）
+      expect(result.calories, closeTo(172.8, 0.01));
+      expect(result.proteinG, closeTo(15.6, 0.01)); // 13 * 120/100
+    });
+  });
+
+  // M16.5 修复 P0-2：M16.3 migration 后的全 0 脏数据污染 lookupCompositeDish
+  // 现象：M16.3 migration v3→v4 把脏数据（>100 / >900）置 0，但条目未删除。
+  //       _isDirtyFoodItem 只检查 >100 不检查 ==0，migration 后的 0 值条目通过过滤。
+  //       lookupCompositeDish 命中这些 0 值条目 → 0 * g / 100 = 0 → 营养全 0。
+  // 修复策略：lookupCompositeDish 命中"全 0 营养条目"（蛋白/脂肪/碳水/热量都为 0）
+  //         时视为 miss。水/茶等合法 0 营养食物跳过对复合菜计算无影响（0*g/100=0）。
+  group('M16.5 P0-2：全 0 营养条目不应污染 lookupCompositeDish', () {
+    test('组分命中 migration 后的全 0 脏数据时应视为 miss', () async {
+      // 模拟 M16.3 migration 把脏数据（4 字段都 >100/>900）置 0 后的条目
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+            name: '米粉',
+            defaultServingG: 100,
+            caloriesPer100g: 0,
+            proteinPer100g: 0,
+            fatPer100g: 0,
+            carbsPer100g: 0,
+            source: 'china_fct',
+            sourceVersion: 'test',
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          ));
+
+      final result = await lookup.lookupCompositeDish(
+        components: [FoodComponent(name: '米粉', estimatedG: 80)],
+        cookingMethod: 'boil',
+      );
+
+      expect(result.componentMisses, contains('米粉'),
+          reason: '全 0 营养条目（migration 后脏数据）不应作为营养计算源');
+      expect(result.componentHits, isEmpty);
+    });
+
+    test('部分字段为 0 但非全 0 的条目仍正常计算（非脏数据）', () async {
+      // 边界场景：蛋白质 0（合法，如纯淀粉类食物）但碳水非 0
+      // 这种条目不是 migration 后的全 0 脏数据，应正常计算
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+            name: '纯淀粉',
+            defaultServingG: 100,
+            caloriesPer100g: 381,
+            proteinPer100g: 0.1,
+            fatPer100g: 0,
+            carbsPer100g: 91.3,
+            source: 'china_fct',
+            sourceVersion: 'test',
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          ));
+
+      final result = await lookup.lookupCompositeDish(
+        components: [FoodComponent(name: '纯淀粉', estimatedG: 50)],
+        cookingMethod: 'boil',
+      );
+
+      expect(result.componentHits.length, 1);
+      // 381 * 50/100 = 190.5
+      expect(result.calories, closeTo(190.5, 0.01));
+      expect(result.carbsG, closeTo(45.65, 0.01)); // 91.3 * 50/100
+    });
+  });
 }

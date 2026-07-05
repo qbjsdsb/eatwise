@@ -117,6 +117,22 @@ class NutritionLookup {
         misses.add(comp.name);
         continue;
       }
+      // M16.5 P0：复合菜占位记录（ai_recognized, componentsJson 非空, per100g=0）
+      // 不应作为营养计算源。lookupSingleItem 已有同样保护（返回 null），
+      // 此处对称补齐：组分命中占位记录时视为 miss，避免 0 * g / 100 = 0 污染复合菜营养。
+      // 场景：用户上次吃"米粉汤"创建占位记录，这次组分"米粉"contains 命中"米粉汤"占位。
+      if (food.componentsJson != null) {
+        misses.add(comp.name);
+        continue;
+      }
+      // M16.5 P0-2：M16.3 migration 把脏数据（>100/>900）置 0 后条目未删除，
+      // _isDirtyFoodItem 只检查 >100 不检查 ==0，migration 后的全 0 条目通过过滤。
+      // 命中这类全 0 条目 → 0 * g / 100 = 0 → 复合菜营养全 0。
+      // 视为 miss：水/茶等合法 0 营养食物跳过对复合菜计算无影响（0*g/100=0）。
+      if (_isAllZeroNutrition(food)) {
+        misses.add(comp.name);
+        continue;
+      }
       final g = comp.estimatedG;
       totalCalories += food.caloriesPer100g * g / 100;
       totalProtein += food.proteinPer100g * g / 100;
@@ -197,6 +213,18 @@ class NutritionLookup {
       }
     }
     return null;
+  }
+
+  /// M16.5 P0-2：检测食物条目是否为"全 0 营养"（蛋白/脂肪/碳水/热量都为 0）
+  /// 用于 lookupCompositeDish 跳过 M16.3 migration 后的全 0 脏数据（原 >100/>900 被置 0）。
+  /// 注意：水/茶等合法 0 营养食物也会被判定为 true，但对复合菜计算无影响（0*g/100=0）。
+  /// 不在 _isDirtyFoodItem（FoodItemRepository）里加，避免影响 lookupSingleItem
+  /// 让水/茶等合法 0 营养食物的单品查库命中被误过滤。
+  bool _isAllZeroNutrition(FoodItem item) {
+    return item.caloriesPer100g == 0 &&
+        item.proteinPer100g == 0 &&
+        item.fatPer100g == 0 &&
+        item.carbsPer100g == 0;
   }
 
   /// 从本地库 FoodItem 计算单品营养（含可食部分系数 ediblePercent）
