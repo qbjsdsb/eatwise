@@ -57,13 +57,31 @@ class FoodSeedImporter {
     final rawName = raw['foodName'] as String;
     final name = _cleanName(rawName);
 
+    // M16.3 修复 P0：营养素合理性校验
+    // sanotsu 源数据偶有列错位（如 foodCode 134001 CHO=450，碳水不可能 >100g/100g）
+    // _parseTrValue 已能解析数值，但需额外校验：营养素 > 100g/100g 视为脏数据置 null
+    // 后续 importFromJsonList 用 null → 0 兜底，避免脏数据污染食物库
+    final calories = _parseNullableDouble(raw['energyKCal']);
+    final protein = _parseNullableDouble(raw['protein']);
+    final fat = _parseNullableDouble(raw['fat']);
+    final carbs = _parseNullableDouble(raw['CHO']);
+
+    // 营养素不可能值过滤（每 100g）：
+    // - 蛋白质/脂肪/碳水 ≤ 100（三者之和才可能接近 100，单值不可能超）
+    // - 热量 ≤ 900（纯脂肪 9 kcal/g × 100g = 900 kcal，不可能更高）
+    // 违反任一规则视为脏数据置 null（导入时按 0 兜底）
+    final safeCalories = (calories != null && calories <= 900) ? calories : null;
+    final safeProtein = (protein != null && protein <= 100) ? protein : null;
+    final safeFat = (fat != null && fat <= 100) ? fat : null;
+    final safeCarbs = (carbs != null && carbs <= 100) ? carbs : null;
+
     return FoodItemsCompanion.insert(
       name: name,
       defaultServingG: 100,
-      caloriesPer100g: _parseDouble(raw['energyKCal']),
-      proteinPer100g: _parseDouble(raw['protein']),
-      fatPer100g: _parseDouble(raw['fat']),
-      carbsPer100g: _parseTrValue(raw['CHO']),
+      caloriesPer100g: safeCalories ?? 0,
+      proteinPer100g: safeProtein ?? 0,
+      fatPer100g: safeFat ?? 0,
+      carbsPer100g: safeCarbs ?? 0,
       ediblePercent: Value(_parseNullableDouble(raw['edible'])),
       source: 'china_fct',
       sourceVersion: _sourceVersion,

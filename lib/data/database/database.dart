@@ -33,7 +33,7 @@ class EatWiseDatabase extends _$EatWiseDatabase {
   final bool seedOnCreate;
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -49,6 +49,22 @@ class EatWiseDatabase extends _$EatWiseDatabase {
           // v2 → v3：新增 recommendation_feedbacks 表（AI 推荐满意度反馈）
           if (from < 3) {
             await m.createTable(recommendationFeedbacks);
+          }
+          // v3 → v4：M16.3 修复 P0 —— 清理已入库的脏营养数据
+          // sanotsu_common.json 历史版本含 foodCode 134001 (CHO=450) / 134002 (CHO=420300)
+          // 等列错位脏数据，已通过 _parseItem 加合理性校验防新导入，但已安装用户
+          // DB 里仍有脏数据，需 migration 主动清理。
+          // 策略：营养素 > 100g/100g（蛋白/脂肪/碳水）或 > 900 kcal/100g 的条目
+          //       视为脏数据，将对应字段置 0（保守降级，避免被 findByNameOrAlias 命中污染复合菜）
+          if (from < 4) {
+            await customStatement(
+                'UPDATE food_items SET carbs_per100g = 0 WHERE carbs_per100g > 100');
+            await customStatement(
+                'UPDATE food_items SET protein_per100g = 0 WHERE protein_per100g > 100');
+            await customStatement(
+                'UPDATE food_items SET fat_per100g = 0 WHERE fat_per100g > 100');
+            await customStatement(
+                'UPDATE food_items SET calories_per100g = 0 WHERE calories_per100g > 900');
           }
         },
         beforeOpen: (details) async {
