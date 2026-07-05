@@ -576,4 +576,95 @@ void main() {
           reason: '未来日期的 foodItemCount 不应被统计');
     });
   });
+
+  // P2-1 修复：getMedianServing 无 endDate 上界，预录未来餐次污染中位数
+  // 与 H4 修复一致，加 date <= today 过滤
+  group('P2-1 getMedianServing 加 endDate 上界', () {
+    test('预录未来餐次不污染中位数（今天 100g + 明天 500g → 100g）', () async {
+      final today = formatYmd(DateTime.now());
+      final tomorrow = formatYmd(DateTime.now().add(const Duration(days: 1)));
+      final foodId = await db.into(db.foodItems).insert(
+            FoodItemsCompanion.insert(
+              name: 'P2-1 测试食物',
+              defaultServingG: 100,
+              caloriesPer100g: 50,
+              proteinPer100g: 1,
+              fatPer100g: 0.2,
+              carbsPer100g: 13.5,
+              source: 'test',
+              sourceVersion: 'test_v1',
+              createdAt: 0,
+            ),
+          );
+      // 今天 100g
+      await repo.insertMealLog(
+        date: today,
+        mealType: 'breakfast',
+        foodItemId: foodId,
+        actualServingG: 100,
+        actualCalories: 50,
+        actualProteinG: 1,
+        actualFatG: 0.2,
+        actualCarbsG: 13.5,
+      );
+      // 明天（未来）500g
+      await repo.insertMealLog(
+        date: tomorrow,
+        mealType: 'breakfast',
+        foodItemId: foodId,
+        actualServingG: 500,
+        actualCalories: 250,
+        actualProteinG: 5,
+        actualFatG: 1,
+        actualCarbsG: 67.5,
+      );
+
+      // 中位数应 = 100g（只统计今天），不是 (100+500)/2 = 300g
+      expect(await repo.getMedianServing(foodId), 100,
+          reason: '未来餐次不应污染中位数');
+    });
+
+    test('回归：今天和过去的记录正常计入中位数', () async {
+      final today = formatYmd(DateTime.now());
+      final past = formatYmd(DateTime.now().subtract(const Duration(days: 3)));
+      final foodId = await db.into(db.foodItems).insert(
+            FoodItemsCompanion.insert(
+              name: 'P2-1 回归食物',
+              defaultServingG: 100,
+              caloriesPer100g: 50,
+              proteinPer100g: 1,
+              fatPer100g: 0.2,
+              carbsPer100g: 13.5,
+              source: 'test',
+              sourceVersion: 'test_v1',
+              createdAt: 0,
+            ),
+          );
+      // 过去 200g + 今天 100g → 中位数 (100+200)/2 = 150
+      await repo.insertMealLog(
+        date: past,
+        mealType: 'breakfast',
+        foodItemId: foodId,
+        actualServingG: 200,
+        actualCalories: 100,
+        actualProteinG: 2,
+        actualFatG: 0.4,
+        actualCarbsG: 27,
+      );
+      await repo.insertMealLog(
+        date: today,
+        mealType: 'breakfast',
+        foodItemId: foodId,
+        actualServingG: 100,
+        actualCalories: 50,
+        actualProteinG: 1,
+        actualFatG: 0.2,
+        actualCarbsG: 13.5,
+      );
+
+      // 两条都应计入，中位数 = (100+200)/2 = 150
+      expect(await repo.getMedianServing(foodId), 150,
+          reason: '今天和过去记录都应计入中位数');
+    });
+  });
 }

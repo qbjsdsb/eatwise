@@ -152,9 +152,14 @@ class MealLogRepository {
   /// 查询某食物的历史实际份量中位数（智能份量校准用）
   /// 取最近 20 次记录的 actualServingG，返回中位数；无历史返回 null。
   /// 用中位数而非均值：抗异常值（如偶尔记录 500g 大份，均值被拉偏，中位数稳定）。
+  ///
+  /// P2-1 修复：加 endDate 上界（today），避免用户预录未来餐次污染中位数（与 H4 修复一致）。
   Future<double?> getMedianServing(int foodItemId) async {
+    final endDate = formatYmd(DateTime.now());
     final rows = await (_db.mealLogs.select()
-          ..where((m) => m.foodItemId.equals(foodItemId))
+          ..where((m) =>
+              m.foodItemId.equals(foodItemId) &
+              m.date.isSmallerOrEqualValue(endDate))
           ..orderBy([(m) => OrderingTerm.desc(m.loggedAt)])
           ..limit(20))
         .get();
