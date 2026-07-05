@@ -36,12 +36,13 @@
 
 **最后更新**：2026-07-05
 
-**工作区状态**：clean。v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，含 13 个功能 Task + 2 个 CI 修复 commit + 1 个 HANDOFF 回填 commit；应用内自更新功能：GitHub Releases 检查 + APK 下载 + 系统安装器 + 固定签名 keystore，详见下方"M16 应用内自更新"章节）；v0.18.0 GitHub Release 已发布（含 app-release.apk 74.84 MB + app-debug.apk 166.97 MB）；4 个 GitHub Secrets 已上传（ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_ALIAS / ANDROID_KEY_PASSWORD）；CI build 第 3 次成功（前 2 次失败：Kotlin DSL import 缺失 + MainActivity.kt arguments 类型转换，已修复）。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a，图标重设计 + 每日历史记录查看）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push（AI 推荐失败修复 + 改菜名 mixin 三入口 + 周月总结滚动窗口+宏量+偏好+覆盖率+数据守卫）；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5，详见下方"深度审查修复批次"章节）
-**当前分支**：trae/agent-wX1X6Q（HEAD = bfa54e6，远端 origin/trae/agent-wX1X6Q 已同步到 bfa54e6；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
+**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；v0.18.1 修复进行中（M16 应用内更新功能实际不可用——根因：仓库私有致 GitHub API 匿名访问 404，详见下方"M16.1 应用内更新修复"章节）；本次修复 4 个问题（P1 HTTP header+超时 / P2 APK 流式下载+渐进进度 / P3 真实 GitHub API smoke test 覆盖测试盲区），新增 4 个测试用例（apk_downloader 流式分块/无 content-length/下载不完整 + smoke test 2 个），836 全量测试通过。v0.18.0 GitHub Release 已发布（app-release.apk 74.84 MB）；4 个 GitHub Secrets 已上传；CI build 第 3 次成功。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
+**当前分支**：trae/agent-wX1X6Q（HEAD = bfa54e6 + 待 commit 的 M16.1 修复；远端 origin/trae/agent-wX1X6Q 停在 bfa54e6；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
 
 **待用户执行的收尾项**（沙箱无法完成）：
-1. **删除 classic PAT** `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`：访问 https://github.com/settings/tokens 手动删除（classic PAT 无法通过 API 自删，已用完上传 secrets 的使命，不应保留）
-2. **本地真机验证 v0.18.0 应用内更新全链路**：装 v0.18.0 APK（v0.17.0 旧版需卸载一次因签名切换）→ 在 app 内"设置 → 检查更新"验证 GitHub Release API 调用 + APK 下载 + 系统安装器触发全链路 → 下个版本起直接 app 内一键升级（不再卸载）
+1. **【紧急】把仓库改成 public**：访问 https://github.com/qbjsdsb/eatwise/settings → 底部 "Danger Zone" → "Change to public"。**这是应用内更新能工作的根本前提**——沙箱 token 无 Administration write 权限无法自动改。改完后跑 `flutter test test/smoke/github_release_smoke_test.dart` 验证匿名访问 OK
+2. **删除 classic PAT** `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`：访问 https://github.com/settings/tokens 手动删除（classic PAT 无法通过 API 自删，已用完上传 secrets 的使命，不应保留）
+3. **本地真机验证 v0.18.1 应用内更新全链路**：装 v0.18.1 APK → 在 app 内"设置 → 检查更新"验证全链路 → 下个版本起直接 app 内一键升级
 
 **AI 识别准确度重构 Phase 1+2（2026-07-04）**：
 - 目标：解决"做了这么多还是不准"——豆包能精确识别珍宝珠酸条/雪花啤酒，EatWise 不行
@@ -1046,6 +1047,67 @@
 2. **装 v0.18.0 APK**：v0.17.0 旧版需卸载一次（签名切换），v0.18.0 起可覆盖安装
 3. **在 app 内"设置 → 检查更新"验证全链路**：GitHub Release API 调用 → 版本比较 → APK 下载到 cache dir → 系统安装器触发
 4. **下个版本起**直接 app 内一键升级（不再卸载）
+
+---
+
+## M16.1 应用内更新修复（2026-07-05）—— v0.18.0 实际不可用根因诊断 + 4 个 P1-P3 修复
+
+用户反馈"应用内更新功能还是不行"。深度审查全链路（GitHub API 真实访问 + 代码 + Android 配置 + 测试盲区）后诊断出 6 个问题，按优先级修复 4 个（P0 + P1 + P2 + P3）。
+
+**根因诊断（P0，阻断性）**：
+- **仓库 `qbjsdsb/eatwise` 是私有仓库**（API 实测 `private: True`）
+- 真机调 `https://api.github.com/repos/qbjsdsb/eatwise/releases/latest` 不带认证 → GitHub 返回 **HTTP 404**（私有仓库匿名访问一律 404，不是 401，防探测）
+- 即使 checkForUpdate 能通，APK 下载 URL `https://github.com/qbjsdsb/eatwise/releases/download/vX.Y.Z/app-release.apk` 匿名访问也 404
+- 真机表现：UI 显示"出错了" + reason "GitHub API 返回非 200"
+- **测试盲区**：`flutter test` 全过是因为 mocktail mock 了 `http.Client` 永远返回 200，掩盖了真实私有仓库场景
+- **解决方案**：用户决定把仓库改成 public（沙箱 token 无 Administration write 权限，需用户手动操作 GitHub Settings）
+
+**P1 修复：HTTP 请求加 Accept + User-Agent header + 超时**（`lib/core/update/github_release_client.dart`）：
+- 加 `Accept: application/vnd.github+json` + `User-Agent: EatWise-Updater` header（GitHub API 文档要求，缺 User-Agent 可能被拒）
+- 加 15s 超时（`.timeout(_timeout)`）防网络差时 UI 卡死
+- 加 `TimeoutException` 单独 catch 返回友好错误信息
+- HTTP 404/403 错误信息加 hint（404 提示"仓库不存在或为私有"，403 提示"匿名限流 60 req/hour/IP"）
+- 测试 mock 同步更新：`client.get(any())` → `client.get(any(), headers: any(named: 'headers'))`
+- 6 个测试全过
+
+**P2 修复：ApkDownloader 改流式下载（OOM 防护 + 渐进进度）**（`lib/core/update/apk_downloader.dart`）：
+- **原问题 1**：`_client.get()` + `resp.bodyBytes` 全量加载内存，78MB APK 在 2GB RAM 低端机可能 OOM
+- **原问题 2**：进度回调只在全量完成后触发一次（`received == total`），UI 进度条 0%→100% 跳变无渐进动画
+- **修复**：改用 `_client.send(Request('GET', url))` 拿 `StreamedResponse`，`await for (chunk in streamed.stream)` 边收 chunk 边写盘 + 每个 chunk 触发一次 `onProgress`
+- 加 120s 下载超时（APK 较大）
+- 加下载完整性校验：`total > 0 && received != total` 时抛 `ApkDownloadException('下载不完整')`
+- 错误时调 `streamed.stream.drain<void>()` 释放连接避免泄漏
+- **测试新增 3 个**（共 9 个全过）：
+  - "流式分块下载：每 chunk 触发一次 onProgress 且最终文件完整"（用 `MockClient.streaming` 验证 3 个 chunk 触发 3 次回调 + 文件内容拼接正确）
+  - "无 content-length 时进度 total=received 兜底"
+  - "下载不完整（received < total）抛 ApkDownloadException"
+
+**P3 修复：加真实 GitHub API smoke test 覆盖测试盲区**（`test/smoke/github_release_smoke_test.dart` 新建）：
+- 用真实 `http.Client` 调 `api.github.com/repos/qbjsdsb/eatwise/releases/latest`（不 mock）
+- 验证：tag 非空 / version 是 X.Y.Z 格式 / apkDownloadUrl 含 `releases/download/` + `app-release.apk` / HEAD 请求 release asset URL 返回 200
+- `@Tags(['smoke'])` 标记，`flutter test` 默认 skip，需手动 `flutter test test/smoke/github_release_smoke_test.dart` 跑
+- 用 `HttpOverrides.global = null` 禁用 flutter_test HTTP 劫持走真实网络
+- 仓库改 public 后跑此 test 验证全链路 OK
+
+**已审查无问题的部分**（避免误改）：
+- AndroidManifest：REQUEST_INSTALL_PACKAGES 权限 + FileProvider 注册（authority `${applicationId}.fileprovider`）✅
+- file_paths.xml：cache-path + external-cache-path 都覆盖 ✅
+- MainActivity.kt：MethodChannel + Intent ACTION_VIEW + `application/vnd.android.package-archive` ✅
+- providers.dart：`updateServiceProvider` 配置正确 ✅
+- version_comparator.dart：semver 解析与比较正确 ✅
+- update_models.dart：数据模型与异常类型正确 ✅
+- update_page.dart：6 状态机 + `_busy` 防重入 + mounted 检查 ✅
+- apk_installer.dart + MainActivity.kt MethodChannel 名字一致（`com.eatwise.eatwise/apk_installer`）✅
+
+**验证**：
+- `flutter analyze` → No issues found
+- `flutter test` → 836 passed / 3 skipped（含新加的 2 个 smoke test，需手动跑）
+
+**待用户执行**：
+1. **【紧急】把仓库改成 public**（沙箱无权操作）
+2. 改完后沙箱跑 `flutter test test/smoke/github_release_smoke_test.dart` 验证匿名访问 OK
+3. bump 版本号 → 推 v0.18.1 tag → CI build → 发布 v0.18.1 release
+4. 装 v0.18.1 APK 真机验证全链路
 
 ---
 

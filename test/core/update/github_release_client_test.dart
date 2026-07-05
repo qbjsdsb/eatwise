@@ -43,8 +43,8 @@ void main() {
           },
         ],
       });
-      when(() => client.get(any())).thenAnswer((_) async =>
-          http.Response(json, 200,
+      when(() => client.get(any(), headers: any(named: 'headers')))
+          .thenAnswer((_) async => http.Response(json, 200,
               headers: {'content-type': 'application/json'}));
 
       final release = await releaseClient.fetchLatestRelease();
@@ -70,7 +70,7 @@ void main() {
           }
         ],
       });
-      when(() => client.get(any()))
+      when(() => client.get(any(), headers: any(named: 'headers')))
           .thenAnswer((_) async => http.Response(json, 200));
 
       expect(
@@ -80,7 +80,7 @@ void main() {
     });
 
     test('HTTP 403 抛 ReleaseFetchFailedException 含状态码', () async {
-      when(() => client.get(any()))
+      when(() => client.get(any(), headers: any(named: 'headers')))
           .thenAnswer((_) async => http.Response('rate limit', 403));
 
       expect(
@@ -90,19 +90,20 @@ void main() {
       );
     });
 
-    test('HTTP 404 抛 ReleaseFetchFailedException', () async {
-      when(() => client.get(any()))
+    test('HTTP 404 抛 ReleaseFetchFailedException 含状态码', () async {
+      when(() => client.get(any(), headers: any(named: 'headers')))
           .thenAnswer((_) async => http.Response('not found', 404));
 
       expect(
         () => releaseClient.fetchLatestRelease(),
-        throwsA(isA<ReleaseFetchFailedException>()),
+        throwsA(isA<ReleaseFetchFailedException>()
+            .having((e) => e.statusCode, 'statusCode', 404)),
       );
     });
 
     test('JSON 缺 tag_name 字段抛 FormatException', () async {
       final json = jsonEncode({'name': 'no tag'});
-      when(() => client.get(any()))
+      when(() => client.get(any(), headers: any(named: 'headers')))
           .thenAnswer((_) async => http.Response(json, 200));
 
       expect(
@@ -112,7 +113,8 @@ void main() {
     });
 
     test('网络异常抛 ReleaseFetchFailedException', () async {
-      when(() => client.get(any())).thenThrow(Exception('network down'));
+      when(() => client.get(any(), headers: any(named: 'headers')))
+          .thenThrow(Exception('network down'));
 
       expect(
         () => releaseClient.fetchLatestRelease(),

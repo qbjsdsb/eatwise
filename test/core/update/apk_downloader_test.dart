@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -24,6 +25,16 @@ class _MockPathProvider extends PathProviderPlatform {
 
   @override
   Future<String?> getApplicationDocumentsPath() async => cacheDir.path;
+}
+
+/// 构造一个分多块返回的 ByteStream（模拟真实 HTTP 流式响应）。
+http.ByteStream _chunkedStream(List<List<int>> chunks) {
+  final controller = StreamController<List<int>>();
+  for (final c in chunks) {
+    controller.add(c);
+  }
+  controller.close();
+  return http.ByteStream(controller.stream);
 }
 
 void main() {
@@ -83,6 +94,70 @@ void main() {
       expect(progresses.last.fraction, 1.0);
     });
 
+    test('流式分块下载：每 chunk 触发一次 onProgress 且最终文件完整', () async {
+      // 用 MockClient.streaming 模拟真实的分块 StreamedResponse
+      // 3 个 chunk：100 / 50 / 150 字节，总 300 字节
+      final chunk1 = Uint8List.fromList(List.filled(100, 0x41)); // 'A'
+      final chunk2 = Uint8List.fromList(List.filled(50, 0x42)); // 'B'
+      final chunk3 = Uint8List.fromList(List.filled(150, 0x43)); // 'C'
+      final expectedBytes =
+          Uint8List.fromList([...chunk1, ...chunk2, ...chunk3]);
+
+      final client = MockClient.streaming((request, bodyStream) async {
+        return http.StreamedResponse(
+          _chunkedStream([chunk1, chunk2, chunk3]),
+          200,
+          headers: {'content-length': '${expectedBytes.length}'},
+        );
+      });
+
+      final downloader = ApkDownloader(client: client);
+      final progresses = <DownloadProgress>[];
+      final path = await downloader.download(
+        url: 'https://example.com/x.apk',
+        onProgress: (p) => progresses.add(p),
+      );
+
+      // 应触发 3 次进度回调（每个 chunk 一次）
+      expect(progresses.length, 3);
+      // fraction 单调递增
+      expect(progresses[0].received, 100);
+      expect(progresses[0].total, 300);
+      expect(progresses[0].fraction, closeTo(0.333, 0.01));
+      expect(progresses[1].received, 150);
+      expect(progresses[1].fraction, 0.5);
+      expect(progresses[2].received, 300);
+      expect(progresses[2].fraction, 1.0);
+      // 文件内容必须是所有 chunk 拼接
+      final actual = await File(path).readAsBytes();
+      expect(actual, expectedBytes);
+    });
+
+    test('无 content-length 时进度 total=received 兜底（fraction 仍为 0）', () async {
+      // 无 content-length header
+      final chunk = Uint8List.fromList(List.filled(100, 0x42));
+      final client = MockClient.streaming((request, bodyStream) async {
+        return http.StreamedResponse(
+          _chunkedStream([chunk]),
+          200,
+          // 故意不设 content-length
+        );
+      });
+
+      final downloader = ApkDownloader(client: client);
+      final progresses = <DownloadProgress>[];
+      await downloader.download(
+        url: 'https://example.com/x.apk',
+        onProgress: (p) => progresses.add(p),
+      );
+
+      expect(progresses, isNotEmpty);
+      // total == received（兜底），fraction = received/total = 1.0
+      // 但 DownloadProgress.fraction 在 total > 0 时才计算，total=received>0 时 fraction=1.0
+      expect(progresses.last.total, 100);
+      expect(progresses.last.received, 100);
+    });
+
     test('HTTP 404 抛 ApkDownloadException 含状态码', () async {
       final client =
           MockClient((request) async => http.Response('not found', 404));
@@ -138,6 +213,26 @@ void main() {
 
       // 下载后文件应是新内容（100 字节），不是旧内容（3 字节）
       expect(await File(path).length(), 100);
+    });
+
+    test('下载不完整（received < total）抛 ApkDownloadException', () async {
+      // 声明 content-length=300 但实际只发 100 字节
+      final chunk = Uint8List.fromList(List.filled(100, 0x42));
+      final client = MockClient.streaming((request, bodyStream) async {
+        return http.StreamedResponse(
+          _chunkedStream([chunk]),
+          200,
+          headers: {'content-length': '300'},
+        );
+      });
+
+      final downloader = ApkDownloader(client: client);
+      expect(
+        () => downloader.download(
+            url: 'https://example.com/x.apk', onProgress: (_) {}),
+        throwsA(isA<ApkDownloadException>()
+            .having((e) => e.message, 'message', contains('下载不完整'))),
+      );
     });
   });
 }
