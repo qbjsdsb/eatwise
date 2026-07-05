@@ -23,8 +23,8 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.18.3+22（pubspec.yaml）
-- **当前分支**：trae/agent-wX1X6Q（HEAD = M16.4 修复待 push；v0.18.2 未打 tag；v0.18.1 tag 未打；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
+- **当前版本**：0.18.3+22（pubspec.yaml）—— 已发布 v0.18.3 GitHub Release
+- **当前分支**：trae/agent-wX1X6Q（HEAD = 85e8c64 已 push；tag v0.18.3 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
   - `android/app/build.gradle.kts` 必须保持 `isMinifyEnabled=false` + `isShrinkResources=false`（否则 R8 剥掉 sentry/workmanager 反射类致启动崩溃）
@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-05
 
-**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复已 push（commit 221d319，4 层修复详见下方"M16.3"章节）；**M16.4 深度审查修复已 commit 待 push（8 个 commit 93528fe~00d1ccf，4 P1 + 4 P2 + 3 P3 共 11 个修复，详见下方"M16.4"章节；876 全量测试通过，新增 20 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3 修复区域无回归）**。仓库已改 public，匿名访问 GitHub API 200 OK，smoke test 2/2 通过。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
-**当前分支**：trae/agent-wX1X6Q（HEAD = M16.4 修复待 push；远端 origin/trae/agent-wX1X6Q 已同步到 M16.3 commit 221d319；v0.18.2/v0.18.1 未打 tag；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
+**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复已 push（commit 221d319，4 层修复详见下方"M16.3"章节）；**M16.4 深度审查修复已发布 v0.18.3 GitHub Release（8 个 commit 93528fe~85e8c64，4 P1 + 4 P2 + 3 P3 共 11 个修复，详见下方"M16.4"章节；876 全量测试通过，新增 20 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3 修复区域无回归；GitHub Actions workflow 自动 build APK 并上传 release，run id 28733040721 conclusion=success；app-release.apk 78.55 MB + app-debug.apk 175.10 MB）**。仓库已改 public，匿名访问 GitHub API 200 OK，smoke test 2/2 通过。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
+**当前分支**：trae/agent-wX1X6Q（HEAD = 85e8c64 已 push 远端；远端 origin/trae/agent-wX1X6Q 已同步；tag v0.18.3 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
 
 **待用户执行的收尾项**（沙箱无法完成）：
 1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）
