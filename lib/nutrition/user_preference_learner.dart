@@ -32,9 +32,12 @@ class UserPreferenceProfile {
 
   /// 是否有足够样本进行偏好推断。
   /// 总样本 < 5 时不启用偏好加权（避免小样本噪声）。
+  /// 4 个维度（taste/style/texture/priceTier）全部纳入统计。
   bool get hasEnoughSamples {
     final total = tasteFreq.values.fold(0, (a, b) => a + b) +
-        styleFreq.values.fold(0, (a, b) => a + b);
+        styleFreq.values.fold(0, (a, b) => a + b) +
+        textureFreq.values.fold(0, (a, b) => a + b) +
+        priceTierFreq.values.fold(0, (a, b) => a + b);
     return total >= 5;
   }
 

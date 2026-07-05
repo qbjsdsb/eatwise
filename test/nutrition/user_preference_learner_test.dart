@@ -202,6 +202,40 @@ void main() {
       expect(pref.hasSignificantTexturePref, true);
     });
   });
+
+  group('hasEnoughSamples 4 维度统计', () {
+    test('仅 texture 标签 → total >= 5 → hasEnoughSamples=true', () {
+      // 用户所有食物仅有 texture 标签（无 taste/style/priceTier）
+      // 修复前：total = tasteFreq(0) + styleFreq(0) = 0 → false（错误禁用偏好加权）
+      // 修复后：total = tasteFreq(0) + styleFreq(0) + textureFreq(5) + priceTierFreq(0) = 5 → true
+      final pref = UserPreferenceProfile(
+        textureFreq: {'steamed': 3, 'cold': 2},
+      );
+      expect(pref.hasEnoughSamples, true);
+    });
+
+    test('仅 priceTier 标签 → total >= 5 → hasEnoughSamples=true', () {
+      // 用户所有食物仅有 priceTier 标签（无 taste/style/texture）
+      // 修复前：total = tasteFreq(0) + styleFreq(0) = 0 → false（错误禁用偏好加权）
+      // 修复后：total = tasteFreq(0) + styleFreq(0) + textureFreq(0) + priceTierFreq(5) = 5 → true
+      final pref = UserPreferenceProfile(
+        priceTierFreq: {'budget': 4, 'premium': 1},
+      );
+      expect(pref.hasEnoughSamples, true);
+    });
+
+    test('4 维度都有标签 → 回归测试（不破坏现有行为）', () {
+      // taste(5) + style(3) + texture(2) + priceTier(3) = 13 >= 5 → true
+      // 修复前 taste+style=8 >= 5 → true；修复后 13 >= 5 → true（行为一致）
+      final pref = UserPreferenceProfile(
+        tasteFreq: {'spicy': 3, 'sweet': 2},
+        styleFreq: {'seafood': 2, 'western': 1},
+        textureFreq: {'steamed': 1, 'cold': 1},
+        priceTierFreq: {'budget': 2, 'premium': 1},
+      );
+      expect(pref.hasEnoughSamples, true);
+    });
+  });
 }
 
 /// 构造 mock MealLog（仅 foodItemId 用于学习）
