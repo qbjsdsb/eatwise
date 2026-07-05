@@ -23,8 +23,8 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.18.1+20（pubspec.yaml）
-- **当前分支**：trae/agent-wX1X6Q（HEAD = 待 commit 的 M16.2 修复；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
+- **当前版本**：0.18.2+21（pubspec.yaml）
+- **当前分支**：trae/agent-wX1X6Q（HEAD = 待 commit 的 M16.3 修复；v0.18.1 tag 未打；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
   - `android/app/build.gradle.kts` 必须保持 `isMinifyEnabled=false` + `isShrinkResources=false`（否则 R8 剥掉 sentry/workmanager 反射类致启动崩溃）
@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-05
 
-**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复进行中（用户反馈"相册内识别经常出错"，深度审查 14 个问题，本次修复 5 个 P0/P1 + 1 个 P1-4 后台配置不一致，详见下方"M16.2 识别流程修复"章节）；844 全量测试通过（含 M16.2 新增 8 个测试）。仓库已改 public，匿名访问 GitHub API 200 OK，smoke test 2/2 通过。v0.18.0 GitHub Release 已发布（app-release.apk 74.84 MB）；4 个 GitHub Secrets 已上传；CI build 第 3 次成功。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
-**当前分支**：trae/agent-wX1X6Q（HEAD = 82139eb + 待 commit 的 M16.2 修复；远端 origin/trae/agent-wX1X6Q 已同步到 82139eb；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
+**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复进行中（用户反馈"米粉汤碳水 991g 异常"，根因 sanotsu JSON 列错位 + _cleanName 撞名 + importFromAssetsFirstTime 无去重，4 层修复详见下方"M16.3 食物库脏数据污染修复"章节）；856 全量测试通过（含 M16.3 新增 12 个测试）。仓库已改 public，匿名访问 GitHub API 200 OK，smoke test 2/2 通过。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
+**当前分支**：trae/agent-wX1X6Q（HEAD = v0.18.1 release commit + 待 commit 的 M16.3 修复；远端 origin/trae/agent-wX1X6Q 已同步到 v0.18.1；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
 
 **待用户执行的收尾项**（沙箱无法完成）：
 1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）
@@ -1184,6 +1184,62 @@
 1. 装 v0.18.1 APK 真机验证识别流程改善
 2. 关注相册选图 + 低纹理食物（米饭/粥）+ 复杂图（多菜+包装）识别是否好转
 3. 若仍有问题，反馈具体场景（什么图 / 错误信息 / 是否入队），定位剩余 P1/P2
+
+---
+
+## M16.3 食物库脏数据污染修复（2026-07-05）—— v0.18.2 米粉汤碳水 991g 异常根因修复
+
+用户反馈"米粉汤碳水 991g 异常"，AI 推理算出碳水≈48g 但 UI 显示 991g。深度排查发现根因是食物库脏数据污染 + 命名碰撞 + 导入器无去重三者叠加。
+
+**根因诊断**：
+- 991g 算法：`450 × 220 / 100 = 990g`（米粉 per100g 碳水 450 × 份量 220g）+ 其他组分 ~1g
+- 450 来源：sanotsu_common.json foodCode 134001 `"CHO": "450"`（婴儿米粉批次列错位，碳水不可能 >100g/100g）
+- 命名碰撞：`_cleanName` 剥括号后 `"米粉（贝因美果蔬宝多维营养米粉）"` → `"米粉"`，与 FCT 标准"米粉"（foodCode 012410, CHO=85.8）撞名
+- 无去重：`importFromAssetsFirstTime`（首次安装批量导入）无 name 去重（与 `importFromJsonList` 不同），30+ 条重名"米粉"全部入库
+- 查询歧义：`findByNameOrAlias` 优先级 1 按 rowid 顺序返回首个 name 精确命中，婴儿米粉 rowid 更小（JSON 中靠前）被优先返回 → CHO=450 注入
+
+**4 层修复**：
+
+**层 1：清洗 sanotsu_common.json 源头**（`assets/sanotsu_common.json`）：
+- 删除 foodCode 134001 (CHO=450) + 134002 (CHO=420300) 两条脏数据
+- 1664 → 1662 条
+- 治本：新用户首次安装导入的库不再含脏数据
+
+**层 2：导入器加合理性校验**（`lib/data/seed/food_seed_importer.dart` `_parseItem`）：
+- 营养素不可能值过滤（每 100g）：
+  - 蛋白质/脂肪/碳水 > 100 → 视为脏数据置 null
+  - 热量 > 900（纯脂肪 9 kcal/g × 100g = 900）→ 视为脏数据置 null
+- null 值导入时按 0 兜底
+- 防御未来 sanotsu 数据源新增脏数据
+- 删除 unused 方法 `_parseDouble` + `_parseTrValue`（被新校验逻辑替代）
+- **新增测试 5 个**：CHO>100 置 0 / 热量>900 置 0 / 蛋白脂肪>100 置 0 / 正常值不受影响 / 导入数据库后查询不命中脏数据
+
+**层 3：DB migration v3→v4 清理已入库脏数据**（`lib/data/database/database.dart`）：
+- schemaVersion 3 → 4
+- onUpgrade from < 4 时执行 4 条 UPDATE：
+  - `UPDATE food_items SET carbs_per100g = 0 WHERE carbs_per100g > 100`
+  - `UPDATE food_items SET protein_per100g = 0 WHERE protein_per100g > 100`
+  - `UPDATE food_items SET fat_per100g = 0 WHERE fat_per100g > 100`
+  - `UPDATE food_items SET calories_per100g = 0 WHERE calories_per100g > 900`
+- 治本：已安装用户升级时自动清理 DB 里的脏数据
+- 保守降级置 0（不删条目，避免破坏 meal_log 外键引用）
+- 更新 `test/data/backup/json_export_import_test.dart` schemaVersion 断言 3→4
+
+**层 4：findByNameOrAlias 加防御性过滤**（`lib/data/repositories/food_item_repository.dart`）：
+- 优先级 1（name 精确）+ 优先级 2（alias 精确）加 `_isDirtyFoodItem` 过滤
+- 新增 `_isDirtyFoodItem` 方法：营养素不可能值（蛋白/脂肪/碳水 > 100 或 热量 > 900）返回 true
+- 双保险：防层 2/3 漏网的脏数据被命中污染复合菜营养计算
+- 优先级 3+（contains/编辑距离）不过滤（兜底返回，避免返回 null）
+- **新增测试 4 个**：同名脏数据被跳过返回正常条目 / 所有同名都是脏数据时仍返回（contains 兜底）/ 正常值接近上限不被误判 / 热量>900 脏数据被跳过
+
+**验证**：
+- `flutter analyze` → No issues found
+- `flutter test` → 856 passed / 3 skipped（M16.3 新增 12 个测试：5 导入器校验 + 4 findByNameOrAlias 过滤 + 3 其他）
+
+**待用户执行**：
+1. 装 v0.18.2 APK（升级时 migration v3→v4 自动清理 DB 脏数据）
+2. 重新识别米粉汤验证碳水不再异常
+3. 关注其他含"米粉/米饭"组分的复合菜识别是否正常
 
 ---
 

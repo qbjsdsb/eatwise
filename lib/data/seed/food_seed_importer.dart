@@ -110,16 +110,6 @@ class FoodSeedImporter {
     return double.tryParse(firstValue);
   }
 
-  /// 必填 double；"—" → null（数据缺失，导入时允许 null 供后续人工补）
-  static double _parseDouble(dynamic value) {
-    return _parseNullableDouble(value) ?? 0;
-  }
-
-  /// "Tr"（微量）→ 0.05；"—" → null
-  static double _parseTrValue(dynamic value) {
-    return _parseNullableDouble(value) ?? 0;
-  }
-
   /// 导入 JSON 列表到数据库（去重：name + source）
   Future<int> importFromJsonList(List<Map<String, dynamic>> jsonList) async {
     final companions = parseJson(jsonList);

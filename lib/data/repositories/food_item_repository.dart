@@ -14,10 +14,15 @@ class FoodItemRepository {
   /// 精确匹配连锁品牌库条目（source='chain_brand'），命中则直接返回（优先级 0）。
   /// 未命中再走原 5 级 name/alias 匹配。brand 为空时行为不变（向后兼容）。
   ///
+  /// M16.3 修复 P0：优先级 1/2 加脏数据过滤——营养素不可能值（>100g/100g）的条目
+  /// 跳过，避免同名脏条目（如"米粉（贝因美）"CHO=450 经 _cleanName 后与 FCT"米粉"
+  /// 撞名）被优先命中污染复合菜营养计算。脏数据通过 migration v4 已清理入库的，
+  /// 此过滤是双保险防新脏数据。
+  ///
   /// 6 级优先级（防假阳性，逐级降级）：
   /// 0. brand+name 精确（仅 brand 非空时，命中连锁品牌库条目）
-  /// 1. name 精确（归一化后）
-  /// 2. alias 精确（归一化后）
+  /// 1. name 精确（归一化后，跳过脏数据）
+  /// 2. alias 精确（归一化后，跳过脏数据）
   /// 3. name 双向 contains + 长度约束（防"可乐"误命中"可乐鸡翅"）
   /// 4. alias 双向 contains + 长度约束
   /// 5. name 编辑距离 ≤1（仅短名 ≤8 字，typo 容错，如"可东"→"可乐"）
@@ -49,12 +54,13 @@ class FoodItemRepository {
       }
     }
 
-    // 优先级 1：name 精确
+    // 优先级 1：name 精确（M16.3：跳过脏数据条目）
     for (final item in all) {
-      if (_normalize(item.name) == query) return item;
+      if (_normalize(item.name) == query && !_isDirtyFoodItem(item)) return item;
     }
-    // 优先级 2：alias 精确
+    // 优先级 2：alias 精确（M16.3：跳过脏数据条目）
     for (final item in all) {
+      if (_isDirtyFoodItem(item)) continue;
       for (final a in _decodeAliases(item.aliasesJson)) {
         if (_normalize(a) == query) return item;
       }
@@ -96,6 +102,19 @@ class FoodItemRepository {
       if (editHit != null) return editHit;
     }
     return null;
+  }
+
+  /// M16.3 修复 P0：检测食物条目是否为脏数据
+  /// 营养素不可能值（每 100g）：
+  /// - 蛋白质/脂肪/碳水 > 100（单值不可能超 100g/100g）
+  /// - 热量 > 900（纯脂肪 9 kcal/g × 100g = 900，不可能更高）
+  /// 违反任一规则视为脏数据，findByNameOrAlias 跳过避免污染营养计算
+  bool _isDirtyFoodItem(FoodItem item) {
+    if (item.proteinPer100g > 100) return true;
+    if (item.fatPer100g > 100) return true;
+    if (item.carbsPer100g > 100) return true;
+    if (item.caloriesPer100g > 900) return true;
+    return false;
   }
 
   /// 精确匹配（仅 name/alias 归一化后相等，不走模糊）。

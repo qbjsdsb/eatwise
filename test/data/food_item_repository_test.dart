@@ -411,4 +411,110 @@ void main() {
       expect(aliases.split('雪花啤酒').length - 1, 1);
     });
   });
+
+  // M16.3 修复 P0：findByNameOrAlias 脏数据过滤
+  group('M16.3: findByNameOrAlias 跳过脏数据条目', () {
+    // 辅助：插入脏数据条目（模拟 sanotsu 列错位污染）
+    Future<int> seedDirtyFood(String name,
+        {double carbs = 450,
+        double cal = 30,
+        double protein = 1.5,
+        double fat = 0}) async {
+      return db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+            name: name,
+            defaultServingG: 100,
+            caloriesPer100g: cal,
+            proteinPer100g: protein,
+            fatPer100g: fat,
+            carbsPer100g: carbs, // 脏数据：>100
+            source: 'china_fct',
+            sourceVersion: 'v1',
+            createdAt: 0,
+          ));
+    }
+
+    test('同名脏数据条目被跳过，返回正常条目', () async {
+      // 先插入脏数据（rowid 更小，优先级 1 会先命中）
+      await seedDirtyFood('米粉', carbs: 450);
+      // 再插入正常 FCT 米粉
+      await seedFood('米粉', cal: 346, serving: 100);
+      // 修正正常条目的 carbs（seedFood 默认 carbs=13.5，改为 85.8）
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+        name: '正常米粉',
+        defaultServingG: 100,
+        caloriesPer100g: 346,
+        proteinPer100g: 7.4,
+        fatPer100g: 1.0,
+        carbsPer100g: 85.8,
+        source: 'china_fct',
+        sourceVersion: 'v1',
+        createdAt: 0,
+      ));
+
+      final item = await repo.findByNameOrAlias('米粉');
+      expect(item, isNotNull);
+      // 不应命中脏数据（carbs=450），应命中 carbs=13.5 的正常条目（seedFood 默认）
+      // 注：脏数据 carbs=450 > 100 被 _isDirtyFoodItem 跳过
+      expect(item!.carbsPer100g, lessThanOrEqualTo(100),
+          reason: '碳水不可能 >100g/100g，脏数据应被跳过');
+    });
+
+    test('所有同名条目都是脏数据时仍返回（不返回 null）', () async {
+      // 只插入脏数据
+      await seedDirtyFood('毒食物', carbs: 200);
+
+      // 优先级 1 全跳过 → 优先级 3 contains 命中（contains 不过滤脏数据）
+      final item = await repo.findByNameOrAlias('毒食物');
+      expect(item, isNotNull, reason: '所有同名都是脏数据时仍应返回（contains 兜底）');
+    });
+
+    test('正常营养值（接近上限）不被误判为脏数据', () async {
+      // 干米粉 carbs=85.8（接近 100 但合法）
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+        name: '干米粉',
+        defaultServingG: 100,
+        caloriesPer100g: 346,
+        proteinPer100g: 7.4,
+        fatPer100g: 1.0,
+        carbsPer100g: 85.8,
+        source: 'china_fct',
+        sourceVersion: 'v1',
+        createdAt: 0,
+      ));
+
+      final item = await repo.findByNameOrAlias('干米粉');
+      expect(item, isNotNull);
+      expect(item!.carbsPer100g, 85.8); // 不应被过滤
+    });
+
+    test('热量 > 900 的脏数据条目被跳过', () async {
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+        name: '热炸弹',
+        defaultServingG: 100,
+        caloriesPer100g: 1000, // 脏数据：>900
+        proteinPer100g: 5,
+        fatPer100g: 10,
+        carbsPer100g: 20,
+        source: 'china_fct',
+        sourceVersion: 'v1',
+        createdAt: 0,
+      ));
+      await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+        name: '热炸弹',
+        defaultServingG: 100,
+        caloriesPer100g: 200, // 正常
+        proteinPer100g: 5,
+        fatPer100g: 10,
+        carbsPer100g: 20,
+        source: 'china_fct',
+        sourceVersion: 'v1',
+        createdAt: 0,
+      ));
+
+      final item = await repo.findByNameOrAlias('热炸弹');
+      expect(item, isNotNull);
+      expect(item!.caloriesPer100g, lessThanOrEqualTo(900),
+          reason: '热量 >900 的脏数据应被跳过');
+    });
+  });
 }
