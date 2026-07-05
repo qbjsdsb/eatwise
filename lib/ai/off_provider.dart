@@ -13,6 +13,9 @@ class OffResult {
   final double fatPer100g;
   final double carbsPer100g;
   final double defaultServingG;
+  /// 可食部分百分比（0-100）。生鲜食品（如香蕉带皮 65%）< 100，
+  /// 加工食品通常为 null（视为 100%）。与 DB 命中路径 ediblePercent 行为一致。
+  final double? ediblePercent;
 
   const OffResult({
     required this.name,
@@ -22,6 +25,7 @@ class OffResult {
     required this.fatPer100g,
     required this.carbsPer100g,
     required this.defaultServingG,
+    this.ediblePercent,
   });
 }
 

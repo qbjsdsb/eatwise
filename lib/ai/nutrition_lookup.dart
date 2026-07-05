@@ -69,6 +69,7 @@ class NutritionLookup {
       final off = await _offProvider.lookup(dishName, brand: brand);
       if (off != null) {
         // 命中落库：aliases 传菜名本身，下次同名精确命中（避免重复云查）
+        // P1-3：ediblePercent 一起落库，下次 DB 命中路径行为一致
         final foodId = await _repo.insertOff(
           name: dishName,
           caloriesPer100g: off.caloriesPer100g,
@@ -77,13 +78,19 @@ class NutritionLookup {
           carbsPer100g: off.carbsPer100g,
           defaultServingG: off.defaultServingG,
           aliases: <String>[dishName],
+          ediblePercent: off.ediblePercent,
         );
+        // P1-3：OFF 命中营养按 ediblePercent 调整（与 DB 命中路径 _nutritionFromFood 一致）
+        // 生鲜食品（edible<100，如香蕉 65%）乘 ediblePercent/100，加工食品（null/100）不变
+        final edibleFactor =
+            (off.ediblePercent ?? 100).clamp(1, 100) / 100;
+        final effectiveG = servingG * edibleFactor;
         return NutritionResult(
           foodItemId: foodId,
-          calories: off.caloriesPer100g * servingG / 100,
-          proteinG: off.proteinPer100g * servingG / 100,
-          fatG: off.fatPer100g * servingG / 100,
-          carbsG: off.carbsPer100g * servingG / 100,
+          calories: off.caloriesPer100g * effectiveG / 100,
+          proteinG: off.proteinPer100g * effectiveG / 100,
+          fatG: off.fatPer100g * effectiveG / 100,
+          carbsG: off.carbsPer100g * effectiveG / 100,
           oilG: 0,
         );
       }
@@ -171,6 +178,7 @@ class NutritionLookup {
     if (_offProvider != null) {
       final off = await _offProvider.lookup(dishName);
       if (off != null) {
+        // P1-3：ediblePercent 一起落库，下次 DB 命中路径行为一致
         final foodId = await _repo.insertOff(
           name: dishName,
           caloriesPer100g: off.caloriesPer100g,
@@ -179,6 +187,7 @@ class NutritionLookup {
           carbsPer100g: off.carbsPer100g,
           defaultServingG: off.defaultServingG,
           aliases: <String>[dishName],
+          ediblePercent: off.ediblePercent,
         );
         return NutritionRange(
           low: _nutritionFromOff(off, foodId, servingGLow),
@@ -205,15 +214,19 @@ class NutritionLookup {
     );
   }
 
-  /// 从 OFF 云查结果计算单品营养（不乘 ediblePercent，OFF 数据是 per100g 成品值）
+  /// 从 OFF 云查结果计算单品营养（P1-3：含可食部分系数 ediblePercent）
   /// 与 lookupSingleItem OFF 命中路径逻辑一致
+  /// 生鲜食品（edible<100，如香蕉 65%）乘 ediblePercent/100，加工食品（null/100）不变
   NutritionResult _nutritionFromOff(OffResult off, int foodItemId, double servingG) {
+    final edibleFactor =
+        (off.ediblePercent ?? 100).clamp(1, 100) / 100;
+    final effectiveG = servingG * edibleFactor;
     return NutritionResult(
       foodItemId: foodItemId,
-      calories: off.caloriesPer100g * servingG / 100,
-      proteinG: off.proteinPer100g * servingG / 100,
-      fatG: off.fatPer100g * servingG / 100,
-      carbsG: off.carbsPer100g * servingG / 100,
+      calories: off.caloriesPer100g * effectiveG / 100,
+      proteinG: off.proteinPer100g * effectiveG / 100,
+      fatG: off.fatPer100g * effectiveG / 100,
+      carbsG: off.carbsPer100g * effectiveG / 100,
       oilG: 0,
     );
   }

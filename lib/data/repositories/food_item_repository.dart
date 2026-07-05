@@ -519,6 +519,7 @@ class FoodItemRepository {
 
   /// OFF 云查命中落库（source='off'）
   /// aliases 传入菜名本身，下次同名精确命中（避免重复云查）
+  /// P1-3：ediblePercent 一起落库，下次 DB 命中路径行为一致（生鲜食品如香蕉 65%）
   Future<int> insertOff({
     required String name,
     required double caloriesPer100g,
@@ -527,6 +528,7 @@ class FoodItemRepository {
     required double carbsPer100g,
     double defaultServingG = 100,
     List<String>? aliases,
+    double? ediblePercent,
   }) async {
     return _db.into(_db.foodItems).insert(FoodItemsCompanion.insert(
           name: name,
@@ -537,6 +539,7 @@ class FoodItemRepository {
           carbsPer100g: carbsPer100g,
           aliasesJson: Value(
               aliases == null || aliases.isEmpty ? null : jsonEncode(aliases)),
+          ediblePercent: Value(ediblePercent),
           source: 'off',
           sourceVersion: 'off_v1',
           createdAt: DateTime.now().millisecondsSinceEpoch,
