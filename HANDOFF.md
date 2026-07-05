@@ -36,8 +36,8 @@
 
 **最后更新**：2026-07-05
 
-**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复已 push（commit 221d319，4 层修复详见下方"M16.3"章节）；**M16.4 深度审查修复已发布 v0.18.3 GitHub Release（8 个 commit 93528fe~85e8c64，4 P1 + 4 P2 + 3 P3 共 11 个修复，详见下方"M16.4"章节；876 全量测试通过，新增 20 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3 修复区域无回归；GitHub Actions workflow 自动 build APK 并上传 release，run id 28733040721 conclusion=success；app-release.apk 78.55 MB + app-debug.apk 175.10 MB）**。仓库已改 public，匿名访问 GitHub API 200 OK，smoke test 2/2 通过。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
-**当前分支**：trae/agent-wX1X6Q（HEAD = 85e8c64 已 push 远端；远端 origin/trae/agent-wX1X6Q 已同步；tag v0.18.3 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
+**工作区状态**：v0.18.0 release 已发布并 push 远程（16 个 M16 commit ff717a7~bfa54e6，应用内自更新功能初版）；M16.1 应用内更新修复已 push（commit 82139eb，仓库私有致 404 + HTTP 健壮性 + 流式下载 + smoke test）；M16.2 识别流程修复已 push（v0.18.1 release 已发布，6 个 P0/P1 修复）；M16.3 食物库脏数据污染修复已 push（commit 221d319，4 层修复详见下方"M16.3"章节）；M16.4 深度审查修复已发布 v0.18.3 GitHub Release（8 个 commit 93528fe~85e8c64，4 P1 + 4 P2 + 3 P3 共 11 个修复，详见下方"M16.4"章节；876 全量测试通过，新增 20 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3 修复区域无回归；GitHub Actions workflow 自动 build APK 并上传 release，run id 28733040721 conclusion=success；app-release.apk 78.55 MB + app-debug.apk 175.10 MB）；**M16.5 复合菜 UI 全 0 修复已 push（commit f00333e，P0 修复 lookupCompositeDish 命中 0 值条目致 UI 全 0，详见下方"M16.5"章节；881 全量测试通过，新增 5 个 TDD 测试；6 条硬约束全部满足；M16.2/M16.3/M16.4 修复区域无回归）**。仓库已改 public，匿名访问 GitHub API 200 OK，smoke test 2/2 通过。v0.18.1 GitHub Release 已发布（app-release.apk 74.90 MB）；4 个 GitHub Secrets 已上传。v0.17.0 release 已 push（10 个 M15 commit 4d35805~e6b5f3a）；v0.16.0 release 已 push（commit e6ae182 + tag v0.16.0）；v0.15.0 release 已 push（commit 4b35dcb + tag v0.15.0）；Phase 2.12 AI 个性化推荐 v5 已 push（commit 27b6a85）；Phase 4 用户反馈 5 问题改进已 push；深度审查修复批次（2026-07-05）已 push（H1-H6 / M1-M14 / L1-L5）
+**当前分支**：trae/agent-wX1X6Q（HEAD = f00333e 已 push 远端；远端 origin/trae/agent-wX1X6Q 已同步；tag v0.18.3 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182；v0.15.0 tag 指向 4b35dcb）
 
 **待用户执行的收尾项**（沙箱无法完成）：
 1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）
@@ -1328,6 +1328,65 @@
 1. 装 v0.18.3 APK 验证 OFF 云查路径改善（饮料 ml 解析 + 生鲜 ediblePercent 调整）
 2. 验证推荐算法偏好加权在仅有 texture/priceTier 标签时启用
 3. 关注 Sentry 控制台是否收到 processPending 异常上报（如发生）
+
+---
+
+## M16.5 复合菜 UI 全 0 修复（2026-07-05）—— v0.18.4 lookupCompositeDish 命中 0 值条目致 UI 全 0
+
+**触发**：用户从 v0.18.2 升级到 v0.18.3 后反馈"AI 推理出来大概是对的，但最后显示的内容三个数值都严重偏离"（复合菜如米粉汤，UI 显示蛋白/脂肪/碳水全 0）。
+
+**根因（两条互相关联）**：
+
+1. **`lookupCompositeDish` 缺少 `componentsJson != null` 保护（不对称 bug）**
+   - `lookupSingleItem` L53 有保护：`if (food.componentsJson != null) return null;`
+   - 但 `lookupCompositeDish` L114-119 **没有** 同样保护
+   - 组分名 contains 命中历史 `ai_recognized` 占位记录（per100g=0, componentsJson 非空）→ `0 * g / 100 = 0` → 复合菜营养全 0
+   - 场景：用户上次吃"米粉汤"创建占位记录"米粉汤"（per100g=0）。这次识别"米粉汤"复合菜，组分"米粉"通过优先级 3 contains 命中"米粉汤"占位 → 0 计算
+
+2. **`_isDirtyFoodItem` 不检查 0 值（M16.3 migration 副作用）**
+   - M16.3 migration v3→v4 把脏数据（>100/>900）置 0，但条目未删除
+   - `_isDirtyFoodItem` 只检查 >100 不检查 ==0，migration 后的全 0 条目通过过滤
+   - `lookupCompositeDish` 命中这些 0 值条目 → `0 * g / 100 = 0` → 营养全 0
+
+**修复（`lookupCompositeDish` 加两层保护，与 `lookupSingleItem` 对称）**：
+
+1. `food.componentsJson != null` → 视为 miss（占位记录不作为营养计算源）
+2. `_isAllZeroNutrition(food)`（4 字段都为 0）→ 视为 miss（migration 后脏数据）
+   - 水/茶等合法 0 营养食物跳过对复合菜计算无影响（0*g/100=0）
+   - 不在 `_isDirtyFoodItem` 里加，避免影响 `lookupSingleItem` 让水/茶被误过滤
+
+**修复后行为（三个路径全有 `componentHits.isEmpty` 判断 + AI 兜底）**：
+
+- `recognize_controller.dart` L325-334：复合菜 `componentHits` 为空 → `_aiFallbackNutrition` 兜底
+- `recognize_controller.dart` L355-362：附加菜复合菜同上
+- `offline_queue_controller.dart` L256-318：复合菜 `componentHits` 为空 → AI 兜底 / 标记 failed
+
+修复前：命中 0 值条目，`componentHits` 不为空，不触发兜底 → UI 全 0
+修复后：跳过 0 值条目，`componentHits` 为空，触发 AI 兜底 → 用 AI 估算值显示 ✓
+
+### TDD 流程
+
+1. **RED**：5 个新测试（4 个验证 bug 失败 + 1 个边界保护）
+   - 组分 contains 命中占位记录 → 应视为 miss（失败：当前被命中）
+   - 组分精确命中占位记录 → 应视为 miss（失败）
+   - 占位记录跳过后其他正常组分仍能命中（失败）
+   - 组分命中 migration 后全 0 脏数据 → 应视为 miss（失败）
+   - 部分字段为 0 但非全 0 的条目仍正常计算（边界保护，通过）
+2. **GREEN**：最小修复（`lookupCompositeDish` 加两层保护 + `_isAllZeroNutrition` 辅助方法）
+3. **Verify GREEN**：20 测试通过
+4. **回归验证**：881 passed / 3 skipped / 0 failed，`flutter analyze` No issues found
+
+### 验证
+
+- `flutter analyze` → No issues found
+- `flutter test` → **881 passed / 3 skipped / 0 failed**（M16.5 新增 5 个测试；原 876 + 5 = 881）
+- 6 条硬约束全部满足
+- M16.2/M16.3/M16.4 修复区域无回归
+
+### 待用户执行
+
+1. 装 v0.18.4 APK 验证复合菜（如米粉汤/麻婆豆腐）UI 不再显示全 0
+2. 验证修复后复合菜组分全 miss 时正确触发 AI 兜底（显示 AI 估算值而非 0）
 
 ---
 
