@@ -143,13 +143,9 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // 主菜未命中应显示提示文案（"未命中"或"手动"类提示）
-    // 容错：页面可能有多种提示文案，至少找到一个含"命中"或"手动"的 widget
-    final hitHint = find.textContaining('命中');
-    final manualHint = find.textContaining('手动');
-    expect(hitHint.evaluate().isNotEmpty || manualHint.evaluate().isNotEmpty,
-        isTrue,
-        reason: '未命中菜品应显示提示');
+    // 主菜未命中应显示"未命中"提示徽章（仅主菜一条，附加菜命中不显示）
+    expect(find.text('未命中'), findsOneWidget,
+        reason: '未命中菜品应显示"未命中"提示');
   });
 
   testWidgets('M12: 全部记录写入 meal_log（事务原子化，命中菜品各一条）',

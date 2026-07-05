@@ -35,6 +35,9 @@ const Map<String, double> foodDensityTable = <String, double>{
 
 /// 查询食物类别的密度（g/ml）
 /// 未知类别按 1.0 兜底（水密度，保守不放大误差）
+///
+/// 调用方应先 [isLiquidCategory] 判断；solid 返回 1.0 仅作占位，
+/// 不应作为密度调整依据（固体不走 ml→g 换算路径）。
 double densityOf(String? foodCategory) {
   if (foodCategory == null || foodCategory.isEmpty) return 1.0;
   return foodDensityTable[foodCategory] ?? 1.0;

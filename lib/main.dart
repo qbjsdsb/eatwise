@@ -28,7 +28,9 @@ Future<void> _writeBootLog(String msg) async {
     final f = File('${dir.path}/boot_log.txt');
     await f.writeAsString('${DateTime.now().toIso8601String()} $msg\n',
         mode: FileMode.append);
-  } catch (_) {}
+  } catch (_) {
+    // 写 boot_log 本身失败，无可记录介质，忽略
+  }
 }
 
 void main() {
