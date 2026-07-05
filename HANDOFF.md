@@ -1892,6 +1892,77 @@ AI 兜底哨兵路径（foodItemId=0）下，三条识别路径对 `meal_log.act
 
 ---
 
+## M19 AI 推荐去重 + 菜名归一化 + 多样性（2026-07-05）—— v0.19.1
+
+### 任务来源
+用户反馈"智能推荐不够智能，经常推送重复的饭菜"，且希望"推荐的东西能多样一点，丰富一点"。
+
+### 根因分析
+v5 AI 推荐仅在 prompt 层做软约束（"避免与近 3 天重复"），后处理层零兜底，时间窗口仅 3 天，仅菜名精确匹配，历史段传频次 top 20 暗示 AI 推荐高频食物（致推荐集中、缺乏多样性）。LLM 软约束不可靠，AI 违规返回重名菜时代码层不拦截。
+
+### 实现方案（多管齐下）
+
+**去重（4 层）**：
+1. 后处理硬过滤：`_deduplicateAgainstHistory` 静态方法，AI 返回内部去重 + 与近 7 天已吃食物归一化去重
+2. 菜名归一化：新建 `dish_name_normalizer.dart`，4 类规则（去括号/去份量/去品牌/去烹饪方式前缀）
+3. 时间窗口 3→7 天
+4. Prompt 强化：第 3 条"避免"→"禁止（硬约束）" + 历史段加"去重约束优先于频次偏好"声明
+
+**多样性（3 项）**：
+1. Prompt 加品类多样性约束（第 8 条：5 道菜覆盖 3 个食材类别）+ 烹饪方式多样性约束（第 9 条）
+2. 历史段加 `_inferRareCategories` 反向偏好（简易关键词词典，提示 AI 推荐少吃的类别）
+3. temperature 0.8→0.85 微调增加随机性
+
+### 改动文件
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `lib/nutrition/dish_name_normalizer.dart` | 新建 | 菜名归一化纯函数（4 类规则） |
+| `lib/nutrition/ai_recommendation_service.dart` | 改 | 7 天窗口 + 归一化 + `_deduplicateAgainstHistory` + temperature 0.85 |
+| `lib/nutrition/ai_recommendation_prompt.dart` | 改 | system prompt 第 3/8/9 条 + 历史段优先级 + 反向偏好 + `_inferRareCategories` + 去重段标题 |
+| `test/nutrition/dish_name_normalizer_test.dart` | 新建 | 19 个归一化测试 |
+| `test/nutrition/ai_recommendation_service_test.dart` | 扩展 | 6 个去重测试 |
+| `test/nutrition/ai_recommendation_prompt_test.dart` | 扩展 | 10 个多样性/去重断言 |
+| `pubspec.yaml` | 改 | bump 0.19.0+29 → 0.19.1+30 |
+
+### 6 条硬约束复检
+1. ✅ `build.gradle.kts` isMinifyEnabled=false + isShrinkResources=false（本改动未触碰）
+2. ✅ meal_log.food_item_id 非空外键（本改动未触碰 meal_log 写入路径）
+3. ✅ AI 兜底三路径覆盖（本改动未触碰 recognize/multi_dish/offline）
+4. ✅ per100g 反算基于 estimatedWeightGMid（本改动未触碰 per100g 逻辑）
+5. ✅ SecureConfigStore 无 instance 静态属性（本改动未触碰）
+6. ✅ initSentryAndRunApp 命名参数（本改动未触碰）
+
+### 核心不变量
+- AI 失败/空结果仍静默返回空，v4 兜底展示（不变）
+- 缓存的是去重后的结果，行为一致（不变）
+- 过滤后少于 5 道不补足（避免再调 AI 成本 + v4 兜底已混合展示）
+- 归一化只覆盖 4 类明确场景，不覆盖食材重叠模糊匹配（"鸡胸肉沙拉" vs "烤鸡胸沙拉" 仍视为不同，留作 M20 候选）
+
+### 用户感知变化
+| 场景 | 改前 | 改后 |
+|------|------|------|
+| 今天吃了鸡胸肉，明天 AI 推鸡胸肉 | 推送（仅 prompt 软约束） | 硬过滤掉 |
+| 今天吃了"鸡胸肉"，AI 返回"炒鸡胸肉" | 推送（精确匹配不命中） | 归一化后过滤掉 |
+| 4 天前吃过的菜 | 不受约束 | 被去重过滤 |
+| AI 返回同一道菜两次 | 都展示 | 内部去重只留一个 |
+| 推荐全是鸡肉 | 无约束 | prompt 加品类多样性约束 |
+| 推荐全是炒菜 | 无约束 | prompt 加烹饪方式多样性约束 |
+| 换一批刷新结果 | temperature 0.8 | temperature 0.85 略增随机性 |
+
+### 待用户执行
+1. 装 v0.19.1 APK 验证：
+   - 拍照记录几道菜 → 等几天 → 看推荐是否避开近 7 天吃过的
+   - 看推荐是否覆盖不同食材类别（肉/水产/蔬菜/豆制品/蛋类等搭配，不集中推鸡肉）
+   - 看推荐烹饪方式是否多样化（炒/蒸/煮/凉拌搭配，不全是炒）
+   - 看"换一批"是否仍能刷新且结果有变化
+2. 若发现归一化误伤（如"炒饭"和"饭"被误判同一道），反馈后调整 `_cookingPrefixes` 词典
+
+### 已知限制（留作 M20 候选）
+1. 不做食材维度去重（"鸡胸肉沙拉" vs "烤鸡胸沙拉" 仍视为不同）
+2. 不做跨餐次去重（早餐推过的菜午餐不重复，需新建表跟踪）
+
+---
+
 ## 3. 关键架构决策（不要轻易改）
 
 ### 3.1 AI 估热 + 本地库校验两层架构
