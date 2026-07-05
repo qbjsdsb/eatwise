@@ -188,6 +188,8 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
   RecognizeController? _controller;
   String _mealType = 'snack'; // Sprint 2 T0：餐次选择，默认加餐
   bool _isRecognizing = false; // 识别中遮罩：防重复点击 + 给用户反馈
+  // M20：当前识别状态（监听 controller.state 变化，驱动进度卡片 UI）
+  RecognizeState _currentRecognizeState = RecognizeState.idle;
   // 最近一次选图来源（camera/gallery），用于错误态 SnackBar 的"重试"入口；
   // null 表示尚未触发过识别（不应出现错误态，重试按钮也不会显示）
   ImageSource? _lastSource;
@@ -383,10 +385,28 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
   Future<void> _pickAndRecognize(ImageSource source) async {
     if (_isRecognizing) return; // 防重入
     _lastSource = source; // 记录来源供错误态重试
-    setState(() => _isRecognizing = true);
+    setState(() {
+      _isRecognizing = true;
+      _currentRecognizeState = RecognizeState.pickingImage;
+    });
+    // M20：监听 controller.state 变化，实时更新进度卡片 UI
+    void onStateChanged() {
+      if (!mounted) return;
+      final c = _controller;
+      if (c == null) return;
+      setState(() {
+        _currentRecognizeState = c.current.state;
+      });
+    }
+
     try {
       final controller = await _ensureController();
-      await controller.pickAndRecognize(source, mealType: _mealType);
+      controller.addListener(onStateChanged);
+      try {
+        await controller.pickAndRecognize(source, mealType: _mealType);
+      } finally {
+        controller.removeListener(onStateChanged);
+      }
 
       // 监听状态变化跳转校准页
       final state = controller.current;

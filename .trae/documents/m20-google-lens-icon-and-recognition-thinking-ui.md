@@ -355,13 +355,19 @@ test('ic_launcher_foreground.xml 含取景框+食物剪影+扫描线 path（M20 
 - **Green**：改 `recognize_page.dart`（替换 loading 遮罩 + 监听 controller.state + 新增 `_currentRecognizeState` 字段 + `_onRecognizeStateChanged` 回调）→ 测试通过
 - **Refactor**：检查监听机制（addListener/removeListener 配对，避免内存泄漏）
 
-### Round 4：全量回归 + 发布
+### Round 4：全量回归 + 发布（严肃 commit + push + tag）
 - `flutter analyze` → No issues
 - `flutter test --exclude-tags smoke` → 全部通过（含 10 + N 个新测试）
 - 6 条硬约束复检（本改动不动 recognize 控制流/upsert/per100g/build.gradle/main/sentry，硬约束不受影响，但仍需复检）
 - bump 0.19.1+30 → 0.20.0+31
 - HANDOFF.md 回填 M20 章节
-- commit + push + tag v0.20.0
+- **严肃发布三连**（用户明确指令，覆盖项目规则"不要主动 push"）：
+  1. `git add` 暂存所有改动（pubspec.yaml + HANDOFF.md + 资源文件 + 代码 + 测试）
+  2. `git commit -m "M20: Google Lens 风图标 + 识别思考流程 UI（v0.20.0）..."`（HEREDOC 格式，详细描述改动）
+  3. `git push origin main`（推送 commit 到远端）
+  4. `git tag v0.20.0`（打版本 tag）
+  5. `git push origin v0.20.0`（推送 tag 到远端）
+  6. `git log --oneline -3` + `git tag -l v0.20.0` 验证发布成功
 
 ## 假设与决策
 
@@ -411,7 +417,7 @@ test('ic_launcher_foreground.xml 含取景框+食物剪影+扫描线 path（M20 
 | `test/icon_assets_test.dart` | 改 | ~30 行（group 名 + 前景断言 M17→M20） |
 | `test/features/recognize/recognize_progress_card_test.dart` | 新建 | ~200 行（10 个 widget 测试） |
 | `HANDOFF.md` | 改 | M20 章节回填 |
-| `pubspec.yaml` | 改 | bump 0.20.0+31 |
+| `pubspec.yaml` | 改 | bump 0.20.0+31（严肃 commit + push + tag v0.20.0） |
 | 临时参考图（4 张 PNG） | AI 生成 | 不进 App 资源 |
 
 总计 ~490 行新增/修改 + 4 张 AI 参考图。

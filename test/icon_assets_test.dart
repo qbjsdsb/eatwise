@@ -4,10 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 /// 验证 Android 图标资源完整性
 ///
 /// 历史：M15 引入餐叉+餐刀 + 暖橙纯色背景；M17 重设计为 M3 抽象几何
-/// （同心圆环+中心圆点）+ 紫橙双色渐变（用户反馈"图标实在太丑"重设计）。
+/// （同心圆环+中心圆点）+ 紫橙双色渐变；M20 重设计为 Google Lens 风
+/// （圆角取景框+四角 L 形角标+中心食物剪影+扫描线），保留 M17 紫橙渐变背景。
 /// 测试断言随设计演进更新，确保资源文件与设计意图保持一致。
 void main() {
-  group('图标资源完整性 (M17)', () {
+  group('图标资源完整性 (M20)', () {
     const androidResDir = 'android/app/src/main/res';
 
     test('colors.xml 含 ic_launcher_background 紫色起始色（M17 紫橙渐变）', () {
@@ -63,20 +64,26 @@ void main() {
       );
     });
 
-    test('ic_launcher_foreground.xml 含同心圆环+中心圆点 path（M17 重设计）', () {
+    test('ic_launcher_foreground.xml 含取景框+食物剪影+扫描线 path（M20 重设计）', () {
       final file = File('$androidResDir/drawable/ic_launcher_foreground.xml');
       final content = file.readAsStringSync();
-      // M17 几何：外环带顶部 8dp 缺口，从 (50,29) 起
+      // M20 几何：取景框圆角矩形 path，从 (29,29) 开始
       expect(
         content,
-        contains('android:pathData="M50,29'),
-        reason: '外环 path 应从 (50,29) 开始（M17 同心圆环几何布局）',
+        contains('android:pathData="M29,29'),
+        reason: '取景框 path 应从 (29,29) 开始（M20 圆角矩形取景框）',
       );
-      // M17 几何：中心圆点，从 (46,54) 起
+      // M20 几何：中心食物剪影（苹果简化形），从 (44,54) 开始
       expect(
         content,
-        contains('android:pathData="M46,54'),
-        reason: '中心圆点 path 应从 (46,54) 开始（M17 几何布局）',
+        contains('android:pathData="M44,54'),
+        reason: '食物剪影 path 应从 (44,54) 开始（M20 中心食物剪影）',
+      );
+      // M20 几何：扫描线，从 (33,54) 开始
+      expect(
+        content,
+        contains('android:pathData="M33,54'),
+        reason: '扫描线 path 应从 (33,54) 开始（M20 水平扫描线）',
       );
       expect(
         content,
@@ -93,12 +100,23 @@ void main() {
       expect(
         content,
         isNot(contains('M38,24')),
-        reason: 'M15 餐叉 path 应被 M17 同心圆环替换',
+        reason: 'M15 餐叉 path 应被 M20 取景框替换',
       );
       expect(
         content,
         isNot(contains('M62,24')),
-        reason: 'M15 餐刀 path 应被 M17 中心圆点替换',
+        reason: 'M15 餐刀 path 应被 M20 食物剪影替换',
+      );
+      // M17 同心圆环 path 应已移除
+      expect(
+        content,
+        isNot(contains('M50,29')),
+        reason: 'M17 同心圆环 path 应被 M20 取景框替换',
+      );
+      expect(
+        content,
+        isNot(contains('M46,54')),
+        reason: 'M17 中心圆点 path 应被 M20 食物剪影替换',
       );
     });
 
