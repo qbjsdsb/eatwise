@@ -1,3 +1,11 @@
+// CalibrationPage 单品识别校准页测试
+//
+// 方案 D（M25）：废弃品类校准。历史啤酒场景（雪花啤酒被识别成雪碧的 workaround）
+// 已删除——AI 识别精准后啤酒补丁无意义。
+//
+// 保留测试：
+//   1. 查库命中 + AI 偏差大：预览与 onConfirm 用 AI 估算值（M16.8 差异检测）
+//   2. 查库命中 + aiFallbackNutrition=null 老调用方兼容（走原 ratio 逻辑）
 import 'package:drift/native.dart';
 import 'package:eatwise/ai/nutrition_lookup.dart';
 import 'package:eatwise/ai/vision_provider.dart';
@@ -7,15 +15,6 @@ import 'package:eatwise/features/recognize/calibration_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// CalibrationPage 单品 AI 兜底哨兵路径（foodItemId=0）一致性测试
-///
-/// M16.6 Task 5：验证预览显示值与 onConfirm 传入值都用同一 CalibratedNutrition 计算，
-/// 避免"推理过程数值与最终记录数值不一致"。
-///
-/// 方案 D（M25）：废弃品类校准，4 项全保留 AI 估算值。
-/// 场景：beer 品类，AI 估 600kcal（mid=300g，per100g=200，在 [0,900] 内保留）
-/// 用户调整滑块到 servingG=200
-/// 期望：预览 + onConfirm 都用 200 * 200 / 100 = 400（与 AI 推理同源）
 void main() {
   late EatWiseDatabase db;
   late FoodItemRepository foodRepo;
@@ -23,173 +22,48 @@ void main() {
   setUp(() async {
     db = EatWiseDatabase(NativeDatabase.memory());
     foodRepo = FoodItemRepository(db);
+    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
+          name: '番茄',
+          defaultServingG: 100,
+          caloriesPer100g: 18,
+          proteinPer100g: 0.9,
+          fatPer100g: 0.2,
+          carbsPer100g: 3.9,
+          source: 'china_fct',
+          sourceVersion: 'test',
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+        ));
   });
   tearDown(() async => db.close());
 
-  // 构造 beer 单品 AI 兜底场景的 RecognitionResult
-  VisionRecognitionResult beerRecognition() => VisionRecognitionResult(
-        dishName: '啤酒',
-        estimatedWeightGLow: 250,
-        estimatedWeightGMid: 300,
-        estimatedWeightGHigh: 350,
-        foodComponents: const [],
-        cookingMethod: '',
-        isSingleItem: true,
-        confidence: 0.9,
-        promptVersion: 'v1.10',
-        estimatedCalories: 600,
-        estimatedProteinG: 2,
-        estimatedFatG: 1,
-        estimatedCarbsG: 15,
-        foodCategory: 'beer',
-      );
-
-  // AI 兜底哨兵：foodItemId=0，calories=600 对应 mid=300 份量
-  NutritionResult aiFallback() => NutritionResult(
-        foodItemId: 0,
-        calories: 600,
-        proteinG: 2,
-        fatG: 1,
-        carbsG: 15,
-        oilG: 0,
-        source: NutritionSource.aiEstimate,
-      );
-
-  testWidgets(
-      'AI 兜底哨兵路径：方案 D — 预览显示 actualCalories（beer 400，与 AI 推理一致）',
+  testWidgets('查库命中 + aiFallbackNutrition=null：走原 ratio 逻辑兼容老调用方',
       (tester) async {
-    // 用 suggestedServingG=200 把初始滑块值定为 200（避开手动拖滑块的精度问题）
-    await tester.pumpWidget(MaterialApp(
-      home: CalibrationPage(
-        recognitionResult: beerRecognition(),
-        singleNutrition: aiFallback(),
-        foodItemRepo: foodRepo,
-        suggestedServingG: 200,
-        onConfirm: (_, __, ___, ____, _____, {componentsSnapshot}) async {},
-      ),
-    ));
-    await tester.pumpAndSettle();
-
-    // 方案 D：per100g=200（保留 AI 值），actualCalories = 200 * 200 / 100 = 400
-    // 预览卡片用 headlineMedium 显示热量整数：'400'
-    expect(find.text('400'), findsOneWidget,
-        reason: '方案 D：预览显示 400 kcal（与 AI 推理一致）');
-    // 不应出现 '86'（旧品类校准值的特征字符串）
-    expect(find.text('86'), findsNothing,
-        reason: '方案 D：预览不应出现品类校准的 86 kcal');
-  });
-
-  testWidgets(
-      'AI 兜底哨兵路径：方案 D — onConfirm 传入 actualCalories（beer 400，与预览一致）',
-      (tester) async {
-    double? capturedCalories;
-    double? capturedProtein;
-    double? capturedFat;
-    double? capturedCarbs;
-
-    await tester.pumpWidget(MaterialApp(
-      home: CalibrationPage(
-        recognitionResult: beerRecognition(),
-        singleNutrition: aiFallback(),
-        foodItemRepo: foodRepo,
-        suggestedServingG: 200,
-        onConfirm: (servingG, calories, protein, fat, carbs,
-            {componentsSnapshot}) async {
-          capturedCalories = calories;
-          capturedProtein = protein;
-          capturedFat = fat;
-          capturedCarbs = carbs;
-        },
-      ),
-    ));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('确认记录'));
-    await tester.pumpAndSettle();
-
-    expect(capturedCalories, isNotNull);
-    // 方案 D：actualCalories = 200 * 200 / 100 = 400（保留 AI 值）
-    expect(capturedCalories, closeTo(400, 0.5),
-        reason: '方案 D：onConfirm 传入 400 kcal，与预览一致');
-    // 方案 D：宏量保留 AI 值（4 项全保留，只做物理 clamp）
-    // beer AI per100g: protein=2*100/300=0.667, fat=1*100/300=0.333, carbs=15*100/300=5
-    // actualProtein = 0.667 * 200 / 100 = 1.333
-    // actualFat = 0.333 * 200 / 100 = 0.667
-    // actualCarbs = 5 * 200 / 100 = 10
-    expect(capturedProtein, closeTo(1.333, 0.05));
-    expect(capturedFat, closeTo(0.667, 0.05));
-    expect(capturedCarbs, closeTo(10, 0.1));
-  });
-
-  testWidgets(
-      'AI 兜底哨兵路径：预览与 onConfirm 传入值严格一致（同一 CalibratedNutrition 计算）',
-      (tester) async {
-    // 同一 servingG 下，预览显示的 cal 必须等于 onConfirm 传入的 cal
-    double? previewCal;
-    double? capturedCalories;
-
-    await tester.pumpWidget(MaterialApp(
-      home: CalibrationPage(
-        recognitionResult: beerRecognition(),
-        singleNutrition: aiFallback(),
-        foodItemRepo: foodRepo,
-        suggestedServingG: 200,
-        onConfirm: (servingG, calories, protein, fat, carbs,
-            {componentsSnapshot}) async {
-          capturedCalories = calories;
-        },
-      ),
-    ));
-    await tester.pumpAndSettle();
-
-    // 从预览卡片读取热量值（headlineMedium Text 节点）
-    // 卡片结构：Text(cal.toStringAsFixed(0)) 后跟 Text('kcal')
-    final kcalText = find.ancestor(
-      of: find.text('kcal'),
-      matching: find.byType(Row),
+    // 老调用方未传 aiFallbackNutrition（M16.8 前的接口）
+    // 查库命中分支应保持原 ratio 逻辑：calories * servingG / mid
+    final r = VisionRecognitionResult(
+      dishName: '番茄',
+      estimatedWeightGLow: 90,
+      estimatedWeightGMid: 100,
+      estimatedWeightGHigh: 110,
+      estimatedCalories: 18,
+      estimatedProteinG: 0.9,
+      estimatedFatG: 0.2,
+      estimatedCarbsG: 3.9,
+      foodComponents: const [],
+      cookingMethod: '',
+      isSingleItem: true,
+      confidence: 0.9,
+      promptVersion: 'v1.10',
     );
-    expect(kcalText, findsOneWidget);
-    // 在该 Row 内找第一个 Text（就是 cal 数字）
-    final calTextWidget = tester.widgetList<Text>(
-      find.descendant(of: kcalText, matching: find.byType(Text)),
-    ).first;
-    previewCal = double.parse(calTextWidget.data!);
-
-    await tester.tap(find.text('确认记录'));
-    await tester.pumpAndSettle();
-
-    expect(capturedCalories, isNotNull);
-    // 预览与 onConfirm 必须严格一致（同一 CalibratedNutritionCalculator.compute 结果）
-    expect(capturedCalories, closeTo(previewCal, 0.001),
-        reason: '预览值与 onConfirm 传入值必须完全一致');
-  });
-
-  testWidgets(
-      '查库命中路径（foodItemId>0）保持原 ratio 逻辑，不受 AI 兜底校准影响',
-      (tester) async {
-    // 写入一份 beer 食物库记录，caloriesPer100g=43（已校准）
-    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
-          name: '啤酒',
-          defaultServingG: 100,
-          caloriesPer100g: 43,
-          proteinPer100g: 0.5,
-          fatPer100g: 0,
-          carbsPer100g: 3.1,
-          source: 'manual',
-          sourceVersion: 'test',
-          createdAt: 1000,
-        ));
     final food = await (db.select(db.foodItems)
-          ..where((t) => t.name.equals('啤酒')))
+          ..where((t) => t.name.equals('番茄')))
         .getSingle();
-
-    // 查库命中：foodItemId > 0，calories 对应 mid=300 份量（43 * 300 / 100 = 129）
-    final dbHit = NutritionResult(
+    final lookupHit = NutritionResult(
       foodItemId: food.id,
-      calories: 129, // 43 * 300 / 100
-      proteinG: 1.5,
-      fatG: 0,
-      carbsG: 9.3,
+      calories: 18, // 库 per100g=18, mid=100 → calories=18
+      proteinG: 0.9,
+      fatG: 0.2,
+      carbsG: 3.9,
       oilG: 0,
       source: NutritionSource.database,
     );
@@ -197,8 +71,8 @@ void main() {
     double? capturedCalories;
     await tester.pumpWidget(MaterialApp(
       home: CalibrationPage(
-        recognitionResult: beerRecognition(),
-        singleNutrition: dbHit,
+        recognitionResult: r,
+        singleNutrition: lookupHit,
         foodItemRepo: foodRepo,
         suggestedServingG: 200,
         onConfirm: (servingG, calories, protein, fat, carbs,
@@ -212,10 +86,10 @@ void main() {
     await tester.tap(find.text('确认记录'));
     await tester.pumpAndSettle();
 
-    // 查库命中分支保持原 ratio 逻辑：129 * 200/300 = 86
-    // （DB per100g 已是校准值，无需再次校准，原 ratio 换算即正确）
-    expect(capturedCalories, closeTo(86, 0.5),
-        reason: '查库命中路径走原 ratio 逻辑，43 * 200 / 100 = 86');
+    // 查库命中 + 无 aiFallback：走原 ratio 逻辑
+    // 18 * 200 / 100 = 36
+    expect(capturedCalories, closeTo(36, 0.5),
+        reason: '查库命中 + 无 aiFallback 走原 ratio：18 * 200 / 100 = 36');
   });
 
   // M16.8 Task 5：查库命中分支预览与 onConfirm 同步用差异检测。

@@ -250,96 +250,9 @@ void main() {
   });
 
   // M16.6 Task 4：AI 兜底哨兵路径 actualCalories 一致性
-  // 复现 bug：附加菜"啤酒"走 AI 兜底哨兵（foodItemId=0），AI 估算整菜 600kcal（mid=300g），
-  // 品类校准后 per100g=43，但 meal_log.actualCalories 仍写未校准的 600（与 food_item 脱节）。
-  // 修复后：meal_log.actualCalories 应 = 校准后 per100g * servingG / 100 = 43 * 300 / 100 = 129
-  testWidgets('M16.6: AI 兜底哨兵路径 actualCalories 用校准后 per100g 计算（与 food_item 一致）',
-      (tester) async {
-    final container = ProviderContainer(overrides: [
-      recognize.databaseProvider.overrideWith((ref) => db),
-    ]);
-    addTearDown(container.dispose);
-
-    // 附加菜：啤酒，AI 兜底哨兵（foodItemId=0）
-    // estimatedCalories=600（mid=300g → per100g=200，偏离 beer 默认 43 的 4.65 倍 → 校准为 43）
-    // estimatedProteinG=2 / fatG=1 / carbsG=15
-    const beerDish = VisionRecognitionResult(
-      dishName: '啤酒',
-      estimatedWeightGLow: 250,
-      estimatedWeightGMid: 300,
-      estimatedWeightGHigh: 350,
-      foodComponents: [],
-      cookingMethod: '',
-      isSingleItem: true,
-      confidence: 0.9,
-      promptVersion: 'v1.10',
-      estimatedCalories: 600,
-      estimatedProteinG: 2,
-      estimatedFatG: 1,
-      estimatedCarbsG: 15,
-      foodCategory: 'beer',
-    );
-    final beerAiFallback = NutritionResult(
-      foodItemId: 0, // 哨兵：写库前必须 upsertAiRecognized 替换为真实 id
-      calories: 600, // AI 估算整菜热量（对应 mid=300g）
-      proteinG: 2,
-      fatG: 1,
-      carbsG: 15,
-      oilG: 0,
-      source: NutritionSource.aiEstimate,
-    );
-
-    await tester.pumpWidget(UncontrolledProviderScope(
-      container: container,
-      child: MaterialApp(home: MultiDishPage(
-        mainDish: mainDish, // 番茄（查库命中，foodItemId=1）
-        mainSingle: mainSingle,
-        additionalItems: [
-          MultiDishItem(
-              dish: beerDish, singleNutrition: beerAiFallback),
-        ],
-        mealType: 'dinner',
-      )),
-    ));
-    await tester.pumpAndSettle();
-
-    // 用户不调整滑块：serving = mid = 300
-    final recordButton = find.text('全部记录');
-    await tester.tap(recordButton);
-    await tester.pumpAndSettle();
-
-    // meal_log 应有 2 条（番茄 + 啤酒）
-    final meals = await db.mealLogs.select().get();
-    expect(meals.length, 2, reason: '番茄 + 啤酒 各一条');
-
-    // 找到啤酒对应的 meal_log（通过 food_item 名称匹配）
-    final beerFoodItem = await (db.foodItems.select()
-          ..where((f) => f.name.equals('啤酒') & f.source.equals('ai_recognized')))
-        .getSingleOrNull();
-    expect(beerFoodItem, isNotNull,
-        reason: '啤酒应通过 upsertAiRecognized 创建 food_item');
-    final beerMeal = meals.firstWhere((m) => m.foodItemId == beerFoodItem!.id);
-
-    // 啤酒 food_item.caloriesPer100g 应为校准后的 43（不是 AI 估算的 200）
-    expect(beerFoodItem!.caloriesPer100g, closeTo(43, 0.5),
-        reason: 'food_item.caloriesPer100g 应用品类校准为 beer 默认值 43');
-    // M16.8 Task 1：宏量保留 AI 值（带 clamp），不再替换为品类默认值
-    // AI per100g = aiG * 100 / mid：蛋白 2*100/300≈0.667 / 脂肪 1*100/300≈0.333 / 碳水 15*100/300=5.0
-    expect(beerFoodItem.proteinPer100g, closeTo(2 * 100 / 300, 0.01));
-    expect(beerFoodItem.fatPer100g, closeTo(1 * 100 / 300, 0.01));
-    expect(beerFoodItem.carbsPer100g, closeTo(15 * 100 / 300, 0.01));
-
-    // 啤酒 meal_log.actualCalories 应 = 43 * 300 / 100 = 129（不是未校准的 600）
-    expect(beerMeal.actualCalories, closeTo(129, 0.5),
-        reason: 'meal_log.actualCalories 应基于校准后 per100g 计算，与 food_item 一致');
-    // actualMacros 也用校准后 per100g * servingG / 100（宏量保留 AI 值反算）
-    // serving=mid=300，actualMacros = AI 估算原值（per100g * 300/100 = aiG * 100/mid * mid/100 = aiG）
-    expect(beerMeal.actualProteinG, closeTo(2, 0.01));
-    expect(beerMeal.actualFatG, closeTo(1, 0.01));
-    expect(beerMeal.actualCarbsG, closeTo(15, 0.01));
-    // actualServingG 应 = 用户份量 300
-    expect(beerMeal.actualServingG, closeTo(300, 0.01));
-  });
+  // 历史场景曾用啤酒（雪花啤酒被识别成雪碧的 workaround），方案 D（M25）废弃品类校准后
+  // 啤酒补丁已无意义。AI 兜底哨兵路径的 actualCalories 一致性由 recognize_page_test.dart
+  // 与 calibrated_nutrition_calculator_test.dart 的 solid/soup 场景覆盖。
 
   // M16.8 Task 6：查库命中分支接入差异检测
   // 复现 bug：主菜"番茄炒蛋"查库命中（foodItemId>0），库 per100g=80（脏数据），

@@ -30,94 +30,9 @@ void main() {
 
   tearDown(() async => db.close());
 
-  /// beer 场景 VisionRecognitionResult
-  /// AI estimatedCalories=600，mid=300 → per100g=200（偏离 beer 默认 43 两倍以上）
-  const beerResult = VisionRecognitionResult(
-    dishName: '啤酒',
-    estimatedWeightGLow: 250,
-    estimatedWeightGMid: 300,
-    estimatedWeightGHigh: 350,
-    foodComponents: [],
-    cookingMethod: 'drink',
-    isSingleItem: true,
-    confidence: 0.9,
-    promptVersion: 'v1.4',
-    foodCategory: 'beer',
-    estimatedCalories: 600,
-    estimatedProteinG: 3.0,
-    estimatedFatG: 0,
-    estimatedCarbsG: 18,
-  );
-
-  /// AI 兜底 NutritionResult（foodItemId=0 哨兵，calories 对应 mid 份量）
-  final aiFallback = NutritionResult(
-    foodItemId: 0,
-    calories: 600,
-    proteinG: 3.0,
-    fatG: 0,
-    carbsG: 18,
-    oilG: 0,
-    source: NutritionSource.aiEstimate,
-  );
-
-  test(
-      'M16.6/方案D: AI 兜底哨兵 beer 场景 meal_log.actualCalories 与 AI 推理一致',
-      () async {
-    // 用户不调整滑块，servingG=300
-    // CalibrationPage 按 ratio=servingG/mid=1 传 onConfirm：
-    //   calories=600*1=600（未校准），protein=3.0，fat=0，carbs=18
-    final actualCalories = await RecognizePage.writeCalibratedMealLog(
-      foodRepo: foodRepo,
-      mealRepo: mealRepo,
-      result: beerResult,
-      singleNutrition: aiFallback,
-      compositeNutrition: null,
-      mealType: 'dinner',
-      servingG: 300,
-      calories: 600,
-      protein: 3.0,
-      fat: 0,
-      carbs: 18,
-      componentsSnapshot: null,
-      imagePath: null,
-    );
-
-    // meal_log 应写入 1 条
-    final meals = await db.mealLogs.select().get();
-    expect(meals.length, 1, reason: '应写入 1 条 meal_log');
-
-    // food_item 应写入 1 条（ai_recognized）
-    final foods = await db.foodItems.select().get();
-    expect(foods.length, 1, reason: '应写入 1 条 food_item');
-
-    // 方案 D（M25）：废弃品类校准，4 项全保留 AI 估算值
-    // AI 估 600 kcal/300g → per100g=200（在 [0,900] 内，不被品类校准覆盖）
-    expect(foods.first.caloriesPer100g, closeTo(200, 0.5),
-        reason: '方案 D：food_item.caloriesPer100g 保留 AI 反算值 200');
-
-    // meal_log.actualCalories = 200 * 300 / 100 = 600（与 AI 推理一致）
-    expect(meals.first.actualCalories, closeTo(600, 0.5),
-        reason: '方案 D：meal_log.actualCalories 与 AI 推理一致（600）');
-
-    // actualCalories 返回值应与 meal_log 一致（用于 toast 显示）
-    expect(actualCalories, closeTo(600, 0.5),
-        reason: '返回的 actualCalories 应与 meal_log 一致');
-
-    // 方案 D：宏量保留 AI 值（4 项全保留，只做物理 clamp）
-    // AI per100g: protein=3.0*100/300=1.0, fat=0, carbs=18*100/300=6.0
-    // actualProteinG = 1.0 * 300 / 100 = 3.0
-    expect(meals.first.actualProteinG, closeTo(3.0, 0.05),
-        reason: 'actualProteinG 保留 AI 值');
-    expect(meals.first.actualFatG, closeTo(0, 0.01),
-        reason: 'actualFatG 保留 AI 值');
-    expect(meals.first.actualCarbsG, closeTo(18.0, 0.05),
-        reason: 'actualCarbsG 保留 AI 值');
-
-    // food_item 的 per100g 宏量也应与 meal_log 同源（保留 AI 反算值）
-    expect(foods.first.proteinPer100g, closeTo(1.0, 0.01));
-    expect(foods.first.fatPer100g, closeTo(0, 0.01));
-    expect(foods.first.carbsPer100g, closeTo(6.0, 0.01));
-  });
+  // 历史啤酒哨兵场景已删除（方案 D 废弃品类校准，啤酒补丁无意义）
+  // AI 兜底哨兵路径的 actualCalories 一致性由 calibrated_nutrition_calculator_test.dart
+  // 与 plan_d_calibrate_removal_test.dart 的 solid/soup 场景覆盖
 
   test('M16.6: 查库命中路径（foodItemId>0）不受校准影响，保持原值', () async {
     // 预置一条食物库记录（番茄，id=1）

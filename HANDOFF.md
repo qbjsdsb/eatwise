@@ -34,7 +34,19 @@
 
 ## 2. 当前状态（每次会话结束更新）
 
-**最后更新**：2026-07-05
+**最后更新**：2026-07-06
+
+**M25 方案 D 完成（2026-07-06）—— 废弃品类校准 + 酒精豁免 Atwater（米粉汤 bug 修复）**：用户报告"AI 推理米粉汤 526 kcal 但页面显示 171 kcal"。根因：`FoodCategoryDefaults.calibrate` 用"品类均值（soup=30）"覆盖"AI 具体估算（per100g=92.3，比值 3.08>2 触发校准）"，且 calories 用默认值、宏量保留 AI 值，破坏 Atwater 自洽（4×16+9×13+4×75=481 ≠ 171）。方案 D 废弃品类校准，4 项全保留 AI 估算值，只做物理 clamp [0,900] + 宏量 [0,100]；酒精饮料（beer/wine/alcohol）豁免 Atwater 校验（酒精 7kcal/g 不在 4p+9f+4c 系数内）。同时清理历史啤酒补丁（雪花啤酒被识别成雪碧的 workaround，AI 识别精准后无意义）。
+
+修复清单：
+- `lib/data/seed/food_category_defaults.dart` calibrate 方法重写：删除比值判断 + 默认值替换，保留 [0,900] clamp + 宏量 [0,100] clamp；defaults 表保留（PostProcessor 宏量反推仍用）
+- `lib/core/util/recognition_validator.dart` Atwater 校验加酒精豁免：beer/wine/alcohol 品类 cal>0 且 expected>0 时跳过修正（保留 AI cal）
+- 测试：新增 `test/features/plan_d_calibrate_removal_test.dart`（13 测试覆盖米粉汤/奶油汤/八宝粥/物理 clamp/酒精豁免/端到端一致性）；清理 4 个测试文件的啤酒场景（calibration_page_test 删 beer 哨兵 + 重写查库命中；multi_dish_page_test 删 beer 哨兵；recognize_page_test 删 beer 哨兵 + helper；food_category_defaults_test 重写 beer 期望值）
+
+最终验证：
+- `flutter analyze` → No issues found (17.3s)
+- `flutter test` → 1038 passed / 3 skipped / 2 failed（基线 1032 → +6；失败 2 个是网络测试 glm_flash timeout + github_release 403 限流，与方案 D 无关）
+- 6 硬约束全部满足（方案 D 未碰 build.gradle / meal_log 外键 / AI 三路径 / per100g 反算 / SecureConfigStore / initSentryAndRunApp）
 
 **M24 全部完成（2026-07-05）—— v0.22.0+34 P1 清零（13 项 P1 修复 + 21 新测试）**：M23 全面细致审查发现 67 项问题（0 P0 / 13 P1 / 54 P2），本里程碑一次性修完全部 13 项 P1，代码健康度从 B+ 提升到 A-。用户指令"好的，按照建议来，严谨仔细，反复检查"，全程严格 TDD（Red-Green-Refactor）+ sub-agent 二次审查 + 6 硬约束核查。
 
