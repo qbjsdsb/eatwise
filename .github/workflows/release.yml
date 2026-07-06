@@ -211,22 +211,29 @@ jobs:
 
       - name: Force update release body (changelog)
         # action-gh-release 在 release 已存在时可能不更新 body，用 API 强制 PATCH
-        # 将 changelog + 安装说明组合 body 写入 release
+        # 用 python 构造 body（避免 shell heredoc 吃掉反引号 `method_name`）
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ steps.tag.outputs.release_tag }}
+          CHANGELOG_BODY: ${{ steps.changelog.outputs.body }}
+          PUBSPEC_VERSION: ${{ steps.version.outputs.pubspec_version }}
+          RUN_ID: ${{ github.run_id }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
         run: |
           set -e
           # 查 release id
           RELEASE_ID=$(curl -s -H "Authorization: token ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${RELEASE_TAG}" \
+            "https://api.github.com/repos/${REPO}/releases/tags/${RELEASE_TAG}" \
             | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
           echo "release_id=$RELEASE_ID"
 
-          # 组装 body：changelog + 分隔线 + 安装说明
-          cat > /tmp/release_body.md <<BODY_EOF
-          ${{ steps.changelog.outputs.body }}
+          # 用 python 构造 body JSON（避免 shell heredoc + 反引号问题）
+          python3 << 'PYEOF' > /tmp/patch_payload.json
+          import json, os
+          changelog = os.environ['CHANGELOG_BODY']
+          body = f"""{changelog}
 
           ---
 
@@ -252,22 +259,16 @@ jobs:
 
           ## 版本信息
 
-          - 应用版本: ${{ steps.version.outputs.pubspec_version }}
-          - 构建时间: ${{ github.run_id }}
-          - 提交: ${{ github.sha }}
-          - 完整 changelog: [CHANGELOG.md](https://github.com/qbjsdsb/eatwise/blob/main/CHANGELOG.md)
-          BODY_EOF
-
-          # 用 python 构造 JSON body（避免 shell 转义问题）
-          python3 -c "
-          import json
-          with open('/tmp/release_body.md','r',encoding='utf-8') as f:
-              body = f.read().lstrip()  # 去掉前导空格（heredoc 缩进）
-          # 去掉每行前导 10 空格（heredoc 缩进）
+          - 应用版本: {os.environ['PUBSPEC_VERSION']}
+          - 构建时间: {os.environ['RUN_ID']}
+          - 提交: {os.environ['SHA']}
+          - 完整 changelog: [CHANGELOG.md](https://github.com/{os.environ['REPO']}/blob/main/CHANGELOG.md)
+          """
+          # 去掉每行前导 10 空格（python heredoc 缩进）
           lines = [line[10:] if line.startswith('          ') else line for line in body.split('\n')]
           body = '\n'.join(lines)
-          print(json.dumps({'body': body}))
-          " > /tmp/patch_payload.json
+          print(json.dumps({'body': body}, ensure_ascii=False))
+          PYEOF
           echo "=== patch payload size ==="
           wc -c /tmp/patch_payload.json
 
@@ -276,5 +277,5 @@ jobs:
             -H "Authorization: token ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             -d @/tmp/patch_payload.json \
-            "https://api.github.com/repos/${{ github.repository }}/releases/${RELEASE_ID}" \
+            "https://api.github.com/repos/${REPO}/releases/${RELEASE_ID}" \
             | python3 -c "import json,sys; d=json.load(sys.stdin); print('updated release:', d.get('html_url'), 'body_len:', len(d.get('body','')))"
