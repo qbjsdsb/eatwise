@@ -117,12 +117,25 @@ class RecognitionValidator {
           reasons.add('calories=0 但宏量营养素之和=$expected，修正为 $expected');
           correctedCalories = expected;
         } else if (cal > 0 && expected > 0) {
-          final diff = (expected - cal).abs();
-          final ratio = diff / cal;
-          if (ratio > _calorieTolerance) {
-            reasons.add('营养素不自洽: calories=$cal, 期望=$expected (4p+9f+4c), '
-                '偏差 ${(ratio * 100).toStringAsFixed(1)}%，修正为 $expected');
-            correctedCalories = expected;
+          // 方案 D（M25）：酒精饮料豁免 Atwater 校验
+          // 啤酒/葡萄酒/烈酒的 calories 主要来自酒精（7 kcal/g），不在 Atwater 系数（4p+9f+4c）内。
+          // 例：1 瓶 330ml 啤酒 cal=129, p=1.5, f=0, c=9.3, expected=43.8
+          // 修复前：偏差 66% > 10% → 修正为 43.8（丢失 85 kcal 酒精热量）
+          // 修复后：beer/wine/alcohol 品类豁免，保留 AI cal
+          final isAlcohol = result.foodCategory == 'beer' ||
+              result.foodCategory == 'wine' ||
+              result.foodCategory == 'alcohol';
+          if (isAlcohol) {
+            // 酒精饮料：保留 AI cal，不修正（酒精热量不在 Atwater 系数内）
+            // 不添加 reason，避免 Sentry 噪音
+          } else {
+            final diff = (expected - cal).abs();
+            final ratio = diff / cal;
+            if (ratio > _calorieTolerance) {
+              reasons.add('营养素不自洽: calories=$cal, 期望=$expected (4p+9f+4c), '
+                  '偏差 ${(ratio * 100).toStringAsFixed(1)}%，修正为 $expected');
+              correctedCalories = expected;
+            }
           }
         }
         // expected == 0 且 cal > 0：可能是酒精饮料（7 kcal/g 不在 Atwater 系数内）、

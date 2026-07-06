@@ -1,7 +1,12 @@
 import 'package:eatwise/data/seed/food_category_defaults.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// FoodCategoryDefaults 品类默认值校准测试（P0-1/P0-2）
+/// FoodCategoryDefaults 品类默认值校准测试（P0-1/P0-2 + 方案 D M25）
+///
+/// 方案 D（M25）废弃品类校准：
+///   - calibrate 不再用品类均值覆盖 AI 估算（米粉汤 bug 修复）
+///   - 4 项全保留 AI 值，只做物理 clamp [0,900] + 宏量 [0,100]
+///   - defaults 表保留（PostProcessor 宏量反推仍用）
 void main() {
   group('FoodCategoryDefaults', () {
     test('啤酒默认值 43 kcal/100g', () {
@@ -19,7 +24,7 @@ void main() {
       expect(FoodCategoryDefaults.caloriesPer100g('unknown'), isNull);
     });
 
-    test('calibrate 啤酒 AI 估算合理（43-86）保留 AI 值', () {
+    test('calibrate 啤酒 AI 估算合理（50）保留 AI 值', () {
       final result = FoodCategoryDefaults.calibrate(
         aiCaloriesPer100g: 50,
         aiProteinPer100g: 0.5,
@@ -27,10 +32,11 @@ void main() {
         aiCarbsPer100g: 3.5,
         category: 'beer',
       );
-      expect(result.$1, 50); // 50/43≈1.16，在 0.5-2 倍区间，保留
+      expect(result.$1, 50); // 方案 D：保留 AI 值
     });
 
-    test('calibrate 啤酒 AI 估算离谱（200）用默认值 43', () {
+    test('方案 D：calibrate 啤酒 AI 估算离谱（200）保留 AI 值（不再用默认 43）', () {
+      // 方案 D 改变行为：废弃品类校准，信任 AI 具体估算
       final result = FoodCategoryDefaults.calibrate(
         aiCaloriesPer100g: 200,
         aiProteinPer100g: 2,
@@ -38,14 +44,14 @@ void main() {
         aiCarbsPer100g: 15,
         category: 'beer',
       );
-      expect(result.$1, 43); // 200/43≈4.65，超 2 倍，用默认值
-      // M16.8：宏量保留 AI 值（带 clamp），不再用默认值替换
-      expect(result.$2, 2); // 蛋白保留 AI 值 2
-      expect(result.$3, 1); // 脂肪保留 AI 值 1
-      expect(result.$4, 15); // 碳水保留 AI 值 15
+      expect(result.$1, 200, reason: '方案 D：保留 AI 值');
+      expect(result.$2, 2);
+      expect(result.$3, 1);
+      expect(result.$4, 15);
     });
 
-    test('calibrate 啤酒 AI 估算过低（10）用默认值 43', () {
+    test('方案 D：calibrate 啤酒 AI 估算过低（10）保留 AI 值', () {
+      // 方案 D：不再用默认值覆盖，保留 AI 值
       final result = FoodCategoryDefaults.calibrate(
         aiCaloriesPer100g: 10,
         aiProteinPer100g: 0.1,
@@ -53,29 +59,29 @@ void main() {
         aiCarbsPer100g: 1,
         category: 'beer',
       );
-      expect(result.$1, 43); // 10/43≈0.23，低于 0.5 倍，用默认值
+      expect(result.$1, 10, reason: '方案 D：保留 AI 值');
     });
 
     test('calibrate solid 合理值（547 薯片）保留 AI 值', () {
       final result = FoodCategoryDefaults.calibrate(
-        aiCaloriesPer100g: 547, // 薯片
+        aiCaloriesPer100g: 547,
         aiProteinPer100g: 6,
         aiFatPer100g: 35,
         aiCarbsPer100g: 53,
         category: 'solid',
       );
-      expect(result.$1, 547); // solid 无默认值，但在合理性区间内保留
+      expect(result.$1, 547);
     });
 
     test('v1.9 Gap4: calibrate solid 离谱高热量（5000）clamp 到 900', () {
       final result = FoodCategoryDefaults.calibrate(
-        aiCaloriesPer100g: 5000, // AI 离谱估算
+        aiCaloriesPer100g: 5000,
         aiProteinPer100g: 6,
         aiFatPer100g: 35,
         aiCarbsPer100g: 53,
         category: 'solid',
       );
-      expect(result.$1, 900); // clamp 到 solid 上限 900
+      expect(result.$1, 900);
     });
 
     test('v1.9 Gap4: calibrate solid 负热量 clamp 到 0', () {
@@ -92,38 +98,40 @@ void main() {
     test('v1.9 Gap4: calibrate solid 蛋白/脂肪/碳水超 100 clamp 到 100', () {
       final result = FoodCategoryDefaults.calibrate(
         aiCaloriesPer100g: 500,
-        aiProteinPer100g: 150, // 超 100g/100g 不可能
+        aiProteinPer100g: 150,
         aiFatPer100g: 200,
         aiCarbsPer100g: 120,
         category: 'solid',
       );
-      expect(result.$1, 500); // 热量在区间内保留
-      expect(result.$2, 100); // 蛋白 clamp 到 100
-      expect(result.$3, 100); // 脂肪 clamp 到 100
-      expect(result.$4, 100); // 碳水 clamp 到 100
+      expect(result.$1, 500);
+      expect(result.$2, 100);
+      expect(result.$3, 100);
+      expect(result.$4, 100);
     });
 
     test('v1.9 Gap4: calibrate solid 边界值 900 保留', () {
       final result = FoodCategoryDefaults.calibrate(
-        aiCaloriesPer100g: 900, // 边界值
+        aiCaloriesPer100g: 900,
         aiProteinPer100g: 0,
         aiFatPer100g: 100,
         aiCarbsPer100g: 0,
         category: 'solid',
       );
-      expect(result.$1, 900); // 边界值保留
-      expect(result.$3, 100); // 脂肪边界值保留
+      expect(result.$1, 900);
+      expect(result.$3, 100);
     });
 
-    test('calibrate 水（默认 0）AI 任何正值都算偏离', () {
+    test('方案 D：calibrate 水 AI 估算 50 保留（不再被强制清零）', () {
+      // 方案 D：不再用品类均值覆盖。水默认 0，但 AI 估 50 时保留 AI 值
+      // 防离谱由 PostProcessor 重试 + reasoning 审查承担
       final result = FoodCategoryDefaults.calibrate(
-        aiCaloriesPer100g: 50, // 水不可能 50 kcal
+        aiCaloriesPer100g: 50,
         aiProteinPer100g: 0,
         aiFatPer100g: 0,
         aiCarbsPer100g: 12,
         category: 'water',
       );
-      expect(result.$1, 0); // 水默认 0，AI 估 50 离谱，用 0
+      expect(result.$1, 50, reason: '方案 D：保留 AI 值');
     });
 
     test('calibrate 碳酸饮料 AI 估算合理（43）保留', () {
@@ -134,11 +142,11 @@ void main() {
         aiCarbsPer100g: 10.6,
         category: 'carbonated',
       );
-      expect(result.$1, 43); // 43/43=1.0，保留
+      expect(result.$1, 43);
     });
 
-    test('calibrate 碳酸饮料 AI 估算 100 保留（2.3 倍边界）', () {
-      // 100/43≈2.3，超 2 倍，用默认值
+    test('方案 D：calibrate 碳酸饮料 AI 估算 100 保留（不再用默认 43）', () {
+      // 方案 D：保留 AI 值
       final result = FoodCategoryDefaults.calibrate(
         aiCaloriesPer100g: 100,
         aiProteinPer100g: 0,
@@ -146,11 +154,10 @@ void main() {
         aiCarbsPer100g: 25,
         category: 'carbonated',
       );
-      expect(result.$1, 43);
+      expect(result.$1, 100, reason: '方案 D：保留 AI 值');
     });
 
-    test('calibrate 碳酸饮料 AI 估算 85 保留（1.98 倍）', () {
-      // 85/43≈1.98，未超 2 倍，保留 AI 值
+    test('calibrate 碳酸饮料 AI 估算 85 保留', () {
       final result = FoodCategoryDefaults.calibrate(
         aiCaloriesPer100g: 85,
         aiProteinPer100g: 0,
@@ -186,8 +193,6 @@ void main() {
     });
 
     test('calibrate tea AI 估算合理（26）保留（菊花茶包装换算值）', () {
-      // 菊花茶 250ml/份，272kJ → per100g=26
-      // 26/43≈0.6，在 0.5-2 倍区间，保留 AI 值
       final result = FoodCategoryDefaults.calibrate(
         aiCaloriesPer100g: 26,
         aiProteinPer100g: 0,
@@ -198,7 +203,8 @@ void main() {
       expect(result.$1, 26);
     });
 
-    test('calibrate tea AI 估算离谱（200）用默认值 43', () {
+    test('方案 D：calibrate tea AI 估算离谱（200）保留（不再用默认 43）', () {
+      // 方案 D：保留 AI 值
       final result = FoodCategoryDefaults.calibrate(
         aiCaloriesPer100g: 200,
         aiProteinPer100g: 1,
@@ -206,10 +212,11 @@ void main() {
         aiCarbsPer100g: 50,
         category: 'tea',
       );
-      expect(result.$1, 43); // 200/43≈4.65，超 2 倍，用默认
+      expect(result.$1, 200, reason: '方案 D：保留 AI 值');
     });
 
-    test('calibrate tea AI 估算过低（10）用默认值 43', () {
+    test('方案 D：calibrate tea AI 估算过低（10）保留', () {
+      // 方案 D：保留 AI 值
       final result = FoodCategoryDefaults.calibrate(
         aiCaloriesPer100g: 10,
         aiProteinPer100g: 0,
@@ -217,11 +224,10 @@ void main() {
         aiCarbsPer100g: 2,
         category: 'tea',
       );
-      expect(result.$1, 43); // 10/43≈0.23，低于 0.5 倍，用默认
+      expect(result.$1, 10, reason: '方案 D：保留 AI 值');
     });
 
     test('calibrate protein_drink AI 估算合理（55）保留', () {
-      // 55/60≈0.92，在 0.5-2 倍区间，保留
       final result = FoodCategoryDefaults.calibrate(
         aiCaloriesPer100g: 55,
         aiProteinPer100g: 3,
@@ -233,7 +239,6 @@ void main() {
     });
 
     test('calibrate energy_drink AI 估算合理（45）保留', () {
-      // 45/45=1.0，保留
       final result = FoodCategoryDefaults.calibrate(
         aiCaloriesPer100g: 45,
         aiProteinPer100g: 0,
@@ -244,9 +249,7 @@ void main() {
       expect(result.$1, 45);
     });
 
-    test('calibrate tea 自洽反推（cal>0 三宏量全 0 场景）按默认比例反推', () {
-      // 假设 AI 估算 cal=43 但三宏量全 0，按品类默认 (43,0.1,0,10.6) 比例反推
-      // scale = 43/43 = 1，反推：p=0.1*1, f=0, c=10.6*1
+    test('calibrate tea 自洽反推（cal>0 三宏量全 0 场景）保留 AI cal', () {
       // 此测试验证品类默认值正确，自洽反推逻辑在 recognition_validator 中实现
       final result = FoodCategoryDefaults.calibrate(
         aiCaloriesPer100g: 43,
@@ -255,7 +258,7 @@ void main() {
         aiCarbsPer100g: 0,
         category: 'tea',
       );
-      expect(result.$1, 43); // AI cal 在区间内保留
+      expect(result.$1, 43, reason: '方案 D：保留 AI cal');
     });
   });
 }

@@ -4,9 +4,9 @@
 // 校准后 per100g 重算（与 food_item.caloriesPer100g 同源），不能用 onConfirm
 // 传入的未校准 calories（来自 _aiFallbackNutrition 的 r.estimatedCalories）。
 //
-// 场景：beer 品类，AI estimatedCalories=600（mid=300，per100g=200），
-// FoodCategoryDefaults.calibrate 校准为 43（偏离 2 倍以上）。
-// 用户不调整滑块（servingG=300），期望 meal_log.actualCalories=43*300/100=129。
+// 方案 D（M25）：废弃品类校准。AI 兜底哨兵下，4 项全保留 AI 估算值（只做物理 clamp）。
+// 场景：beer 品类，AI estimatedCalories=600（mid=300，per100g=200）。
+// 用户不调整滑块（servingG=300），期望 meal_log.actualCalories=200*300/100=600。
 import 'package:drift/drift.dart' hide isNull, isNotNull;
 import 'package:drift/native.dart';
 import 'package:eatwise/ai/nutrition_lookup.dart';
@@ -61,7 +61,7 @@ void main() {
   );
 
   test(
-      'M16.6: AI 兜底哨兵路径 beer 场景 meal_log.actualCalories 用校准后 per100g 计算',
+      'M16.6/方案D: AI 兜底哨兵 beer 场景 meal_log.actualCalories 与 AI 推理一致',
       () async {
     // 用户不调整滑块，servingG=300
     // CalibrationPage 按 ratio=servingG/mid=1 传 onConfirm：
@@ -90,32 +90,28 @@ void main() {
     final foods = await db.foodItems.select().get();
     expect(foods.length, 1, reason: '应写入 1 条 food_item');
 
-    // 核心断言：food_item.caloriesPer100g 应被品类校准为 43（beer 默认值）
-    // AI 估 200 kcal/100g 偏离 43 两倍以上 → 校准为 43
-    expect(foods.first.caloriesPer100g, closeTo(43, 0.5),
-        reason: 'food_item.caloriesPer100g 应为 beer 品类默认值 43');
+    // 方案 D（M25）：废弃品类校准，4 项全保留 AI 估算值
+    // AI 估 600 kcal/300g → per100g=200（在 [0,900] 内，不被品类校准覆盖）
+    expect(foods.first.caloriesPer100g, closeTo(200, 0.5),
+        reason: '方案 D：food_item.caloriesPer100g 保留 AI 反算值 200');
 
-    // 核心断言：meal_log.actualCalories 应 = 校准后 per100g * servingG / 100
-    // = 43 * 300 / 100 = 129（不是 onConfirm 传入的未校准 600）
-    expect(meals.first.actualCalories, closeTo(129, 0.5),
-        reason: 'meal_log.actualCalories 应基于校准后 per100g 计算（129），'
-            '不能用未校准的 onConfirm calories（600）');
+    // meal_log.actualCalories = 200 * 300 / 100 = 600（与 AI 推理一致）
+    expect(meals.first.actualCalories, closeTo(600, 0.5),
+        reason: '方案 D：meal_log.actualCalories 与 AI 推理一致（600）');
 
     // actualCalories 返回值应与 meal_log 一致（用于 toast 显示）
-    expect(actualCalories, closeTo(129, 0.5),
-        reason: '返回的 actualCalories 应为校准后值，与 meal_log 一致');
+    expect(actualCalories, closeTo(600, 0.5),
+        reason: '返回的 actualCalories 应与 meal_log 一致');
 
-    // M16.8：宏量保留 AI 值（Task 1 calibrate 只替换 calories，不再用 beer 默认 0.5/3.1）
+    // 方案 D：宏量保留 AI 值（4 项全保留，只做物理 clamp）
     // AI per100g: protein=3.0*100/300=1.0, fat=0, carbs=18*100/300=6.0
     // actualProteinG = 1.0 * 300 / 100 = 3.0
     expect(meals.first.actualProteinG, closeTo(3.0, 0.05),
-        reason: 'actualProteinG 应基于校准后 proteinPer100g 计算（保留 AI 值）');
-    // actualFatG = 0 * 300 / 100 = 0
+        reason: 'actualProteinG 保留 AI 值');
     expect(meals.first.actualFatG, closeTo(0, 0.01),
-        reason: 'actualFatG 应基于校准后 fatPer100g 计算');
-    // actualCarbsG = 6.0 * 300 / 100 = 18.0
+        reason: 'actualFatG 保留 AI 值');
     expect(meals.first.actualCarbsG, closeTo(18.0, 0.05),
-        reason: 'actualCarbsG 应基于校准后 carbsPer100g 计算（保留 AI 值）');
+        reason: 'actualCarbsG 保留 AI 值');
 
     // food_item 的 per100g 宏量也应与 meal_log 同源（保留 AI 反算值）
     expect(foods.first.proteinPer100g, closeTo(1.0, 0.01));

@@ -1,16 +1,19 @@
 // 食物品类默认营养值表（每 100g）
 //
-// 用途：AI 兜底（库未命中 + OFF 未命中）时的最后防线校准。
-// 当 AI 估算的 calories 偏离品类默认值 2 倍以上时，用默认值替代——防 AI 离谱估算
-// （如把啤酒估成 200 kcal/100g，实际 43）。只校准离谱值，不限制合理估算。
+// 用途：AI 兜底（库未命中 + OFF 未命中）时的最后防线。
+//
+// 历史：M16.8 曾用"品类均值校准 AI 离谱估算"（偏离 2 倍用默认值替代）。
+// 方案 D（M25）废弃品类校准——根因：用"模糊均值"覆盖"AI 具体估算"方向错误，
+// 米粉汤 AI 推理 526 kcal（合理）被 soup 默认 30 打成 171 kcal + 75g 碳水（物理不可能自洽）。
+// 品类校准造成的误伤比防住的离谱更多。
+//
+// 现状：
+// - `defaults` 表保留：PostProcessor 宏量反推修正（cal>0 但宏量缺失时按比例填充）仍需品类默认比例
+// - `calibrate` 只保留物理 clamp（[0,900] 防物理不可能值），不再用品类均值覆盖 AI 估算
+// - 防离谱能力由"PostProcessor 重试机制"+"reasoning 透明可审查"+"用户手动纠正"承担
 //
 // 数据来源：中国食物成分表 + USDA + 业界实测平均值。
 // 与 prompts.dart 的 food_category 枚举一一对应。
-//
-// 设计原则：
-// - 品类默认值是"防离谱"兜底，不是"精确值"——AI 合理估算优先
-// - 偏离阈值 2 倍：啤酒默认 43，AI 估 86 仍接受，估 200 则用 43
-// - 只校准 calories（最重要），蛋白/脂肪/碳水保留 AI 值（各品类差异大）
 
 /// 品类默认营养值（每 100g）
 class FoodCategoryDefaults {
@@ -82,15 +85,21 @@ class FoodCategoryDefaults {
 
   /// 校准 AI 估算的 per100g 营养值。
   ///
-  /// M16.8：只校准 calories（最重要），宏量保留 AI 值（加 clamp 兜底防离谱）。
-  /// 规则：
-  /// - AI caloriesPer100g 偏离品类默认值 2 倍以上（高或低）→ calories 用默认值，宏量保留 AI 值
-  /// - 不触发校准 → 4 项全保留 AI 值
-  /// - solid/未知品类 → 4 项 clamp 到合理区间（无品类默认值，仅防离谱）
-  /// - 宏量 clamp：蛋白/脂肪/碳水 ∈ [0, 100]（不可能超 100g/100g）
+  /// 方案 D（M25）：废弃品类校准，只保留物理 clamp。
+  ///
+  /// 历史：M16.8 曾用品类均值校准（偏离 2 倍用默认值替代），但造成误伤：
+  /// - 米粉汤 AI 推理 526 kcal（合理）被 soup 默认 30 打成 171 kcal + 75g 碳水（物理不可能自洽）
+  /// - 八宝粥/奶油汤等高变异品类全被误伤
+  /// - 校准策略本身不自洽（calories 用默认值，宏量用 AI 值，破坏 Atwater）
+  ///
+  /// 现状规则：
+  /// - 4 项全保留 AI 估算值（信任 AI 具体估算 + reasoning 透明可审查）
+  /// - calories clamp 到 [0, 900]（防物理不可能值，如 AI 把水估成 5000）
+  /// - 蛋白/脂肪/碳水 clamp 到 [0, 100]（不可能超 100g/100g）
+  /// - 防离谱能力由 PostProcessor 重试 + reasoning 审查 + 用户手动纠正承担
   ///
   /// [aiCaloriesPer100g] AI 估算的每 100g 热量
-  /// [category] food_category（beer/wine/carbonated/solid 等）
+  /// [category] food_category（保留参数向后兼容，方案 D 不再使用）
   /// 返回 (calories, protein, fat, carbs) 每 100g
   static (double, double, double, double) calibrate({
     required double aiCaloriesPer100g,
@@ -99,29 +108,14 @@ class FoodCategoryDefaults {
     required double aiCarbsPer100g,
     required String category,
   }) {
-    // 宏量 clamp 兜底（所有分支共用）：不可能超 100g/100g，不允许负值
-    final clampedProtein = aiProteinPer100g.clamp(0.0, 100.0);
-    final clampedFat = aiFatPer100g.clamp(0.0, 100.0);
-    final clampedCarbs = aiCarbsPer100g.clamp(0.0, 100.0);
-
-    final defCal = defaults[category]?.$1;
-    // 无默认值的品类（solid 等）：仅 clamp，不加品类默认值校准
-    // 区间依据：solid 热量上限 900（纯脂肪油 889，solid 不含纯油）
-    if (defCal == null) {
-      return (
-        aiCaloriesPer100g.clamp(0.0, 900.0),
-        clampedProtein,
-        clampedFat,
-        clampedCarbs,
-      );
-    }
-    // 偏离 2 倍以上（高或低）→ calories 用默认值，宏量保留 AI 值（带 clamp）
-    // defCal=0（water）时 AI 任何正值都算偏离
-    final ratio = defCal > 0 ? aiCaloriesPer100g / defCal : (aiCaloriesPer100g > 0 ? 999.0 : 1.0);
-    if (ratio > 2.0 || ratio < 0.5) {
-      return (defCal, clampedProtein, clampedFat, clampedCarbs);
-    }
-    // 不触发校准：4 项全保留 AI 值（带 clamp）
-    return (aiCaloriesPer100g.clamp(0.0, 900.0), clampedProtein, clampedFat, clampedCarbs);
+    // 方案 D：4 项全保留 AI 估算值，只做物理 clamp
+    // calories clamp [0, 900]：900 是 solid 上限（纯脂肪油 889，solid 不含纯油）
+    // 宏量 clamp [0, 100]：不可能超 100g/100g，不允许负值
+    return (
+      aiCaloriesPer100g.clamp(0.0, 900.0),
+      aiProteinPer100g.clamp(0.0, 100.0),
+      aiFatPer100g.clamp(0.0, 100.0),
+      aiCarbsPer100g.clamp(0.0, 100.0),
+    );
   }
 }

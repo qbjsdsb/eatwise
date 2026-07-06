@@ -15,8 +15,9 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('CalibratedNutritionCalculator', () {
     group('品类校准路径（无包装数据）', () {
-      test('场景1：beer 品类校准，actualCalories 用校准后 per100g 计算', () {
-        // AI 估算啤酒整菜 600kcal（mid=300g），per100g=200 偏离 beer 默认 43 的 4.65 倍 → 校准
+      test('场景1：方案 D — beer 品类，actualCalories 与 AI 推理一致', () {
+        // 方案 D（M25）：废弃品类校准，4 项全保留 AI 估算值
+        // AI 估算啤酒整菜 600kcal（mid=300g），per100g=200（在 [0,900] 内不被覆盖）
         final r = VisionRecognitionResult(
           dishName: '啤酒',
           estimatedWeightGLow: 250,
@@ -49,10 +50,10 @@ void main() {
           servingG: 300,
         );
 
-        // 写库 per100g 用校准后的 beer 默认值 43
-        expect(result.caloriesPer100g, 43);
-        // actualCalories = 43 * 300 / 100 = 129（非未校准的 600）
-        expect(result.actualCalories, closeTo(129, 0.01));
+        // 方案 D：per100g 保留 AI 反算值 200
+        expect(result.caloriesPer100g, closeTo(200, 0.01));
+        // actualCalories = 200 * 300 / 100 = 600（与 AI 推理一致）
+        expect(result.actualCalories, closeTo(600, 0.01));
       });
 
       test('场景2：solid 不校准，actualCalories = AI per100g * servingG / 100', () {
@@ -95,9 +96,9 @@ void main() {
         expect(result.actualCalories, closeTo(550, 0.01));
       });
 
-      test('场景4：用户调整滑块，actualCalories 按调整后 servingG 计算', () {
-        // beer, mid=300（AI 估算基于 300g），用户调整 servingG=200
-        // per100g 仍按 mid 反算并校准（不随用户调整偏差），actual 用 servingG
+      test('场景4：方案 D — 用户调整滑块，actualCalories 按调整后 servingG 计算', () {
+        // 方案 D：beer 品类，mid=300（AI 估算基于 300g），用户调整 servingG=200
+        // per100g 仍按 mid 反算（不随用户调整偏差），actual 用 servingG
         final r = VisionRecognitionResult(
           dishName: '啤酒',
           estimatedWeightGLow: 250,
@@ -130,17 +131,16 @@ void main() {
           servingG: 200, // 用户调小
         );
 
-        // per100g 仍按 mid=300 反算并校准为 43（密度不随用户调整反向偏差）
-        expect(result.caloriesPer100g, 43);
-        // actualCalories = 43 * 200 / 100 = 86（按用户调整后的 servingG）
-        expect(result.actualCalories, closeTo(86, 0.01));
+        // 方案 D：per100g 仍按 mid=300 反算（不随用户调整偏差），保留 AI 值 200
+        expect(result.caloriesPer100g, closeTo(200, 0.01));
+        // actualCalories = 200 * 200 / 100 = 400（按用户调整后的 servingG）
+        expect(result.actualCalories, closeTo(400, 0.01));
       });
 
-      test('场景5：宏量同步，actualMacros = 校准后 per100g * servingG / 100', () {
-        // M16.8：beer 触发校准只替换 calories，宏量保留 AI 值（带 clamp）
+      test('场景5：方案 D — 宏量同步，actualMacros = per100g * servingG / 100', () {
+        // 方案 D（M25）：4 项全保留 AI 值，只做物理 clamp
         // mid=300g, AI 估 600kcal/2g 蛋白/1g 脂肪/15g 碳水
-        // AI per100g = (200, 0.667, 0.333, 5.0)，cal 偏离 beer 43 触发校准
-        // 校准后 per100g = (43, 0.667, 0.333, 5.0)，actualMacros 必须用同一 per100g
+        // AI per100g = (200, 0.667, 0.333, 5.0)，方案 D 保留全部
         final r = VisionRecognitionResult(
           dishName: '啤酒',
           estimatedWeightGLow: 250,
@@ -173,7 +173,7 @@ void main() {
           servingG: 300,
         );
 
-        // 校准后 per100g 宏量（保留 AI 反算值，不替换为品类默认 0.5/0/3.1）
+        // 方案 D：per100g 宏量保留 AI 反算值
         expect(result.proteinPer100g, closeTo(2 * 100 / 300, 0.001)); // 0.667
         expect(result.fatPer100g, closeTo(1 * 100 / 300, 0.001)); // 0.333
         expect(result.carbsPer100g, closeTo(15 * 100 / 300, 0.001)); // 5.0

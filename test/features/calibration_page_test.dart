@@ -9,12 +9,13 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// CalibrationPage 单品 AI 兜底哨兵路径（foodItemId=0）一致性测试
 ///
-/// M16.6 Task 5：验证预览显示值与 onConfirm 传入值都用品类校准后的 per100g 计算，
-/// 与 recognize_page 写食物库 per100g 逻辑一致，避免"推理过程数值与最终记录数值不一致"。
+/// M16.6 Task 5：验证预览显示值与 onConfirm 传入值都用同一 CalibratedNutrition 计算，
+/// 避免"推理过程数值与最终记录数值不一致"。
 ///
-/// 场景：beer 品类，AI 估 600kcal（mid=300g，per100g=200 偏离 beer 默认 43 → 校准）
+/// 方案 D（M25）：废弃品类校准，4 项全保留 AI 估算值。
+/// 场景：beer 品类，AI 估 600kcal（mid=300g，per100g=200，在 [0,900] 内保留）
 /// 用户调整滑块到 servingG=200
-/// 期望：预览 + onConfirm 都用 43 * 200 / 100 = 86（不是未校准的 600 * 200/300 = 400）
+/// 期望：预览 + onConfirm 都用 200 * 200 / 100 = 400（与 AI 推理同源）
 void main() {
   late EatWiseDatabase db;
   late FoodItemRepository foodRepo;
@@ -55,7 +56,7 @@ void main() {
       );
 
   testWidgets(
-      'AI 兜底哨兵路径：预览显示校准后 actualCalories（beer 86，非未校准 400）',
+      'AI 兜底哨兵路径：方案 D — 预览显示 actualCalories（beer 400，与 AI 推理一致）',
       (tester) async {
     // 用 suggestedServingG=200 把初始滑块值定为 200（避开手动拖滑块的精度问题）
     await tester.pumpWidget(MaterialApp(
@@ -69,17 +70,17 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // 校准后 per100g=43，actualCalories = 43 * 200 / 100 = 86（不是 600*200/300=400）
-    // 预览卡片用 headlineMedium 显示热量整数：'86'
-    expect(find.text('86'), findsOneWidget,
-        reason: '预览应显示校准后 86 kcal，而非未校准 400 kcal');
-    // 不应出现 '400'（未校准值的特征字符串）
-    expect(find.text('400'), findsNothing,
-        reason: '预览不应出现未校准的 400 kcal');
+    // 方案 D：per100g=200（保留 AI 值），actualCalories = 200 * 200 / 100 = 400
+    // 预览卡片用 headlineMedium 显示热量整数：'400'
+    expect(find.text('400'), findsOneWidget,
+        reason: '方案 D：预览显示 400 kcal（与 AI 推理一致）');
+    // 不应出现 '86'（旧品类校准值的特征字符串）
+    expect(find.text('86'), findsNothing,
+        reason: '方案 D：预览不应出现品类校准的 86 kcal');
   });
 
   testWidgets(
-      'AI 兜底哨兵路径：onConfirm 传入校准后 actualCalories（beer 86，与预览一致）',
+      'AI 兜底哨兵路径：方案 D — onConfirm 传入 actualCalories（beer 400，与预览一致）',
       (tester) async {
     double? capturedCalories;
     double? capturedProtein;
@@ -107,12 +108,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(capturedCalories, isNotNull);
-    // 校准后 actualCalories = 43 * 200 / 100 = 86（不是 400）
-    expect(capturedCalories, closeTo(86, 0.5),
-        reason: 'onConfirm 应传入校准后 86 kcal，与预览一致');
-    // M16.8 Task 1：calibrate 只替换 calories，宏量保留 AI 值（带 clamp）
+    // 方案 D：actualCalories = 200 * 200 / 100 = 400（保留 AI 值）
+    expect(capturedCalories, closeTo(400, 0.5),
+        reason: '方案 D：onConfirm 传入 400 kcal，与预览一致');
+    // 方案 D：宏量保留 AI 值（4 项全保留，只做物理 clamp）
     // beer AI per100g: protein=2*100/300=0.667, fat=1*100/300=0.333, carbs=15*100/300=5
-    // 触发校准（200/43=4.65 > 2）→ calories=43（默认），宏量保留 AI 值
     // actualProtein = 0.667 * 200 / 100 = 1.333
     // actualFat = 0.333 * 200 / 100 = 0.667
     // actualCarbs = 5 * 200 / 100 = 10
