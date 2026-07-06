@@ -152,6 +152,6 @@ mixin DishNameEditor<T extends StatefulWidget> on State<T> {
   /// 未命中时的提示 toast
   void showNotFoundToast() {
     if (!mounted) return;
-    showAppToast(context, '食物库未命中「改菜名」，可转手动录入或再试一次');
+    showAppToast(context, '食物库未命中此菜名，可转手动录入或再试一次');
   }
 }

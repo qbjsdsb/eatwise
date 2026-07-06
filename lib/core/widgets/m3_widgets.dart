@@ -289,7 +289,17 @@ Future<bool> confirmAction(
         builder: (ctx) => AlertDialog(
           icon: icon != null ? Icon(icon, color: cs.error) : null,
           title: Text(title),
-          content: Text(content),
+          // 长内容（如导入确认完整提示文案）会撑高 AlertDialog 超出小屏视口，
+          // 导致底部确认按钮不可达。用 ConstrainedBox 限制最大高度 + SingleChildScrollView
+          // 兜底滚动：短内容无视觉差异，长内容可滚动到确认按钮。
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.4,
+            ),
+            child: SingleChildScrollView(
+              child: Text(content),
+            ),
+          ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),

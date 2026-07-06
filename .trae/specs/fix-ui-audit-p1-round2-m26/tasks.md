@@ -41,22 +41,22 @@
 
 ## Commit 2: B 类核心流程（3 条）
 
-- [ ] Task 9: 修复 confirmAction 长内容溢出 AlertDialog 不可达
-  - [ ] SubTask 9.1: `m3_widgets.dart:292` content Text 加 `maxLines: 8` + `overflow: TextOverflow.ellipsis`
-  - [ ] SubTask 9.2: content 外层包 `SingleChildScrollView` 兜底超长内容
-- [ ] Task 10: 修复 update_page error 态"重试"行为错误
-  - [ ] SubTask 10.1: 新增 `_lastFailedStage` enum 字段（none/check/download/install）
-  - [ ] SubTask 10.2: _check/_download/_install catch 块设 `_lastFailedStage` 对应值
-  - [ ] SubTask 10.3: error 态按钮 onPressed（L280）改为根据 `_lastFailedStage` 调对应方法（check→_check / download→_download / install→_install）
-  - [ ] SubTask 10.4: install 失败重试时复用 `_downloadedPath`，不重新 _check + _download
-- [ ] Task 11: 修复 dish_name_editor 文案错误
-  - [ ] SubTask 11.1: `dish_name_editor.dart:155` `'食物库未命中「改菜名」，可转手动录入或再试一次'` 改为 `'食物库未命中此菜名，可转手动录入或再试一次'`
-- [ ] Task 12: 新增 B 类针对性测试
-  - [ ] SubTask 12.1: 新增 `test/widgets/confirm_action_overflow_test.dart` 覆盖长内容可滚动
-  - [ ] SubTask 12.2: 新增 `test/features/update_retry_context_test.dart` 覆盖三阶段重试
-  - [ ] SubTask 12.3: 扩展 `test/features/dish_name_editor_test.dart` 覆盖新文案
-- [ ] Task 13: 验证 B 类修复（同 Task 7 三步）
-- [ ] Task 14: Commit B 类修复（消息："M26 B: 修复 3 个核心流程 P1（confirmAction 溢出 + update 重试 + 文案错误）"）
+- [x] Task 9: 修复 confirmAction 长内容溢出 AlertDialog 不可达
+  - [x] SubTask 9.1: `m3_widgets.dart:292` content Text 加 `maxLines: 8` + `overflow: TextOverflow.ellipsis`
+  - [x] SubTask 9.2: content 外层包 `SingleChildScrollView` 兜底超长内容
+- [x] Task 10: 修复 update_page error 态"重试"行为错误
+  - [x] SubTask 10.1: 新增 `_lastFailedStage` enum 字段（none/check/download/install）
+  - [x] SubTask 10.2: _check/_download/_install catch 块设 `_lastFailedStage` 对应值
+  - [x] SubTask 10.3: error 态按钮 onPressed（L280）改为根据 `_lastFailedStage` 调对应方法（check→_check / download→_download / install→_install）
+  - [x] SubTask 10.4: install 失败重试时复用 `_downloadedPath`，不重新 _check + _download
+- [x] Task 11: 修复 dish_name_editor 文案错误
+  - [x] SubTask 11.1: `dish_name_editor.dart:155` `'食物库未命中「改菜名」，可转手动录入或再试一次'` 改为 `'食物库未命中此菜名，可转手动录入或再试一次'`
+- [x] Task 12: 新增 B 类针对性测试
+  - [x] SubTask 12.1: 新增 `test/widgets/confirm_action_overflow_test.dart` 覆盖长内容可滚动
+  - [x] SubTask 12.2: 新增 `test/features/update_retry_context_test.dart` 覆盖三阶段重试
+  - [x] SubTask 12.3: 新增 `test/features/dish_name_editor_test.dart` 覆盖新文案
+- [x] Task 13: 验证 B 类修复（同 Task 7 三步）
+- [x] Task 14: Commit B 类修复（消息："M26 B: 修复 3 个核心流程 P1（confirmAction 溢出 + update 重试 + 文案错误）"）
 
 ## Commit 3: C 类系统性根因（4 条，批量整改）
 

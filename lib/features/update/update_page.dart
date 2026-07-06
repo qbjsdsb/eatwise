@@ -35,6 +35,9 @@ enum _UpdateState {
   error
 }
 
+/// 记录上次失败的阶段，用于 error 态"重试"按钮精准重试
+enum _FailedStage { none, check, download, install }
+
 class _UpdatePageState extends ConsumerState<UpdatePage> {
   _UpdateState _state = _UpdateState.idle;
   UpdateCheckResult? _result;
@@ -42,6 +45,7 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
   String? _downloadedPath;
   String? _errorMsg;
   bool _busy = false;
+  _FailedStage _lastFailedStage = _FailedStage.none;
 
   Future<void> _check() async {
     if (_busy) return;
@@ -71,6 +75,7 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
       setState(() {
         _state = _UpdateState.error;
         _errorMsg = '检查失败：$e';
+        _lastFailedStage = _FailedStage.check;
       });
     } finally {
       if (mounted) _busy = false;
@@ -105,6 +110,7 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
       setState(() {
         _state = _UpdateState.error;
         _errorMsg = '下载失败：$e';
+        _lastFailedStage = _FailedStage.download;
       });
     } finally {
       if (mounted) _busy = false;
@@ -125,9 +131,25 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
       setState(() {
         _state = _UpdateState.error;
         _errorMsg = '触发安装器失败：$e';
+        _lastFailedStage = _FailedStage.install;
       });
     } finally {
       if (mounted) _busy = false;
+    }
+  }
+
+  /// error 态重试：根据上次失败阶段调对应方法。
+  /// install 失败时复用 _downloadedPath，不重新下载。
+  void _retry() {
+    switch (_lastFailedStage) {
+      case _FailedStage.check:
+        _check();
+      case _FailedStage.download:
+        _download();
+      case _FailedStage.install:
+        _install(); // 复用 _downloadedPath，不重新下载
+      case _FailedStage.none:
+        _check(); // 兜底：未知失败阶段，从 check 开始
     }
   }
 
@@ -277,7 +299,7 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
               style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
           const SizedBox(height: 24),
           FilledButton.icon(
-            onPressed: _busy ? null : _check,
+            onPressed: _busy ? null : _retry,
             icon: const Icon(Icons.refresh),
             label: const Text('重试'),
           ),

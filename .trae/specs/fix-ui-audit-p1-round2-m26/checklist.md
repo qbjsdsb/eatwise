@@ -15,15 +15,15 @@
 
 ## B 类核心流程
 
-- [ ] confirmAction content Text 加 maxLines:8 + overflow:ellipsis
-- [ ] confirmAction content 外层包 SingleChildScrollView
-- [ ] update_page 新增 _lastFailedStage 字段
-- [ ] update_page _check/_download/_install catch 块设 _lastFailedStage
-- [ ] update_page error 态按钮根据 _lastFailedStage 调对应方法
-- [ ] update_page install 失败重试复用 _downloadedPath 不重新下载
-- [ ] dish_name_editor.dart:155 文案改为"食物库未命中此菜名，可转手动录入或再试一次"
-- [ ] 新增 3 个测试文件覆盖 B 类 3 个 bug 修复
-- [ ] B 类 commit 完成，flutter analyze + flutter test 通过
+- [x] confirmAction content Text 加 maxLines:8 + overflow:ellipsis
+- [x] confirmAction content 外层包 SingleChildScrollView
+- [x] update_page 新增 _lastFailedStage 字段
+- [x] update_page _check/_download/_install catch 块设 _lastFailedStage
+- [x] update_page error 态按钮根据 _lastFailedStage 调对应方法
+- [x] update_page install 失败重试复用 _downloadedPath 不重新下载
+- [x] dish_name_editor.dart:155 文案改为"食物库未命中此菜名，可转手动录入或再试一次"
+- [x] 新增 3 个测试文件覆盖 B 类 3 个 bug 修复
+- [x] B 类 commit 完成，flutter analyze + flutter test 通过
 
 ## C 类系统性根因
 
