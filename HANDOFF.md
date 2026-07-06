@@ -36,6 +36,14 @@
 
 **最后更新**：2026-07-06
 
+**两个 UX 功能增强完成（2026-07-06，未发版）—— 方案 A 双 commit**：用户报告两个问题：(1) 首页摄入热量超过推荐值时"今日还可摄入"依旧显示剩余值（负数），用户误以为还没超过；(2) 周月总结维度不够全面，只有热量折线图 + 体重折线图 + AI 文本，缺少餐次分布/三宏达成率/偏好食物/连续记录/体重变化等关键信息。用户决策"全面改（推荐）"+"全面扩充（推荐）"+"分问题双 commit（推荐）"。
+
+问题1（首页热量超量显示全维度切换）— commit 0f26689：根因：摄入超过推荐值时 status_card_section 依旧显示"今日还可摄入 X"（X 为负数）+ 主色，用户无法直观感知"已超"。修复：超量时全维度切换——标题"今日还可摄入"→"今日已超" + error 色 + warning 图标；大数字加 "+" 前缀（如 "+200"）+ error 色；副标题切换为"已超 X kcal (Y%) · 已摄入 A / B"；进度条分两段（主段 error 色满格 + 溢出段 onErrorContainer 色按比例延伸，封顶 30% 宽）；三宏同步（文案追加"超 Zg"用 error 色，进度条满格保留宏色）。新增 `test/features/dashboard/status_card_overflow_test.dart` 14 个测试（热量未超量/临界/空态 + 热量超量标题/大数字/副标题/图标/进度条/大幅超量 + 三宏超量蛋白/脂肪/碳水/未超量/临界）。
+
+问题2（周月总结全面扩充）— commit de75b0c：背景：原 InsightPage 仅热量折线图 + 体重折线图 + AI 文本，维度不够全面。修复：UI 层新增 5 个组件——(a) 周期概览卡片（2x2 tile：连续记录 streak / 平均超缺目标 kcal / 目标达成天数 / 体重首末变化，MD3 角色色区分语义）；(b) 餐次分布环图（PieChart ring 模式：早/午/晚/加餐 占比 + 中心总热量，4 section 用 primary/tertiary/secondary/outline 区分）；(c) 三宏达成率柱图（BarChart 3 组 × 2 柱：实色=均值，半透明=目标，MacroColors 配色，触摸 tooltip）；(d) 偏好食物 Top5 列表（排名徽章 1/2/3 用 primary/tertiary/secondary + 食物名 + 频次 + LinearProgressIndicator 热量贡献条）；(e) 月报周环比柱图（仅 monthly：30 天按 7 天分组，每周日均热量 + 总体日均参考线）。AI prompt 层新增 `_appendEnhancedInsights`（餐次分布/streak/平均超额/达成天数/体重变化/特殊人群画像 specialCondition/dietPreference/healthCondition，'none'/null 兜底不写入）+ `_appendWeeklyBreakdown`（月报周环比）+ `_specialLabel`（11 种特殊人群 code → 中文标签映射）。数据层 _aggregatePeriod 新增 mealTypeCalories/streak/avgExcess/goalHitDays/weightFirst/Last/Diff/weeklyBreakdown + profile 特殊人群字段；onSelectionChanged 同步重置新增 state。新增 `test/ai/glm_flash_provider_p2_test.dart` 21 个 prompt 测试 + `test/features/insight_p2_test.dart` 7 个 UI 渲染测试。
+
+最终验证：flutter analyze No issues / flutter test 1107 passed（基线 1093 → +14 问题1 + +28问题2 = 1107，0 回归）/ 6+1 硬约束满足（minify=false / shrink=false / minSdk=31 等未碰）/ 0 回归。**未打 tag 未发版**（用户明确指令"修完后先 push，不要打 tag 发布"）。
+
 **两个 UX Bug 修复完成（2026-07-06，未发版）—— 方案 A 双 commit**：用户报告两个问题：(1) 删除食物时撤销横幅"存在非常久"；(2) AI 智能推荐刚打开软件时经常加载失败。用户决策"两个一起全面修（推荐）"+"就方案 a 吧"（分问题双 commit）。
 
 Bug 1（SnackBar 横幅累积）— commit cc2c172：根因有二：(a) ScaffoldMessenger 默认队列式，连续操作时 N 个横幅依次显示 N×duration，用户连删多条时横幅"存在非常久"；(b) today_meals_page 撤销横幅用 `Future.delayed(3s)` 等待撤销窗口，与 SnackBar 实际显示时序不同步（排队/被挤掉/超时都会让撤销按钮变无效）。修复：`showAppToast` 显示前 `clearSnackBars` 清空队列（50+ 调用点一次性覆盖）；today_meals_page 撤销横幅改用 `controller.closed` 替代 `Future.delayed`，正确感知关闭原因（action/timeout/swipe/被挤掉）；缩短 duration（撤销 4→3s / 识别失败 6→4s / 备份 5→4s 共 6 处）。新增 `test/widgets/snackbar_clear_test.dart` 5 个测试。

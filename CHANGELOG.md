@@ -4,6 +4,34 @@
 
 ## [Unreleased]
 
+### 功能增强：周月总结全面扩充（问题2）
+- **背景**：原 InsightPage 仅热量折线图 + 体重折线图 + AI 文本，维度不够全面，用户难以直观看到餐次分布/三宏达成率/偏好食物/连续记录/体重变化等关键信息
+- **UI 新增**（insight_page.dart）：
+  - 周期概览卡片：连续记录 streak / 平均超缺目标 kcal / 目标达成天数 / 体重首末变化（2x2 tile，MD3 角色色区分语义）
+  - 餐次分布环图（PieChart）：早/午/晚/加餐 占比 + 中心总热量，4 个 section 用 primary/tertiary/secondary/outline 区分
+  - 三宏达成率柱图（BarChart）：蛋白/脂肪/碳水 实际均值 vs 目标（实色=均值，半透明=目标），触摸 tooltip 显示具体值
+  - 偏好食物 Top5 列表：排名徽章（1/2/3 用 primary/tertiary/secondary）+ 食物名 + 频次 + 热量贡献条
+  - 月报周环比柱图（仅 monthly）：30 天按 7 天分组，每周日均热量 + 总体日均参考线
+- **AI prompt 新增**（glm_flash_provider.dart）：
+  - `_appendEnhancedInsights`：餐次分布/streak/平均超额/达成天数/体重变化/特殊人群画像（specialCondition/dietPreference/healthCondition）
+  - `_appendWeeklyBreakdown`：月报周环比数据
+  - `_specialLabel`：特殊人群 code → 中文标签映射（孕期/哺乳期/老年/糖尿病等 11 种）
+  - 'none'/null 兜底不写入 prompt，避免噪音
+- **数据层**（_aggregatePeriod）：新增 mealTypeCalories/streak/avgExcess/goalHitDays/weightFirst/Last/Diff/weeklyBreakdown + profile 特殊人群字段；onSelectionChanged 同步重置新增 state
+- **测试**：新增 `test/ai/glm_flash_provider_p2_test.dart` 21 个 prompt 测试 + `test/features/insight_p2_test.dart` 7 个 UI 渲染测试
+- **验证**：flutter analyze No issues / flutter test 1107 passed / 0 回归
+
+### 功能增强：首页热量超量显示全维度切换（问题1）
+- **背景**：摄入热量超过推荐值时，"今日还可摄入"依旧显示剩余值（负数），用户误以为还没超过
+- **修复**（status_card_section.dart）：超量时全维度切换——
+  - 标题"今日还可摄入"→"今日已超" + error 色 + warning 图标
+  - 大数字加 "+" 前缀（如 "+200"）+ error 色
+  - 副标题切换为"已超 X kcal (Y%) · 已摄入 A / B"
+  - 进度条分两段：主段 error 色满格 + 溢出段 onErrorContainer 色按比例延伸（封顶 30% 宽）
+  - 三宏同步：文案追加"超 Zg"用 error 色，进度条满格保留宏色
+- **测试**：新增 `test/features/dashboard/status_card_overflow_test.dart` 14 个测试（热量未超量/临界/空态 + 热量超量标题/大数字/副标题/图标/进度条/大幅超量 + 三宏超量蛋白/脂肪/碳水/未超量/临界）
+- **验证**：flutter analyze No issues / flutter test 1093 passed / 0 回归
+
 ### Bug 修复：SnackBar 横幅累积"存在非常久"+ 撤销时序不同步
 - **根因**：(1) ScaffoldMessenger 默认队列式，连续操作时 N 个横幅依次显示 N×duration，用户连删多条时横幅"存在非常久"；(2) today_meals_page 撤销横幅用 `Future.delayed(3s)` 等待撤销窗口，与 SnackBar 实际显示时序不同步（排队/被挤掉/超时都会让撤销按钮变无效）
 - **修复**：`showAppToast` 显示前 `clearSnackBars` 清空队列；today_meals_page 撤销横幅改用 `controller.closed` 替代 `Future.delayed`，正确感知关闭原因（action/timeout/swipe/被挤掉）；缩短 duration（撤销 4→3s / 识别失败 6→4s / 备份 5→4s 共 6 处）
