@@ -60,36 +60,36 @@
 
 ## Commit 3: C 类系统性根因（4 条，批量整改）
 
-- [ ] Task 15: 修复 showAppToast 缺 liveRegion
-  - [ ] SubTask 15.1: `m3_widgets.dart:321-330` SnackBar content 外包 `Semantics(liveRegion: true, child: Text(msg))`
-- [ ] Task 16: 修复 EmptyState 硬编码 camera 图标
-  - [ ] SubTask 16.1: `m3_widgets.dart:137-141` 新增 `actionIcon` 参数（默认 `Icons.camera_alt_rounded` 兼容现有调用）
-- [ ] Task 17: 改写 18 处错误文案含原始异常
-  - [ ] SubTask 17.1: insight_page:467 '生成失败：$e' → '生成失败：AI 服务暂不可用，请检查网络后重试。' + debugPrint(e)
-  - [ ] SubTask 17.2: today_meals_page:379/557/728 三处
-  - [ ] SubTask 17.3: calibration_page:849/992 两处
-  - [ ] SubTask 17.4: multi_dish_page:524
-  - [ ] SubTask 17.5: settings_page:338
-  - [ ] SubTask 17.6: backup_page:112/191 两处
-  - [ ] SubTask 17.7: update_page:73/107/127 三处
-  - [ ] SubTask 17.8: profile_page:78/515 两处
-  - [ ] SubTask 17.9: weight_page:430/573/599 三处
-  - [ ] SubTask 17.10: manual_entry_page:255/326 两处
-  - [ ] SubTask 17.11: food_edit_page:175/213 两处
-- [ ] Task 18: 7 个文件数值 TextField 加 inputFormatters
-  - [ ] SubTask 18.1: calibration_page.dart:1099 4 个数值 TextField
-  - [ ] SubTask 18.2: meal_edit_dialog.dart:291-296,352-378 5 个数值 TextField
-  - [ ] SubTask 18.3: food_edit_page.dart:93-126 5 个数值 TextField
-  - [ ] SubTask 18.4: manual_entry_page.dart:118-123,154-159,170-196 数值 TextField
-  - [ ] SubTask 18.5: weight_page.dart:111-117,494-499 2 处体重 TextField
-  - [ ] SubTask 18.6: profile_page.dart:144-207,279-287 5 个数值 TextFormField（改 TextFormField 后加 inputFormatters）
-  - [ ] SubTask 18.7: today_meals_page.dart:616-622 反馈 dialog 份量 TextField
-- [ ] Task 19: 新增 C 类针对性测试
-  - [ ] SubTask 19.1: 扩展 `test/widgets/snackbar_clear_test.dart` 覆盖 liveRegion
-  - [ ] SubTask 19.2: 新增 `test/widgets/empty_state_icon_test.dart` 覆盖 actionIcon 参数
-  - [ ] SubTask 19.3: 新增 `test/features/error_message_friendly_test.dart` 覆盖关键错误文案不含原始异常
-- [ ] Task 20: 验证 C 类修复（同 Task 7 三步）
-- [ ] Task 21: Commit C 类修复（消息："M26 C: 修复 4 类系统性根因 P1（liveRegion + EmptyState 图标 + 18 处错误文案 + 7 文件 inputFormatters）"）
+- [x] Task 15: 修复 showAppToast 缺 liveRegion
+  - [x] SubTask 15.1: `m3_widgets.dart:321-330` SnackBar content 外包 `Semantics(liveRegion: true, child: Text(msg))`
+- [x] Task 16: 修复 EmptyState 硬编码 camera 图标
+  - [x] SubTask 16.1: `m3_widgets.dart:137-141` 新增 `actionIcon` 参数（默认 `Icons.camera_alt_rounded` 兼容现有调用）
+- [x] Task 17: 改写 18 处错误文案含原始异常
+  - [x] SubTask 17.1: insight_page:467 '生成失败：$e' → '生成失败：AI 服务暂不可用，请检查网络后重试。' + debugPrint(e)
+  - [x] SubTask 17.2: today_meals_page:379/557/728 三处
+  - [x] SubTask 17.3: calibration_page:849/992 两处
+  - [x] SubTask 17.4: multi_dish_page:524
+  - [x] SubTask 17.5: settings_page:338
+  - [x] SubTask 17.6: backup_page:112/191 两处
+  - [x] SubTask 17.7: update_page:73/107/127 三处
+  - [x] SubTask 17.8: profile_page:78/515 两处
+  - [x] SubTask 17.9: weight_page:430/573/599 三处
+  - [x] SubTask 17.10: manual_entry_page:255/326 两处
+  - [x] SubTask 17.11: food_edit_page:175/213 两处
+- [x] Task 18: 7 个文件数值 TextField 加 inputFormatters
+  - [x] SubTask 18.1: calibration_page.dart:1099 4 个数值 TextField
+  - [x] SubTask 18.2: meal_edit_dialog.dart:291-296,352-378 5 个数值 TextField
+  - [x] SubTask 18.3: food_edit_page.dart:93-126 5 个数值 TextField
+  - [x] SubTask 18.4: manual_entry_page.dart:118-123,154-159,170-196 数值 TextField
+  - [x] SubTask 18.5: weight_page.dart:111-117,494-499 2 处体重 TextField
+  - [x] SubTask 18.6: profile_page.dart:144-207,279-287 5 个数值 TextFormField（改 TextFormField 后加 inputFormatters）
+  - [x] SubTask 18.7: today_meals_page.dart:616-622 反馈 dialog 份量 TextField
+- [x] Task 19: 新增 C 类针对性测试
+  - [x] SubTask 19.1: 扩展 `test/widgets/snackbar_clear_test.dart` 覆盖 liveRegion
+  - [x] SubTask 19.2: 新增 `test/widgets/empty_state_icon_test.dart` 覆盖 actionIcon 参数
+  - [x] SubTask 19.3: 新增 `test/features/error_message_friendly_test.dart` 覆盖关键错误文案不含原始异常
+- [x] Task 20: 验证 C 类修复（同 Task 7 三步）
+- [x] Task 21: Commit C 类修复（消息："M26 C: 修复 4 类系统性根因 P1（liveRegion + EmptyState 图标 + 18 处错误文案 + 7 文件 inputFormatters）"）
 
 ## Commit 4: D 类编辑流程一致性（4 条）
 

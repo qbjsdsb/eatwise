@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/util/refresh_bus.dart';
@@ -74,8 +75,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     } catch (e) {
       // DB 异常时不卡死 loading，置 _loadError 标志让 build 显 ErrorState
       // （不静默显空表单误导用户，与 today_meals_page _loadError 同构）
+      debugPrint('档案加载失败: $e');
       if (mounted) {
-        showAppToast(context, '档案加载失败：$e');
+        showAppToast(context, '档案加载失败，请稍后重试。');
       }
       _loadError = true;
     } finally {
@@ -145,6 +147,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       controller: _heightCtrl,
                       decoration: const InputDecoration(labelText: '身高 (cm)'),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                      ],
                       autocorrect: false,
                       enableSuggestions: false,
                       validator: (v) {
@@ -160,6 +165,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       controller: _weightCtrl,
                       decoration: const InputDecoration(labelText: '体重 (kg)'),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                      ],
                       autocorrect: false,
                       enableSuggestions: false,
                       validator: (v) {
@@ -175,6 +183,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       controller: _ageCtrl,
                       decoration: const InputDecoration(labelText: '年龄'),
                       keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                      ],
                       validator: (v) {
                         if (v == null || v.isEmpty) return '必填';
                         final a = int.tryParse(v);
@@ -203,6 +214,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       decoration: const InputDecoration(
                           labelText: '体脂率 % (可选，填了可用 Katch 公式)'),
                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                      ],
                       autocorrect: false,
                       enableSuggestions: false,
                       validator: (v) {
@@ -288,6 +302,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         controller: _goalRateCtrl,
                         keyboardType:
                             const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                        ],
                         decoration: const InputDecoration(
                           labelText: '目标速率（kg/周）',
                           hintText: '减脂建议 0.3-0.7，增肌建议 0.18-0.45',
@@ -533,8 +550,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         RefreshBus.instance.notify();
       }
     } catch (e) {
+      debugPrint('保存失败: $e');
       if (mounted) {
-        showAppToast(context, '保存失败：$e');
+        showAppToast(context, '保存失败，请稍后重试。');
       }
     } finally {
       if (mounted) setState(() => _busy = false);

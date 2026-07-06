@@ -110,8 +110,9 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       showAppToast(context, '已导出到 ${file.path}',
           duration: const Duration(seconds: 4));
     } catch (e) {
+      debugPrint('导出失败: $e');
       if (!mounted) return;
-      showAppToast(context, '导出失败：$e',
+      showAppToast(context, '导出失败，请检查存储权限后重试。',
           duration: const Duration(seconds: 4));
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -201,8 +202,9 @@ class _BackupPageState extends ConsumerState<BackupPage> {
           '导入成功：${stats.profiles}档案 + ${stats.foodItems}食物 + ${stats.mealLogs}餐次 + ${stats.weightLogs}体重 + ${stats.insights}汇总 + ${stats.feedbacks}反馈${stats.imageCheckResult.totalMissing > 0 ? '\n注意：${stats.imageCheckResult.totalMissing} 张图片未迁移（原图未保留）' : ''}',
           duration: const Duration(seconds: 4));
     } catch (e) {
+      debugPrint('导入失败: $e');
       if (!mounted) return;
-      showAppToast(context, '导入失败：$e',
+      showAppToast(context, '导入失败，请检查 JSON 格式后重试。',
           duration: const Duration(seconds: 4));
     } finally {
       if (mounted) setState(() => _busy = false);

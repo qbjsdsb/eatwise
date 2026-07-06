@@ -71,10 +71,11 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
         }
       });
     } catch (e) {
+      debugPrint('检查更新失败: $e');
       if (!mounted) return;
       setState(() {
         _state = _UpdateState.error;
-        _errorMsg = '检查失败：$e';
+        _errorMsg = '检查更新失败，请检查网络后重试。';
         _lastFailedStage = _FailedStage.check;
       });
     } finally {
@@ -106,10 +107,11 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
         _state = _UpdateState.readyToInstall;
       });
     } catch (e) {
+      debugPrint('下载失败: $e');
       if (!mounted) return;
       setState(() {
         _state = _UpdateState.error;
-        _errorMsg = '下载失败：$e';
+        _errorMsg = '下载失败，请检查网络/存储后重试。';
         _lastFailedStage = _FailedStage.download;
       });
     } finally {
@@ -127,10 +129,11 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
       if (!mounted) return;
       showAppToast(context, '已打开系统安装器，请在弹窗中确认安装');
     } catch (e) {
+      debugPrint('触发安装器失败: $e');
       if (!mounted) return;
       setState(() {
         _state = _UpdateState.error;
-        _errorMsg = '触发安装器失败：$e';
+        _errorMsg = '无法打开系统安装器，请检查 APK 文件是否完整。';
         _lastFailedStage = _FailedStage.install;
       });
     } finally {

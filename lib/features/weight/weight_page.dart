@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
@@ -111,6 +112,9 @@ class WeightPageState extends ConsumerState<WeightPage> {
                   child: TextField(
                     controller: _weightCtrl,
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                    ],
                     autocorrect: false,
                     enableSuggestions: false,
                     decoration: const InputDecoration(labelText: '今日体重 (kg)'),
@@ -426,8 +430,9 @@ class WeightPageState extends ConsumerState<WeightPage> {
         showAppToast(context, '已记录体重');
       }
     } catch (e) {
+      debugPrint('记录失败: $e');
       if (mounted) {
-        showAppToast(context, '记录失败：$e');
+        showAppToast(context, '记录失败，请稍后重试。');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -500,6 +505,9 @@ class WeightPageState extends ConsumerState<WeightPage> {
                       controller: weightCtrl,
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                      ],
                       decoration: const InputDecoration(labelText: '体重 (kg)'),
                       validator: (value) {
                         final v = double.tryParse(value?.trim() ?? '');
@@ -584,8 +592,9 @@ class WeightPageState extends ConsumerState<WeightPage> {
           showAppToast(context, '已更新体重记录');
         }
       } catch (e) {
+        debugPrint('保存失败: $e');
         if (mounted) {
-          showAppToast(context, '保存失败：$e');
+          showAppToast(context, '保存失败，请稍后重试。');
         }
       } finally {
         if (mounted) setState(() => _busy = false);
@@ -610,8 +619,9 @@ class WeightPageState extends ConsumerState<WeightPage> {
         showAppToast(context, '已删除体重记录');
       }
     } catch (e) {
+      debugPrint('删除失败: $e');
       if (mounted) {
-        showAppToast(context, '删除失败：$e');
+        showAppToast(context, '删除失败，请稍后重试。');
         await _load(); // 失败回滚 UI
       }
     }

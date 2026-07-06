@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/util/food_name.dart';
@@ -93,12 +94,18 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
           TextField(
               controller: _servingCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+              ],
               autocorrect: false,
               enableSuggestions: false,
               decoration: const InputDecoration(labelText: '默认份量 (g)')),
           TextField(
               controller: _calCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+              ],
               autocorrect: false,
               enableSuggestions: false,
               enabled: editable,
@@ -106,6 +113,9 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
           TextField(
               controller: _proteinCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+              ],
               autocorrect: false,
               enableSuggestions: false,
               enabled: editable,
@@ -113,6 +123,9 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
           TextField(
               controller: _fatCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+              ],
               autocorrect: false,
               enableSuggestions: false,
               enabled: editable,
@@ -120,6 +133,9 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
           TextField(
               controller: _carbsCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+              ],
               autocorrect: false,
               enableSuggestions: false,
               enabled: editable,
@@ -172,7 +188,8 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
         Navigator.of(context).pop();
       }
     } catch (e) {
-      _showError('保存失败：$e');
+      debugPrint('保存失败: $e');
+      _showError('保存失败，请稍后重试。');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -210,7 +227,8 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
         Navigator.of(context).pop();
       }
     } catch (e) {
-      _showError('保存失败：$e');
+      debugPrint('保存失败: $e');
+      _showError('保存失败，请稍后重试。');
     } finally {
       if (mounted) setState(() => _busy = false);
     }

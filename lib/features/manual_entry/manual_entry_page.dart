@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/util/date_format.dart';
@@ -118,6 +119,9 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
               TextField(
                   controller: _servingCtrl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                  ],
                   autocorrect: false,
                   enableSuggestions: false,
                   decoration: const InputDecoration(labelText: '份量 (g)')),
@@ -154,6 +158,9 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                     TextField(
                         controller: _servingCtrl,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                        ],
                         autocorrect: false,
                         enableSuggestions: false,
                         decoration: const InputDecoration(labelText: '份量 (g)')),
@@ -170,6 +177,9 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                     TextField(
                         controller: _calCtrl,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                        ],
                         autocorrect: false,
                         enableSuggestions: false,
                         decoration: const InputDecoration(labelText: '热量 (kcal)')),
@@ -177,6 +187,9 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                     TextField(
                         controller: _proteinCtrl,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                        ],
                         autocorrect: false,
                         enableSuggestions: false,
                         decoration: const InputDecoration(labelText: '蛋白质 (g)')),
@@ -184,6 +197,9 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                     TextField(
                         controller: _fatCtrl,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                        ],
                         autocorrect: false,
                         enableSuggestions: false,
                         decoration: const InputDecoration(labelText: '脂肪 (g)')),
@@ -191,6 +207,9 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                     TextField(
                         controller: _carbsCtrl,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                        ],
                         autocorrect: false,
                         enableSuggestions: false,
                         decoration: const InputDecoration(labelText: '碳水 (g)')),
@@ -251,8 +270,9 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
         Navigator.of(context).pop();
       }
     } catch (e) {
+      debugPrint('记录失败: $e');
       if (mounted) {
-        showAppToast(context, '记录失败：$e');
+        showAppToast(context, '记录失败，请稍后重试。');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -322,8 +342,9 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
         Navigator.of(context).pop();
       }
     } catch (e) {
+      debugPrint('记录失败: $e');
       if (mounted) {
-        showAppToast(context, '记录失败：$e');
+        showAppToast(context, '记录失败，请稍后重试。');
       }
     } finally {
       if (mounted) setState(() => _busy = false);

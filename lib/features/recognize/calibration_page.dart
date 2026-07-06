@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../ai/nutrition_lookup.dart';
 import '../../ai/vision_provider.dart';
@@ -878,7 +879,8 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
       }
     } catch (e) {
       // 防御性兜底（lookup 内部异常）
-      if (mounted) showAppToast(context, '改菜名失败：$e');
+      debugPrint('改菜名失败: $e');
+      if (mounted) showAppToast(context, '改菜名失败，请稍后重试。');
     } finally {
       if (mounted) setState(() => _isRenaming = false);
     }
@@ -1025,8 +1027,9 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
         Navigator.of(context).pop();
       }
     } catch (e) {
+      debugPrint('记录失败: $e');
       if (mounted) {
-        showAppToast(context, '记录失败：$e');
+        showAppToast(context, '记录失败，请稍后重试。');
       }
     } finally {
       if (mounted) setState(() => _isRecording = false);
@@ -1135,6 +1138,9 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
                 controller: calCtrl,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                ],
                 autocorrect: false,
                 enableSuggestions: false,
                 decoration: const InputDecoration(
@@ -1148,6 +1154,9 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
                 controller: proteinCtrl,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                ],
                 autocorrect: false,
                 enableSuggestions: false,
                 decoration: const InputDecoration(labelText: '蛋白质 (g)'),
@@ -1158,6 +1167,9 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
                 controller: fatCtrl,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                ],
                 autocorrect: false,
                 enableSuggestions: false,
                 decoration: const InputDecoration(labelText: '脂肪 (g)'),
@@ -1168,6 +1180,9 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
                 controller: carbsCtrl,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                ],
                 autocorrect: false,
                 enableSuggestions: false,
                 decoration: const InputDecoration(labelText: '碳水 (g)'),

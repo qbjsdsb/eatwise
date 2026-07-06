@@ -243,7 +243,7 @@ void main() {
           reason: '体重 9999 应触发范围校验 errorText');
     });
 
-    testWidgets('goalRate "abc" 报错（非数字）', (tester) async {
+    testWidgets('goalRate "abc" 被 inputFormatters 拦截（非数字无法输入）', (tester) async {
       final db = EatWiseDatabase(NativeDatabase.memory());
       addTearDown(db.close);
       final container = ProviderContainer(overrides: [
@@ -256,14 +256,16 @@ void main() {
       // 选减脂让 goalRate 字段渲染
       await selectGoal(tester, '减脂');
 
+      // inputFormatters（^-?\d*\.?\d*$）拦截字母输入，'abc' 无法进入 TextField
       await tester.enterText(fieldByLabel('目标速率（kg/周）'), 'abc');
       await tester.pump();
 
-      await tester.tap(find.text('保存并重算目标'));
-      await tester.pump();
-
-      expect(find.text('请输入有效数字'), findsOneWidget,
-          reason: 'goalRate "abc" 应触发"请输入有效数字" errorText');
+      // 验证字段为空（inputFormatters 拒绝了 'abc'）
+      final field = tester.widget<TextField>(
+          find.ancestor(of: find.text('目标速率（kg/周）'),
+              matching: find.byType(TextField)).last);
+      expect(field.controller!.text, isEmpty,
+          reason: 'inputFormatters 应拦截字母输入，字段应为空');
     });
 
     testWidgets('goalRate 5.0 报错（超 2.0 上限）', (tester) async {

@@ -66,7 +66,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(checkCallCount, 1);
-      expect(find.textContaining('检查失败'), findsOneWidget);
+      expect(find.textContaining('检查更新失败'), findsOneWidget);
       expect(find.text('重试'), findsOneWidget);
 
       // tap 重试 → _retry → _check（不是 _download/_install）
@@ -208,7 +208,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(installCallCount, 1);
-      expect(find.textContaining('触发安装器失败'), findsOneWidget);
+      expect(find.textContaining('无法打开系统安装器'), findsOneWidget);
       expect(find.text('重试'), findsOneWidget);
 
       // tap 重试 → _retry → _install（复用 _downloadedPath，不重新下载）

@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -373,10 +374,11 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
           await repo.deleteMealLog(m.id);
         } catch (e) {
       // 删除失败：页面已销毁则无法回滚 UI/提示（best-effort，下次加载会显示原记录）
+      debugPrint('删除失败: $e');
       if (!mounted) return;
       await _load();
       if (!mounted) return;
-      showAppToast(context, '删除失败：$e');
+      showAppToast(context, '删除失败，请稍后重试。');
     }
       },
       // 用 MD3 Card.outlined 变体（替代手写 elevation:0 + outline），
@@ -553,8 +555,9 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       );
       if (mounted) _load();
     } catch (e) {
+      debugPrint('修正失败: $e');
       if (mounted) {
-        showAppToast(context, '保存失败：$e');
+        showAppToast(context, '修正失败，请检查输入后重试。');
       }
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -617,6 +620,9 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
                     controller: servingCtrl,
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                    ],
                     decoration: const InputDecoration(
                         labelText: '正确份量(g)'),
                   ),
@@ -724,8 +730,9 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
       }
     } catch (e) {
       // 整个反馈流程异常兜底：给用户反馈，不静默卡住
+      debugPrint('反馈提交失败: $e');
       if (mounted) {
-        showAppToast(context, '反馈失败：$e');
+        showAppToast(context, '反馈提交失败，请稍后重试。');
       }
     }
   }

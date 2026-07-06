@@ -27,30 +27,30 @@
 
 ## C 类系统性根因
 
-- [ ] showAppToast SnackBar content 包 Semantics(liveRegion: true)
-- [ ] EmptyState 新增 actionIcon 参数（默认 Icons.camera_alt_rounded 兼容现有调用）
-- [ ] 18 处错误文案改为"<操作>失败：<原因推测>。<修复步骤>"格式 + debugPrint 原始异常
-  - [ ] insight_page:467
-  - [ ] today_meals_page:379/557/728
-  - [ ] calibration_page:849/992
-  - [ ] multi_dish_page:524
-  - [ ] settings_page:338
-  - [ ] backup_page:112/191
-  - [ ] update_page:73/107/127
-  - [ ] profile_page:78/515
-  - [ ] weight_page:430/573/599
-  - [ ] manual_entry_page:255/326
-  - [ ] food_edit_page:175/213
-- [ ] 7 个文件数值 TextField 加 inputFormatters（FilteringTextInputFormatter.allow + RegExp）
-  - [ ] calibration_page 4 处
-  - [ ] meal_edit_dialog 5 处
-  - [ ] food_edit_page 5 处
-  - [ ] manual_entry_page 数值处
-  - [ ] weight_page 2 处
-  - [ ] profile_page 5 处（依赖 goalRate 改 TextFormField）
-  - [ ] today_meals_page 反馈 dialog 1 处
-- [ ] 新增 3 个测试文件覆盖 C 类修复
-- [ ] C 类 commit 完成，flutter analyze + flutter test 通过
+- [x] showAppToast SnackBar content 包 Semantics(liveRegion: true)
+- [x] EmptyState 新增 actionIcon 参数（默认 Icons.camera_alt_rounded 兼容现有调用）
+- [x] 18 处错误文案改为"<操作>失败：<原因推测>。<修复步骤>"格式 + debugPrint 原始异常
+  - [x] insight_page:467
+  - [x] today_meals_page:379/557/728
+  - [x] calibration_page:849/992
+  - [x] multi_dish_page:524
+  - [x] settings_page:338
+  - [x] backup_page:112/191
+  - [x] update_page:73/107/127
+  - [x] profile_page:78/515
+  - [x] weight_page:430/573/599
+  - [x] manual_entry_page:255/326
+  - [x] food_edit_page:175/213
+- [x] 7 个文件数值 TextField 加 inputFormatters（FilteringTextInputFormatter.allow + RegExp）
+  - [x] calibration_page 4 处
+  - [x] meal_edit_dialog 5 处
+  - [x] food_edit_page 5 处
+  - [x] manual_entry_page 数值处
+  - [x] weight_page 2 处
+  - [x] profile_page 5 处（依赖 goalRate 改 TextFormField）
+  - [x] today_meals_page 反馈 dialog 1 处
+- [x] 新增 3 个测试文件覆盖 C 类修复
+- [x] C 类 commit 完成，flutter analyze + flutter test 通过
 
 ## D 类编辑流程一致性
 

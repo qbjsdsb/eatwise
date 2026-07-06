@@ -462,9 +462,10 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         _error = null;
       });
     } catch (e) {
+      debugPrint('生成失败: $e');
       if (!mounted) return;
       setState(() {
-        _error = '生成失败：$e';
+        _error = '生成失败：AI 服务暂不可用，请检查网络后重试。';
         _summary = null;
       });
     } finally {

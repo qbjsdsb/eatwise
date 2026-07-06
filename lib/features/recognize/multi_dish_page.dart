@@ -520,8 +520,9 @@ class _MultiDishPageState extends ConsumerState<MultiDishPage>
       }
     } catch (e) {
       // 异常处理：提示用户，事务已回滚无部分记录
+      debugPrint('记录失败: $e');
       if (mounted) {
-        showAppToast(context, '记录失败：$e');
+        showAppToast(context, '记录失败，请稍后重试。');
       }
     } finally {
       if (mounted) setState(() => _isRecording = false);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/util/date_format.dart';
@@ -292,6 +293,9 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
                 controller: _servingCtrl,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                ],
                 decoration: const InputDecoration(labelText: '份量 (g)'),
               ),
               const SizedBox(height: 12),
@@ -353,6 +357,9 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
                   controller: _calCtrl,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                  ],
                   decoration: const InputDecoration(labelText: '热量 (kcal)'),
                 ),
                 const SizedBox(height: 8),
@@ -360,6 +367,9 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
                   controller: _proteinCtrl,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                  ],
                   decoration: const InputDecoration(labelText: '蛋白 (g)'),
                 ),
                 const SizedBox(height: 8),
@@ -367,6 +377,9 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
                   controller: _fatCtrl,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                  ],
                   decoration: const InputDecoration(labelText: '脂肪 (g)'),
                 ),
                 const SizedBox(height: 8),
@@ -374,6 +387,9 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
                   controller: _carbsCtrl,
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
+                  ],
                   decoration: const InputDecoration(labelText: '碳水 (g)'),
                 ),
               ],

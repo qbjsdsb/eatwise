@@ -106,6 +106,8 @@ class EmptyState extends StatelessWidget {
     this.subtitle,
     this.actionLabel,
     this.onAction,
+    // 默认值兼容现有所有调用方（today_meals/weight 等空状态均未传 actionIcon）
+    this.actionIcon = Icons.camera_alt_rounded,
   });
 
   final IconData icon;
@@ -113,6 +115,10 @@ class EmptyState extends StatelessWidget {
   final String? subtitle;
   final String? actionLabel;
   final VoidCallback? onAction;
+
+  /// 主操作按钮的图标，默认 camera_alt_rounded 兼容历史调用方。
+  /// 调用方可传入 Icons.add 等使空态按钮语义更贴合场景。
+  final IconData actionIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -136,7 +142,7 @@ class EmptyState extends StatelessWidget {
               const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed: onAction,
-                icon: const Icon(Icons.camera_alt_rounded),
+                icon: Icon(actionIcon),
                 label: Text(actionLabel!),
               ),
             ],
@@ -334,7 +340,8 @@ void showAppToast(BuildContext context, String msg, {Duration? duration}) {
     ..clearSnackBars()
     ..showSnackBar(
       SnackBar(
-        content: Text(msg),
+        // 包 liveRegion 让读屏用户即时感知 toast 反馈
+        content: Semantics(liveRegion: true, child: Text(msg)),
         duration: duration ?? const Duration(seconds: 4),
       ),
     );

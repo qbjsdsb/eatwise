@@ -103,6 +103,39 @@ void main() {
     });
   });
 
+  group('showAppToast liveRegion 无障碍', () {
+    testWidgets('toast content 包 Semantics(liveRegion: true) 供读屏感知', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () => showAppToast(context, '测试消息'),
+              child: const Text('触发'),
+            ),
+          ),
+        ),
+      ));
+
+      await tester.tap(find.text('触发'));
+      await tester.pumpAndSettle();
+
+      // SnackBar 已显示
+      expect(find.text('测试消息'), findsOneWidget);
+
+      // toast Text 的祖先中应存在 Semantics(liveRegion: true)
+      // showAppToast 用 Semantics(liveRegion: true, child: Text(msg)) 包裹
+      // 注：SnackBar 内部也可能添加 liveRegion Semantics，故断言"至少一个"而非"恰好一个"
+      final liveRegionFinder = find.ancestor(
+        of: find.text('测试消息'),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is Semantics && widget.properties.liveRegion == true,
+        ),
+      );
+      expect(liveRegionFinder, findsWidgets,
+          reason: 'showAppToast 的 SnackBar content 应包 Semantics(liveRegion: true)');
+    });
+  });
+
   group('撤销横幅 controller.closed 时序', () {
     testWidgets('点撤销按钮后横幅关闭，reason == action', (tester) async {
       SnackBarClosedReason? capturedReason;

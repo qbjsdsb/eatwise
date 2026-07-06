@@ -334,8 +334,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       }
     } catch (e) {
       // secure_storage IO 失败等异常：提示用户，不静默卡死
+      debugPrint('保存失败: $e');
       if (mounted) {
-        showAppToast(context, '保存失败：$e');
+        showAppToast(context, '保存失败，请稍后重试。');
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
