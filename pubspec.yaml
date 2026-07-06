@@ -21,6 +21,8 @@ dependencies:
 
   # 状态管理 + 路由
   flutter_riverpod: ^3.3.1  # 3.3.2 仅为 3.3.2-dev.2 prerelease，最新稳定版是 3.3.1（pub.dev 已核实）
+  # 动态取色（Material You，Android 12+ 壁纸取色）
+  dynamic_color: ^1.7.0
   go_router: ^17.2.0  # pub 的 ^ 约束需完整 major.minor.patch，原计划 "^17.2" 缺 patch 号会报错
 
   # 拍照 + 图片预处理
