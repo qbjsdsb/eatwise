@@ -22,7 +22,7 @@ android {
         applicationId = "com.eatwise.eatwise"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion  // flutter_secure_storage 10.x 要求（原 flutter.minSdkVersion 默认 21）
+        minSdk = 31  // 动态取色（Material You）需 Android 12+（API 31）；flutter_secure_storage 10.x 要求 23+，31 满足
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
