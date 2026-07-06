@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  自适应图标背景：纯白 #FFFFFF（M22 反转配色重设计）。
+  自适应图标背景：纯白 #FFFFFF（M22 决策，M25 保留不变）。
 
-  选色理由（M22 用户决策：白底+紫前景，Google Camera 风）：
-  - 纯白背景最 Google 风（Google Camera/Lens 都是白底深前景）
-  - 白底高对比衬托紫色前景，缩放到 48dp 仍清晰
+  选色理由：
+  - 纯白背景最衬托自然绿前景（MFP 同策略：白底深前景）
+  - 白底高对比，缩放到 48dp 仍清晰
   - 用户切 App 主题色不影响图标（图标独立配色，不跟主题变）
 
-  M15 暖橙纯色 → M17 紫橙渐变 → M20 紫橙渐变+Lens 风 → M22 白底纯色（用户反馈「颜色丑、不像谷歌」重设计）
+  M15 暖橙纯色 → M17 紫橙渐变 → M20 紫橙渐变+Lens 风 → M22 白底纯色 → M25 白底纯色（不变，前景改自然绿）
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
