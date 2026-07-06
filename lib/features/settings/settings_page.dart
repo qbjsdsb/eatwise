@@ -120,6 +120,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             delegate: SliverChildListDelegate([
               SectionTitle('主题色'),
               GroupCard(children: [
+                // 跟随系统壁纸 Switch（Material You，Android 12+）
+                SwitchListTile(
+                  title: const Text('跟随系统壁纸'),
+                  subtitle: const Text('Material You 动态取色（需 Android 12+）'),
+                  value: ref.watch(useDynamicColorProvider),
+                  onChanged: (v) => _setUseDynamicColor(v),
+                ),
+                const Divider(height: 1, indent: 16),
                 Padding(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 16, vertical: 12),
@@ -383,29 +391,54 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   /// 主题色板：点选即时换肤 + 持久化
+  /// 动态取色开启时灰显 + 吞点击（硬互斥），关闭时正常可点
   Widget _themePalette() {
     final currentSeed = ref.watch(themeSeedProvider);
-    return Wrap(
-      spacing: 16,
-      runSpacing: 12,
-      children: kThemePresets.map((preset) {
-        final (argb, name) = preset;
-        return _colorDot(Color(argb), name, argb == currentSeed, () async {
-          // 同步换肤（即时响应）
-          ref.read(themeSeedProvider.notifier).set(argb);
-          // 持久化（失败不阻塞当次换肤，但提示用户下次启动会回退）
-          try {
-            final store = ref.read(secureConfigStoreProvider);
-            await store.setThemeSeed(argb);
-            if (!mounted) return;
-            showAppToast(context, '已切换主题：$name');
-          } catch (_) {
-            if (!mounted) return;
-            showAppToast(context, '主题已临时切换，但保存失败，下次启动将恢复');
-          }
-        });
-      }).toList(),
+    final useDynamic = ref.watch(useDynamicColorProvider);
+    return Opacity(
+      // M3 disabled 标准透明度 0.38
+      opacity: useDynamic ? 0.38 : 1.0,
+      child: AbsorbPointer(
+        // 动态取色开启时吞掉点击，色块不可选（硬互斥）
+        absorbing: useDynamic,
+        child: Wrap(
+          spacing: 16,
+          runSpacing: 12,
+          children: kThemePresets.map((preset) {
+            final (argb, name) = preset;
+            return _colorDot(Color(argb), name, argb == currentSeed, () async {
+              // 此处仅动态取色关闭时可达（AbsorbPointer 已拦截开启态点击）
+              // 同步换肤（即时响应）
+              ref.read(themeSeedProvider.notifier).set(argb);
+              // 持久化（失败不阻塞当次换肤，但提示用户下次启动会回退）
+              try {
+                final store = ref.read(secureConfigStoreProvider);
+                await store.setThemeSeed(argb);
+                if (!mounted) return;
+                showAppToast(context, '已切换主题：$name');
+              } catch (_) {
+                if (!mounted) return;
+                showAppToast(context, '主题已临时切换，但保存失败，下次启动将恢复');
+              }
+            });
+          }).toList(),
+        ),
+      ),
     );
+  }
+
+  /// 切换"跟随系统壁纸"开关：同步换肤 + 持久化
+  Future<void> _setUseDynamicColor(bool v) async {
+    ref.read(useDynamicColorProvider.notifier).set(v);
+    try {
+      final store = ref.read(secureConfigStoreProvider);
+      await store.setUseDynamicColor(v);
+      if (!mounted) return;
+      showAppToast(context, v ? '已切换：跟随系统壁纸' : '已切换：自定义主题色');
+    } catch (_) {
+      if (!mounted) return;
+      showAppToast(context, '已临时切换，但保存失败，下次启动将恢复');
+    }
   }
 
   Widget _colorDot(
