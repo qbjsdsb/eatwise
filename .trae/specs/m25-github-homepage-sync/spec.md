@@ -73,33 +73,58 @@ GitHub 仓库主页（`github.com/qbjsdsb/eatwise`）与项目实际状态严重
 |---|---|---|
 | 合并 main | `git checkout main && git merge --ff-only trae/agent-wX1X6Q` | fast-forward 合并，无冲突（main 是 trae 祖先） |
 | push main | `git push origin main` | 推送合并后 main |
-| 创建 Release v0.22.0 | `curl -X POST https://api.github.com/repos/qbjsdsb/eatwise/releases` | body 见 4.2.1 |
+| **更新 Release v0.22.0 notes** | `curl -X PATCH https://api.github.com/repos/qbjsdsb/eatwise/releases/tags/v0.22.0` | Release 已发布（tag d5b7483 + 2 APK 已上传），但 notes 仅 496 字符通用安装模板，需 PATCH 补 M24 changelog 段 |
 
-#### 4.2.1 Release v0.22.0 notes 内容
+#### 4.2.1 Release v0.22.0 notes 新内容（PATCH 后）
 
-```
-## v0.22.0 — P1 清零（M24）
+保留原 4 段通用模板（安装说明/闪退排查/签名说明/版本信息），在前补 M24 changelog 段：
 
-M23 全面细致审查发现 67 项问题（0 P0 / 13 P1 / 54 P2），本里程碑一次性修完全部 13 项 P1，代码健康度从 B+ 提升到 A-。
+```markdown
+## 本次改动（M24 — P1 清零）
+
+M23 全面细致审查发现 67 项问题（0 P0 / 13 P1 / 54 P2），本里程碑一次性修完全部 13 项 P1，代码健康度从 B+ 提升到 A-。全程严格 TDD + sub-agent 二次审查 + 6 硬约束核查。
 
 ### 快速修复（8 项）
-- A1-A8 列表（从 HANDOFF 提取）
+- **A1** Sentry 脱敏补 `event.tags`（与 extra 同模式）
+- **A2** dashboard 推荐刷新按钮触控目标 32→48dp
+- **A3** update release notes 展开/收起 AnimatedSize 过渡
+- **A4** food_library 搜索失败 toast 提示
+- **A5** backup 导入弹窗补"离线队列 N 条待识别将清空"+ 修复 dispose 时序
+- **A6** insight 周/月切换 loading + AnimatedSwitcher 过渡
+- **A7** food_library 加载失败 ErrorState + 重试
+- **A8** profile 加载失败 ErrorState + 重试（跨页一致）
 
 ### 架构重构（5 项）
-- B1-B5 列表
+- **B1** 跨层依赖统一用 Repository Provider（feature 层不再直接 new Repo(db)，新增 6 个 FutureProvider；offline_queue_controller 是 isolate 例外保留 _db 注入）
+- **B2** recognize_page `_pickAndRecognize` 190→23 行（拆 4 子方法）
+- **B3** offline_queue_controller `processPending` 396→29 行（拆 _processOnePending + _processSingleItem + _processComposite）
+- **B4** multi_dish_page 986→542 行（拆 4 子文件到 multi_dish/ 子目录）
+- **B5** dashboard_page 940→304 行（拆 6 子文件到 dashboard/ 子目录）
 
 ### 验证
-- flutter analyze: No issues
-- flutter test: 1032 passed / 0 failed
-- 6 硬约束全部满足
+- `flutter analyze`：No issues found
+- `flutter test`：1032 passed / 3 skipped / 0 failed（+22 新测试，0 回归）
+- 6 硬约束全部满足：minify=false / 哨兵 10 处全保留 / AI 三路径覆盖 / per100g 基于 estimatedWeightGMid / SecureConfigStore 无 instance / initSentryAndRunApp 命名参数
+- 文件行数全部达标：multi_dish_page 542 / dashboard_page 304 / _pickAndRecognize 23 / processPending 29
 
 ### 升级须知
-- v0.18.0 起可覆盖安装
-- 验证 M24 修复点：错误态 / insight 切换 / update notes / 备份弹窗 / 搜索 toast
-- 验证架构重构无回归：识别三路径 / dashboard / 食物库
+- v0.18.0 起可覆盖安装（无需卸载）
+- 重点验证：错误态覆盖（profile/food_library 加载失败显示 ErrorState + 重试）/ insight 周/月切换 loading / update release notes 展开/收起 / 备份导入弹窗离线队列提示 / 搜索失败 toast
+- 架构重构无回归验证：识别主流程（单品+多菜+后台回补三路径）/ dashboard 推荐刷新 / 食物库增删改查
 
-### APK
-（待用户本地构建上传）
+---
+
+## 安装说明
+（保留原内容）
+
+## ⚠️ 闪退排查：请先装 app-debug.apk
+（保留原内容）
+
+## 签名说明
+（保留原内容）
+
+## 版本信息
+（保留原内容）
 ```
 
 ### 4.3 About 卡片元数据（沙箱 curl API 完成）
@@ -128,7 +153,7 @@ token 从 `git remote -v` 提取（origin URL 内嵌 `ghu_...` token）。
 ## 6. 验证标准
 
 - `git log --oneline origin/main` HEAD = `f797f71`（合并成功）
-- `curl https://api.github.com/repos/qbjsdsb/eatwise/releases/tags/v0.22.0` 返回 200 + body 含 M24 章节
+- `curl https://api.github.com/repos/qbjsdsb/eatwise/releases/tags/v0.22.0` 返回 200 + body 含 "M24" / "A1" / "B1" / "P1 清零" 关键字（PATCH 成功）
 - `curl https://api.github.com/repos/qbjsdsb/eatwise` 返回 description + topics 已设置
 - README.md 内所有内部链接（HANDOFF.md / CHANGELOG.md / .trae/specs/）相对路径正确
 - README.md 行数 > 100（产品级标准）
