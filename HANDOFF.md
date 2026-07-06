@@ -71,7 +71,7 @@ C1 验证（反复检查后发现并修复 1 处遗漏）：recognize_page L224 
 
 **工作区状态**：v0.22.0+34 已发布（M24 全部 13 项 P1 清零完成 + commit + push + tag）。M22 已 push + tag v0.21.0（commit 13701c5）；M23 全面细致审查完成（4 维度报告 67 项发现）；**M24 P1 清零已 commit d5b7483 + push origin/trae/agent-wX1X6Q + tag v0.22.0（详见上方"M24 全部完成"段；用户指令"好的，按照建议来，严谨仔细，反复检查"；1032 全量测试通过 + 22 新测试 + analyze No issues + 6 硬约束全部满足 + 0 回归）**。远端 main 已 force push 覆盖旧 v0.8.0 线为 v0.20.x 主线（M20 期间执行）。v0.18.x 及之前版本历史见 git log + tag 列表。
 
-**当前分支**：trae/agent-wX1X6Q（本地 HEAD = M24 commit d5b7483；远端 origin/trae/agent-wX1X6Q HEAD = d5b7483；origin/main HEAD = b7955c5（v0.21.0，待合并 M24 到 main）；tag v0.21.0 → 13701c5，tag v0.22.0 → d5b7483；**M24 已 push + tag，下一步待用户决定是否合并到 main + GitHub Release**）
+**当前分支**：trae/agent-wX1X6Q（本地 HEAD = M25 docs commit；远端 origin/trae/agent-wX1X6Q HEAD = M25 docs commit；origin/main HEAD = e7effb4（已合并 M24 + M25 spec/plan，ff 合并）；tag v0.21.0 → 13701c5，tag v0.22.0 → d5b7483；**M24 已合并到 main + Release v0.22.0 notes 待 PATCH 补 M24 changelog；M25 GitHub 主页同步完善进行中**）
 
 **待用户执行的收尾项**（沙箱无法完成）：
 1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）
@@ -82,6 +82,16 @@ C1 验证（反复检查后发现并修复 1 处遗漏）：recognize_page L224 
    - 验证架构重构无回归：识别主流程（单品 + 多菜 + 后台回补三路径）/ dashboard 推荐刷新 / 食物库增删改查
 
 ---
+
+**M25 GitHub 仓库主页同步完善（2026-07-05）**：已完成。M24 完成后 GitHub 仓库主页与项目实际状态严重脱节（README 仍写"设计阶段"、main 落后 trae 分支、Release notes 仅通用模板无 changelog、缺 LICENSE + CHANGELOG.md）。本次同步：
+- 合并 trae/agent-wX1X6Q → main（ff 合并，main HEAD c7690bc → e7effb4，72 文件）
+- 重写 README.md（14 章节产品级 178 行：badges + 核心特性 + 功能矩阵 + 技术栈 13 行 + 目录结构 + 安装 + 版本演进表 16 行 + 安全隐私 + 6 硬约束 + 许可证）
+- 创建 LICENSE（MIT，版权 qbjsdsb）
+- 创建 CHANGELOG.md（Keep a Changelog 格式，16 个版本段 v0.15.0→v0.22.0 + Unreleased 段）
+- PATCH Release v0.22.0 notes：补 M24 changelog 段（13 项修复 + 5 项重构 + 验证 + 升级须知）+ 保留原 4 段通用模板
+- 设置 About 卡片 description + 12 个 topics（flutter/android/food-tracking/nutrition/ai/qwen-vl/glm-4v/drift/material-3/local-first/privacy/sqlite）
+- spec + plan 文件：`.trae/specs/m25-github-homepage-sync/{spec,plan}.md`
+- 用户指令"根据我的handoff把github界面完善一下，因为改动很大，我的项目主页进行同步"+"挺好的，不过release我好像已经发布了，可以把changelog写好"
 
 **M24 Task B5 dashboard_page 拆分（2026-07-05）**：已完成。`lib/features/dashboard/dashboard_page.dart` 940 行 → 304 行（< 600 目标达成），业务逻辑零改动。拆出 6 个文件到 `lib/features/dashboard/dashboard/` 子目录：`dashboard_data.dart`（35 行纯数据类）/ `regenerate_button.dart`（51 行）/ `status_card_section.dart`（120 行）/ `today_meals_section.dart`（114 行）/ `ai_rec_item.dart`（205 行）/ `recommendation_section.dart`（268 行）。所有拆出 widget 为 StatelessWidget，通过构造函数注入数据 + 回调上拱，不直接访问父 State。dashboard_page_test 从 1 测试扩到 4 测试。验证：flutter analyze No issues；flutter test 1031 passed / 0 回归；6 硬约束全部满足。
 
