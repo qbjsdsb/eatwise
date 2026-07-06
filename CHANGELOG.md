@@ -5,6 +5,7 @@
 ## [Unreleased]
 
 - M25 图标精修重设计：对标 MyFitnessPal，紫色 #6750A4 → 自然绿 #2E7D32，四角 L 角标 → 圆环描边盘（黄金分割比例 + 0.5dp 网格对齐）
+- M25 主题动态取色：dynamic_color 包 + DynamicColorBuilder，开关优先 + Switch 与色板硬互斥，minSdk 24 → 31（新增第 7 条硬约束）
 
 ## [v0.23.0] - 2026-07-06
 
