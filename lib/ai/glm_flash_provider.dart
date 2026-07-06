@@ -58,6 +58,9 @@ class GlmFlashProvider {
 
   /// 构造周报 user prompt（v1.11 增强：宏量达成率 + 偏好 + 覆盖率）
   ///
+  /// 问题2 增强：新增餐次分布/streak/平均超额/目标达成天数/体重变化/特殊人群画像，
+  /// 让 AI 能结合"是否连续记录/超量幅度/特殊人群需求"给出更精准的建议。
+  ///
   /// H3 修复：核心字段加 null 兜底，避免调用方传不完整 data 时崩溃。
   /// 与 _appendMacroAndPreference 的兜底风格一致。
   String _buildPrompt(Map<String, dynamic> data) {
@@ -71,6 +74,7 @@ class GlmFlashProvider {
     buf.write('每日摄入热量：$calories kcal。');
     buf.write('每日体重：$weights kg。');
     _appendMacroAndPreference(buf, data, '本周');
+    _appendEnhancedInsights(buf, data, '本周');
     buf.write('请给出本周总结和下周建议，结合宏量达成率分析饮食结构是否合理。');
     return buf.toString();
   }
@@ -109,6 +113,8 @@ class GlmFlashProvider {
 
   /// 构造月报 user prompt（v1.11 增强：宏量达成率 + 偏好 + 覆盖率 + 周环比）
   ///
+  /// 问题2 增强：新增餐次分布/streak/平均超额/目标达成天数/体重变化/周环比/特殊人群画像。
+  ///
   /// H3 修复：核心字段加 null 兜底（与 _buildPrompt 一致）
   String _buildMonthlyPrompt(Map<String, dynamic> data) {
     final calories = data['daily_calories'] as List? ?? const [];
@@ -121,6 +127,8 @@ class GlmFlashProvider {
     buf.write('每日摄入热量：$calories kcal。');
     buf.write('每日体重：$weights kg。');
     _appendMacroAndPreference(buf, data, '本月');
+    _appendEnhancedInsights(buf, data, '本月');
+    _appendWeeklyBreakdown(buf, data);
     buf.write('请给出本月总结和下月建议，包含周环比分析，结合宏量达成率分析饮食结构。');
     return buf.toString();
   }
@@ -190,6 +198,125 @@ class GlmFlashProvider {
     if (prefs != null && prefs.isNotEmpty) {
       buf.write('常吃食物：${prefs.join('、')}。');
     }
+  }
+
+  /// 追加增强洞察到 prompt（问题2 新增：餐次分布/streak/超额/达成天数/体重变化/特殊人群）
+  ///
+  /// 与 _appendMacroAndPreference 平级，专门承载问题2 扩充的维度。
+  /// 全部字段加 null/'none' 兜底，缺字段时静默跳过（向后兼容旧调用方）。
+  void _appendEnhancedInsights(
+      StringBuffer buf, Map<String, dynamic> data, String periodLabel) {
+    // 餐次热量分布（早/午/晚/加餐 占比）
+    final mealTypeCalories = data['meal_type_calories'] as Map?;
+    if (mealTypeCalories != null && mealTypeCalories.isNotEmpty) {
+      final total = mealTypeCalories.values.fold<double>(
+          0.0, (s, v) => s + (v as num).toDouble());
+      if (total > 0) {
+        final labelMap = {
+          'breakfast': '早餐',
+          'lunch': '午餐',
+          'dinner': '晚餐',
+          'snack': '加餐',
+        };
+        final parts = <String>[];
+        for (final key in ['breakfast', 'lunch', 'dinner', 'snack']) {
+          final v = mealTypeCalories[key];
+          if (v == null) continue;
+          final cal = (v as num).toDouble();
+          if (cal <= 0) continue;
+          final pct = (cal / total * 100).round();
+          parts.add('${labelMap[key] ?? key} ${cal.round()}kcal($pct%)');
+        }
+        if (parts.isNotEmpty) {
+          buf.write('$periodLabel 餐次分布：${parts.join('、')}。');
+        }
+      }
+    }
+
+    // 连续记录天数（streak）
+    final streak = data['streak'];
+    if (streak != null && (streak as num).toInt() > 0) {
+      buf.write('已连续记录 ${streak.toInt()} 天。');
+    }
+
+    // 平均超额/缺口（正=超额，负=缺口）
+    final avgExcess = data['avg_excess'];
+    if (avgExcess != null) {
+      final v = (avgExcess as num).toDouble();
+      if (v.abs() >= 1) {
+        final dir = v > 0 ? '超' : '缺';
+        buf.write('$periodLabel 平均每天$dir目标 ${v.abs().round()} kcal。');
+      }
+    }
+
+    // 目标达成天数（在 ±10% 内）
+    final goalHitDays = data['goal_hit_days'];
+    final totalDays = data['total_days'];
+    if (goalHitDays != null && totalDays != null) {
+      buf.write('$periodLabel 目标达成 ${goalHitDays.toInt()}/${totalDays.toInt()} 天。');
+    }
+
+    // 体重变化（last - first，负=减重）
+    final weightDiff = data['weight_diff'];
+    if (weightDiff != null) {
+      final v = (weightDiff as num).toDouble();
+      final dir = v < 0 ? '减' : (v > 0 ? '增' : '持平');
+      buf.write('$periodLabel 体重$dir ${v.abs().toStringAsFixed(1)} kg。');
+    }
+
+    // 特殊人群画像（specialCondition/dietPreference/healthCondition）
+    // 三字段都 nullable，'none' 视为默认不写入 prompt（避免噪音）
+    final special = data['special_condition'] as String?;
+    final diet = data['diet_preference'] as String?;
+    final health = data['health_condition'] as String?;
+    final labels = <String>[];
+    if (special != null && special != 'none') {
+      labels.add(_specialLabel(special));
+    }
+    if (diet != null && diet != 'none') {
+      labels.add(_specialLabel(diet));
+    }
+    if (health != null && health != 'none') {
+      labels.add(_specialLabel(health));
+    }
+    if (labels.isNotEmpty) {
+      buf.write('用户特征：${labels.join('、')}，建议针对性调整。');
+    }
+  }
+
+  /// 月报周环比：30 天按 7 天分组（4-5 周），每周算日均热量
+  void _appendWeeklyBreakdown(StringBuffer buf, Map<String, dynamic> data) {
+    final weekly = data['weekly_breakdown'] as List?;
+    if (weekly == null || weekly.isEmpty) return;
+    final parts = <String>[];
+    for (var i = 0; i < weekly.length; i++) {
+      final w = weekly[i] as Map;
+      final start = w['weekStart'] ?? w['week_start'] ?? '';
+      final end = w['weekEnd'] ?? w['week_end'] ?? '';
+      final avg = w['avgCal'] ?? w['avg_cal'] ?? 0;
+      parts.add('第${i + 1}周($start~$end 日均 ${(avg as num).round()}kcal)');
+    }
+    if (parts.isNotEmpty) {
+      buf.write('周环比：${parts.join('、')}。');
+    }
+  }
+
+  /// 特殊人群 code → 中文标签（与 profile_table.dart 注释一致）
+  String _specialLabel(String code) {
+    const map = {
+      'pregnancy': '孕期',
+      'lactation': '哺乳期',
+      'elderly': '老年',
+      'teenager': '青少年',
+      'vegetarian': '蛋奶素',
+      'vegan': '纯素',
+      'lactose_intolerant': '乳糖不耐',
+      'gluten_free': '无麸质',
+      'diabetes': '糖尿病',
+      'hypertension': '高血压',
+      'kidney_issues': '肾病',
+    };
+    return map[code] ?? code;
   }
 
   /// 通用聊天补全（v5 AI 推荐用）

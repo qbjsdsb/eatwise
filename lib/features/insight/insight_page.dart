@@ -18,7 +18,7 @@ class InsightPage extends ConsumerStatefulWidget {
 class _InsightPageState extends ConsumerState<InsightPage> {
   String? _summary;
   // 错误信息独立字段：与 _summary 严格区分，避免错误文案伪装成 AI 汇总误导用户
-  // （原实现把错误塞进 _summary，与 AI 输出在同一 Card 渲染，用户误以为是 AI 汇总内容）
+  // （原实现把错误塞进 _summary，与 AI 输出在同一 Card 渲染，用户误以为是 AI 输出）
   String? _error;
   bool _loading = false;
   String _periodType = 'weekly'; // 'weekly' | 'monthly'
@@ -38,6 +38,29 @@ class _InsightPageState extends ConsumerState<InsightPage> {
   // 配合 AnimatedSwitcher 平滑过渡，避免图表直接消失再出现的突兀感
   // 默认 true：initState 立即调 _loadExisting，初次加载也显示 loading
   bool _chartLoading = true;
+  // 问题2：新增 UI 维度 state（原本只喂 AI 不展示，现在图表/卡片也要用）
+  List<double> _dailyProtein = [];
+  List<double> _dailyFat = [];
+  List<double> _dailyCarbs = [];
+  double _proteinGoal = 0;
+  double _fatGoal = 0;
+  double _carbGoal = 0;
+  Map<String, double> _mealTypeCalories = {}; // 餐次 -> 总热量（环图用）
+  int _streak = 0; // 连续记录天数（到今天为止）
+  double _avgExcess = 0; // 平均每天超/缺目标热量（负=缺口正=超额）
+  int _goalHitDays = 0; // 在目标 ±10% 内的天数
+  double? _weightFirst; // 周期首体重
+  double? _weightLast; // 周期末体重
+  double? _weightDiff; // 体重变化（last - first，负=减重）
+  List<String> _preferenceFoods = []; // 偏好食物 Top5（UI 展示用）
+  Map<int, int> _preferenceFoodCounts = {}; // 偏好食物频次（UI 展示用）
+  Map<int, double> _preferenceFoodCalories = {}; // 偏好食物热量贡献（UI 展示用）
+  // 月报周环比（仅 monthly 填充）：每周起止 + 日均热量
+  List<({String weekStart, String weekEnd, double avgCal})> _weeklyBreakdown = [];
+
+  /// _mealTypeCalories 总热量（环图显示守卫用，避免空数据渲染环图）
+  double get _mealTypeCaloriesTotal =>
+      _mealTypeCalories.values.fold(0.0, (s, v) => s + v);
 
   @override
   void initState() {
@@ -88,30 +111,40 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     }
   }
 
-  /// 聚合当前周期数据（热量/体重/宏量/偏好/覆盖率），供图表与 AI 生成共用。
+  /// 聚合当前周期数据（热量/体重/宏量/偏好/覆盖率/餐次分布/streak/超额/体重摘要），供图表与 AI 生成共用。
   ///
   /// v1.11 增强：在原热量+体重基础上，新增三大宏量每日序列 + 目标值、记录覆盖率、
   /// 高频食物画像，让 AI 汇总能结合宏量达成率、饮食偏好、数据完整度给出更智能的建议。
   ///
-  /// 结果同时写入 state 字段 _dailyCal/_dailyWeight/_targetCal（图表渲染用），
-  /// 新增字段仅随返回值传递给 _generate 用于 AI prompt，不写 state（图表不展示）。
+  /// 问题2 增强：新增餐次热量分布、连续记录 streak、平均超额/缺口、目标达成天数、
+  /// 体重首末变化、月报周环比分组，UI 同步展示（不再只喂 AI）。
   Future<({
     List<double> dailyCal,
     List<double> dailyWeight,
     int targetCal,
     String goal,
-    // v1.11：宏量营养素每日序列 + 目标值（供 AI 分析达成率）
     List<double> dailyProtein,
     List<double> dailyFat,
     List<double> dailyCarbs,
     double proteinGoal,
     double fatGoal,
     double carbGoal,
-    // v1.11：覆盖率 + 饮食偏好画像（供 AI 分析数据完整度 + 偏好）
     int recordedDays,
     int totalDays,
     double coverageRate,
     List<String> preferenceFoods,
+    // 问题2 新增字段
+    Map<String, double> mealTypeCalories,
+    int streak,
+    double avgExcess,
+    int goalHitDays,
+    double? weightFirst,
+    double? weightLast,
+    double? weightDiff,
+    List<({String weekStart, String weekEnd, double avgCal})> weeklyBreakdown,
+    String? specialCondition,
+    String? dietPreference,
+    String? healthCondition,
   })> _aggregatePeriod() async {
     final mealRepo = await ref.read(recognize.mealLogRepoProvider.future);
     final weightRepo = await ref.read(recognize.weightLogRepoProvider.future);
@@ -131,16 +164,39 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     final dailyFat = <double>[];
     final dailyCarbs = <double>[];
     var recordedDays = 0;
+    var goalHitDays = 0;
+    var totalExcess = 0.0;
+    // 餐次热量分布：breakfast/lunch/dinner/snack -> 总热量
+    final mealTypeCalories = <String, double>{
+      'breakfast': 0,
+      'lunch': 0,
+      'dinner': 0,
+      'snack': 0,
+    };
     for (var i = 0; i < days; i++) {
       final date = formatYmd(start.add(Duration(days: i)));
       final dayMeals = meals.where((m) => m.date == date).toList();
       if (dayMeals.isNotEmpty) recordedDays++;
-      dailyCal.add(
-          dayMeals.fold<double>(0, (s, m) => s + m.actualCalories));
+      final dayCal =
+          dayMeals.fold<double>(0, (s, m) => s + m.actualCalories);
+      dailyCal.add(dayCal);
       dailyProtein.add(
           dayMeals.fold<double>(0, (s, m) => s + m.actualProteinG));
       dailyFat.add(dayMeals.fold<double>(0, (s, m) => s + m.actualFatG));
       dailyCarbs.add(dayMeals.fold<double>(0, (s, m) => s + m.actualCarbsG));
+      // 餐次热量累加
+      for (final m in dayMeals) {
+        mealTypeCalories[m.mealType] =
+            (mealTypeCalories[m.mealType] ?? 0) + m.actualCalories;
+      }
+      // 目标达成天数 + 超额累加（仅有记录的天参与）
+      if (dayMeals.isNotEmpty && profile.dailyCalorieTarget > 0) {
+        final excess = dayCal - profile.dailyCalorieTarget;
+        totalExcess += excess;
+        if ((excess.abs() / profile.dailyCalorieTarget) < 0.1) {
+          goalHitDays++;
+        }
+      }
     }
     final dailyWeight = weights.map((w) => w.weightKg).toList();
     final targetCal = profile.dailyCalorieTarget;
@@ -156,13 +212,44 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     // 覆盖率：有记录天数 / 窗口总天数（让 AI 知道数据完整度）
     final coverageRate = days > 0 ? recordedDays / days : 0.0;
 
-    // 饮食偏好画像：统计 foodItemId 频次，取 top 5 食物名
-    // 让 AI 能结合"常吃食物"给出针对性建议（如"你常吃米饭，可尝试用糙米替代"）
+    // 平均超额/缺口（仅有记录的天参与，避免 0 拉低均值）
+    final avgExcess = recordedDays > 0 ? totalExcess / recordedDays : 0.0;
+
+    // 连续记录 streak：从今天往前数连续有记录的天数
+    var streak = 0;
+    for (var i = days - 1; i >= 0; i--) {
+      final date = formatYmd(start.add(Duration(days: i)));
+      final hasRecord = meals.any((m) => m.date == date);
+      if (hasRecord) {
+        streak++;
+      } else {
+        // 今天没记录不算中断（用户可能还没吃），从昨天开始数连续
+        if (i == days - 1) continue;
+        break;
+      }
+    }
+
+    // 体重摘要：首末体重 + 变化（last - first，负=减重）
+    final weightFirst =
+        weights.isNotEmpty ? weights.first.weightKg : null;
+    final weightLast =
+        weights.isNotEmpty ? weights.last.weightKg : null;
+    final weightDiff =
+        (weightFirst != null && weightLast != null)
+            ? weightLast - weightFirst
+            : null;
+
+    // 饮食偏好画像：统计 foodItemId 频次 + 热量贡献，取 top 5
     final foodCounts = <int, int>{};
+    final foodCalories = <int, double>{};
     for (final m in meals) {
       foodCounts[m.foodItemId] = (foodCounts[m.foodItemId] ?? 0) + 1;
+      foodCalories[m.foodItemId] =
+          (foodCalories[m.foodItemId] ?? 0) + m.actualCalories;
     }
     List<String> preferenceFoods = const [];
+    final preferenceFoodCounts = <int, int>{};
+    final preferenceFoodCalories = <int, double>{};
     if (foodCounts.isNotEmpty) {
       final sortedIds = foodCounts.keys.toList()
         ..sort((a, b) => foodCounts[b]!.compareTo(foodCounts[a]!));
@@ -173,6 +260,33 @@ class _InsightPageState extends ConsumerState<InsightPage> {
           .map((id) => idToName[id])
           .whereType<String>()
           .toList();
+      for (final id in topIds) {
+        preferenceFoodCounts[id] = foodCounts[id] ?? 0;
+        preferenceFoodCalories[id] = foodCalories[id] ?? 0;
+      }
+    }
+
+    // 月报周环比：30 天按 7 天分组（4-5 周），每周算日均热量
+    final weeklyBreakdown = <({String weekStart, String weekEnd, double avgCal})>[];
+    if (_periodType == 'monthly') {
+      for (var w = 0; w < days; w += 7) {
+        final wEnd = (w + 6 < days) ? w + 6 : days - 1;
+        final wStart = formatYmd(start.add(Duration(days: w)));
+        final wEndStr = formatYmd(start.add(Duration(days: wEnd)));
+        var wSum = 0.0;
+        var wDays = 0;
+        for (var i = w; i <= wEnd; i++) {
+          if (dailyCal[i] > 0) {
+            wSum += dailyCal[i];
+            wDays++;
+          }
+        }
+        weeklyBreakdown.add((
+          weekStart: wStart,
+          weekEnd: wEndStr,
+          avgCal: wDays > 0 ? wSum / wDays : 0,
+        ));
+      }
     }
 
     if (mounted) {
@@ -182,6 +296,23 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         _targetCal = targetCal;
         _recordedDays = recordedDays;
         _totalDays = days;
+        _dailyProtein = dailyProtein;
+        _dailyFat = dailyFat;
+        _dailyCarbs = dailyCarbs;
+        _proteinGoal = proteinGoal;
+        _fatGoal = fatGoal;
+        _carbGoal = carbGoal;
+        _mealTypeCalories = mealTypeCalories;
+        _streak = streak;
+        _avgExcess = avgExcess;
+        _goalHitDays = goalHitDays;
+        _weightFirst = weightFirst;
+        _weightLast = weightLast;
+        _weightDiff = weightDiff;
+        _preferenceFoods = preferenceFoods;
+        _preferenceFoodCounts = preferenceFoodCounts;
+        _preferenceFoodCalories = preferenceFoodCalories;
+        _weeklyBreakdown = weeklyBreakdown;
       });
     }
     return (
@@ -199,6 +330,17 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       totalDays: days,
       coverageRate: coverageRate,
       preferenceFoods: preferenceFoods,
+      mealTypeCalories: mealTypeCalories,
+      streak: streak,
+      avgExcess: avgExcess,
+      goalHitDays: goalHitDays,
+      weightFirst: weightFirst,
+      weightLast: weightLast,
+      weightDiff: weightDiff,
+      weeklyBreakdown: weeklyBreakdown,
+      specialCondition: profile.specialCondition,
+      dietPreference: profile.dietPreference,
+      healthCondition: profile.healthCondition,
     );
   }
 
@@ -286,6 +428,22 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         'total_days': agg.totalDays,
         'coverage_rate': agg.coverageRate,
         'preference_foods': agg.preferenceFoods,
+        // 问题2 增强：餐次分布/streak/超额/达成天数/体重变化/特殊人群/周环比
+        'meal_type_calories': agg.mealTypeCalories,
+        'streak': agg.streak,
+        'avg_excess': agg.avgExcess,
+        'goal_hit_days': agg.goalHitDays,
+        'weight_diff': agg.weightDiff,
+        'weekly_breakdown': agg.weeklyBreakdown
+            .map((w) => {
+                  'weekStart': w.weekStart,
+                  'weekEnd': w.weekEnd,
+                  'avgCal': w.avgCal,
+                })
+            .toList(),
+        'special_condition': agg.specialCondition,
+        'diet_preference': agg.dietPreference,
+        'health_condition': agg.healthCondition,
       };
       final text = _periodType == 'weekly'
           ? await provider.generateWeeklySummary(data)
@@ -402,6 +560,24 @@ class _InsightPageState extends ConsumerState<InsightPage> {
                   _dailyWeight = [];
                   _recordedDays = 0;
                   _totalDays = v.first == 'weekly' ? 7 : 30;
+                  // 问题2：切换周期时同步重置新增 state，避免图表闪现旧数据
+                  _dailyProtein = [];
+                  _dailyFat = [];
+                  _dailyCarbs = [];
+                  _proteinGoal = 0;
+                  _fatGoal = 0;
+                  _carbGoal = 0;
+                  _mealTypeCalories = {};
+                  _streak = 0;
+                  _avgExcess = 0;
+                  _goalHitDays = 0;
+                  _weightFirst = null;
+                  _weightLast = null;
+                  _weightDiff = null;
+                  _preferenceFoods = [];
+                  _preferenceFoodCounts = {};
+                  _preferenceFoodCalories = {};
+                  _weeklyBreakdown = [];
                   // M24 Task A6：切换周期时立即显示 loading，_loadExisting
                   // finally 内置 _chartLoading=false（async gap 后 mounted 已检查）
                   _chartLoading = true;
@@ -451,6 +627,36 @@ class _InsightPageState extends ConsumerState<InsightPage> {
                       ),
           ),
           const SizedBox(height: 16),
+          // 问题2：统计数字卡片（streak / 平均超额 / 达成天数 / 体重变化）
+          // 仅在有记录数据时显示，避免空态占位噪音
+          if (!_chartLoading && _recordedDays > 0) ...[
+            _buildStatCards(),
+            const SizedBox(height: 16),
+          ],
+          // 问题2：餐次分布环图（早/午/晚/加餐 占比）
+          if (!_chartLoading && _mealTypeCaloriesTotal > 0) ...[
+            _buildMealTypeChart(),
+            const SizedBox(height: 16),
+          ],
+          // 问题2：三宏达成率柱图（实际均值 vs 目标）
+          // 守卫用 _recordedDays > 0（不用 _dailyProtein.isNotEmpty）：
+          // 空数据库时 _dailyProtein=[0,0,0,0,0,0,0] 长度 7 但全 0，不应渲染柱图
+          if (!_chartLoading && _recordedDays > 0) ...[
+            _buildMacroBarChart(),
+            const SizedBox(height: 16),
+          ],
+          // 问题2：偏好食物 Top5 列表（带频次 + 热量贡献）
+          if (!_chartLoading && _preferenceFoods.isNotEmpty) ...[
+            _buildPreferenceFoodsCard(),
+            const SizedBox(height: 16),
+          ],
+          // 问题2：月报周环比（仅 monthly 显示，30 天按 7 天分组）
+          if (!_chartLoading &&
+              _periodType == 'monthly' &&
+              _weeklyBreakdown.isNotEmpty) ...[
+            _buildWeeklyBreakdownCard(),
+            const SizedBox(height: 16),
+          ],
           // v1.11：覆盖率提示（让用户知道数据完整度，覆盖率低时建议多记录）
           // 守卫已保证 recordedDays >= 1 才调 AI，但提示仍展示完整度供用户参考
           if (_totalDays > 0 && _recordedDays < _totalDays)
@@ -841,5 +1047,729 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         ),
       ],
     ));
+  }
+
+  // ============= 问题2：新增 UI 组件 =============
+
+  /// 统计数字卡片：2x2 网格，展示 streak / 平均超额 / 达成天数 / 体重变化
+  ///
+  /// 仅在 _recordedDays > 0 时调用（build 守卫已保证）。
+  /// 4 个卡片用 MD3 角色色区分语义：primary(记录) / tertiary(超额) / secondary(达成) / error或primary(体重)
+  Widget _buildStatCards() {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    // 平均超额文案：正=超目标，负=缺目标，0=刚好
+    final excessDir = _avgExcess > 1
+        ? '超'
+        : _avgExcess < -1
+            ? '缺'
+            : '持平';
+    final excessColor = _avgExcess.abs() < 1
+        ? cs.primary
+        : (_avgExcess > 0 ? cs.error : cs.tertiary);
+    // 体重变化文案：负=减重（减脂目标下好），正=增重
+    // 首末体重都有时显示"70.5→69.8"作为 value，"减 0.7 kg"作为 label
+    final hasWeight = _weightFirst != null && _weightLast != null;
+    final weightValue = hasWeight
+        ? '${_weightFirst!.toStringAsFixed(1)}→${_weightLast!.toStringAsFixed(1)}'
+        : '—';
+    final weightLabel = !hasWeight
+        ? '体重变化(kg)'
+        : (_weightDiff! == 0
+            ? '体重持平'
+            : _weightDiff! < 0
+                ? '减 ${_weightDiff!.abs().toStringAsFixed(1)} kg'
+                : '增 ${_weightDiff!.toStringAsFixed(1)} kg');
+    final weightColor = !hasWeight
+        ? cs.onSurfaceVariant
+        : (_weightDiff! == 0
+            ? cs.primary
+            : (_weightDiff! < 0 ? cs.tertiary : cs.error));
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.insights_rounded, size: 18, color: cs.primary),
+                const SizedBox(width: 6),
+                Text('周期概览',
+                    style: tt.titleSmall
+                        ?.copyWith(color: cs.primary, fontWeight: FontWeight.w600)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                    child: _statTile(
+                  icon: Icons.local_fire_department_outlined,
+                  value: '$_streak 天',
+                  label: '连续记录',
+                  color: cs.primary,
+                )),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: _statTile(
+                  icon: Icons.trending_up_rounded,
+                  value:
+                      '$excessDir ${_avgExcess.abs() < 1 ? 0 : _avgExcess.abs().round()}',
+                  label: '平均 kcal/天',
+                  color: excessColor,
+                )),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                    child: _statTile(
+                  icon: Icons.check_circle_outline,
+                  value: '$_goalHitDays/$_totalDays',
+                  label: '目标达成',
+                  color: cs.secondary,
+                )),
+                const SizedBox(width: 8),
+                Expanded(
+                    child: _statTile(
+                  icon: Icons.monitor_weight_outlined,
+                  value: weightValue,
+                  label: weightLabel,
+                  color: weightColor,
+                )),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 单个统计数字 tile（图标 + 大数字 + 标签）
+  Widget _statTile({
+    required IconData icon,
+    required String value,
+    required String label,
+    required Color color,
+  }) {
+    final tt = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(label,
+                    style: tt.labelSmall?.copyWith(color: color),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(value,
+              style: tt.titleMedium?.copyWith(
+                color: color,
+                fontWeight: FontWeight.w600,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              )),
+        ],
+      ),
+    );
+  }
+
+  /// 餐次分布环图：早/午/晚/加餐 占比 + 中心总热量
+  ///
+  /// 用 PieChart（ring 模式，centerSpaceRadius 留白显示总热量）。
+  /// 4 个 section 用 MD3 角色色：primary/tertiary/secondary/outline（避免与三宏色冲突）。
+  Widget _buildMealTypeChart() {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final total = _mealTypeCaloriesTotal;
+    final sections = <PieChartSectionData>[];
+    final mealConfig = [
+      ('breakfast', '早餐', cs.primary),
+      ('lunch', '午餐', cs.tertiary),
+      ('dinner', '晚餐', cs.secondary),
+      ('snack', '加餐', cs.outline),
+    ];
+    for (final (key, label, color) in mealConfig) {
+      final cal = _mealTypeCalories[key] ?? 0;
+      if (cal <= 0) continue;
+      final pct = total > 0 ? cal / total * 100 : 0.0;
+      sections.add(PieChartSectionData(
+        value: cal,
+        color: color,
+        radius: 36,
+        title: '$pct%',
+        titleStyle: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          color: cs.onPrimary,
+        ),
+        badgeWidget: _mealBadge(label, cal.round(), color, cs),
+        badgePositionPercentageOffset: 1.15,
+      ));
+    }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.pie_chart_outline_rounded, size: 18, color: cs.primary),
+                const SizedBox(width: 6),
+                Text('餐次分布',
+                    style: tt.titleSmall
+                        ?.copyWith(color: cs.primary, fontWeight: FontWeight.w600)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 180,
+              child: PieChart(PieChartData(
+                sections: sections,
+                centerSpaceRadius: 42,
+                sectionsSpace: 2,
+                pieTouchData: PieTouchData(
+                  touchCallback: (FlTouchEvent event, pieTouchResponse) {
+                    // 触摸交互预留（暂不实现 tooltip，避免复杂度）
+                  },
+                ),
+              )),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                '总摄入 ${total.round()} kcal',
+                style: tt.bodySmall?.copyWith(
+                  color: cs.onSurfaceVariant,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 餐次环图 badge（标签 + kcal，环外显示）
+  Widget _mealBadge(String label, int kcal, Color color, ColorScheme cs) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        '$label $kcal',
+        style: TextStyle(
+          fontSize: 10,
+          color: color,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+
+  /// 三宏达成率柱图：蛋白/脂肪/碳水 实际均值 vs 目标
+  ///
+  /// 用 BarChart，3 组柱（每组 2 个柱：实际均值 + 目标）。
+  /// 实际柱用 MD3 三角色（tertiary=蛋白/secondary=脂肪/primary=碳水，与 MacroColors 一致）。
+  /// 目标柱用半透明同色，让用户直观看到"达成/超出/不足"。
+  Widget _buildMacroBarChart() {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    // 计算实际均值（只统计热量>0 的天，避免 0 拉低）
+    var sumP = 0.0, sumF = 0.0, sumC = 0.0;
+    var n = 0;
+    for (var i = 0; i < _dailyProtein.length; i++) {
+      if (i < _dailyCal.length && _dailyCal[i] > 0) {
+        n++;
+        sumP += _dailyProtein[i];
+        sumF += _dailyFat[i];
+        sumC += _dailyCarbs[i];
+      }
+    }
+    if (n == 0) return const SizedBox.shrink();
+    final avgP = sumP / n;
+    final avgF = sumF / n;
+    final avgC = sumC / n;
+    // BarChartGroupData 3 组，每组 2 个柱
+    final groups = [
+      BarChartGroupData(
+        x: 0,
+        barRods: [
+          BarChartRodData(
+            toY: avgP,
+            color: MacroColors.protein(cs),
+            width: 18,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+          ),
+          BarChartRodData(
+            toY: _proteinGoal,
+            color: MacroColors.protein(cs).withValues(alpha: 0.3),
+            width: 18,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+          ),
+        ],
+      ),
+      BarChartGroupData(
+        x: 1,
+        barRods: [
+          BarChartRodData(
+            toY: avgF,
+            color: MacroColors.fat(cs),
+            width: 18,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+          ),
+          BarChartRodData(
+            toY: _fatGoal,
+            color: MacroColors.fat(cs).withValues(alpha: 0.3),
+            width: 18,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+          ),
+        ],
+      ),
+      BarChartGroupData(
+        x: 2,
+        barRods: [
+          BarChartRodData(
+            toY: avgC,
+            color: MacroColors.carb(cs),
+            width: 18,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+          ),
+          BarChartRodData(
+            toY: _carbGoal,
+            color: MacroColors.carb(cs).withValues(alpha: 0.3),
+            width: 18,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+          ),
+        ],
+      ),
+    ];
+    // Y 轴最大值：取四值（avgP/avgF/avgC/proteinGoal/fatGoal/carbGoal）最大 *1.2
+    final maxV = [
+      avgP, avgF, avgC, _proteinGoal, _fatGoal, _carbGoal
+    ].reduce((a, b) => a > b ? a : b);
+    final maxY = (maxV * 1.2).clamp(10.0, double.infinity);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.bar_chart_rounded, size: 18, color: cs.primary),
+                const SizedBox(width: 6),
+                Text('三宏达成率',
+                    style: tt.titleSmall
+                        ?.copyWith(color: cs.primary, fontWeight: FontWeight.w600)),
+                const Spacer(),
+                // 图例：实色=实际均值，半透明=目标
+                _legendDot(MacroColors.protein(cs), '蛋白', cs),
+                const SizedBox(width: 8),
+                _legendDot(MacroColors.fat(cs), '脂肪', cs),
+                const SizedBox(width: 8),
+                _legendDot(MacroColors.carb(cs), '碳水', cs),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text('实色=记录日均值，半透明=目标值',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 11)),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 180,
+              child: BarChart(BarChartData(
+                alignment: BarChartAlignment.spaceAround,
+                maxY: maxY,
+                groupsSpace: 24,
+                barTouchData: BarTouchData(
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipItem: (group, gIdx, rod, rIdx) {
+                      final labels = ['蛋白', '脂肪', '碳水'];
+                      final kind = rIdx == 0 ? '均值' : '目标';
+                      return BarTooltipItem(
+                        '${labels[gIdx]} $kind\n${rod.toY.toStringAsFixed(1)} g',
+                        TextStyle(
+                          color: cs.onInverseSurface,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          height: 1.4,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 22,
+                      getTitlesWidget: (value, meta) {
+                        final labels = ['蛋白', '脂肪', '碳水'];
+                        final idx = value.toInt();
+                        if (idx < 0 || idx >= labels.length) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(labels[idx],
+                              style: TextStyle(
+                                  fontSize: 11, color: cs.onSurfaceVariant)),
+                        );
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 32,
+                      interval: (maxY / 4).clamp(5.0, double.infinity),
+                      getTitlesWidget: (value, meta) {
+                        if (value == 0) return const SizedBox.shrink();
+                        return Text('${value.round()}',
+                            style: TextStyle(
+                                fontSize: 10, color: cs.onSurfaceVariant));
+                      },
+                    ),
+                  ),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                ),
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: (maxY / 4).clamp(5.0, double.infinity),
+                  getDrawingHorizontalLine: (v) => FlLine(
+                    color: cs.outlineVariant.withValues(alpha: 0.4),
+                    strokeWidth: 1,
+                    dashArray: [3, 3],
+                  ),
+                ),
+                borderData: FlBorderData(
+                  show: true,
+                  border: Border(
+                    left: BorderSide(color: cs.outlineVariant),
+                    bottom: BorderSide(color: cs.outlineVariant),
+                    top: BorderSide.none,
+                    right: BorderSide.none,
+                  ),
+                ),
+                barGroups: groups,
+              )),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 图例圆点（柱图用）：色块 + 文案
+  Widget _legendDot(Color color, String label, ColorScheme cs) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(label,
+            style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+      ],
+    );
+  }
+
+  /// 偏好食物 Top5 列表：排名 + 食物名 + 频次 + 热量贡献
+  ///
+  /// 数据来自 _preferenceFoods（已按频次降序取 top 5）+ _preferenceFoodCounts/FoodCalories。
+  /// 用 Card + ListView(shrinkWrap)，每行带排名徽章 + 食物名 + 频次 + 热量贡献条。
+  Widget _buildPreferenceFoodsCard() {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    // 总热量贡献（用于计算每项占比，渲染热量条）
+    final totalCal = _preferenceFoodCalories.values.fold<double>(0.0, (s, v) => s + v);
+    // _preferenceFoods 是 List<String>（按频次降序），但需要 id 找频次/热量
+    // _preferenceFoodCounts/FoodCalories 的 key 是 foodItemId，与 _preferenceFoods 顺序一致
+    // （_aggregatePeriod 内 topIds 顺序与 preferenceFoods 一致）
+    final ids = _preferenceFoodCounts.keys.toList();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.restaurant_menu, size: 18, color: cs.primary),
+                const SizedBox(width: 6),
+                Text('常吃食物 Top ${_preferenceFoods.length}',
+                    style: tt.titleSmall
+                        ?.copyWith(color: cs.primary, fontWeight: FontWeight.w600)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            for (var i = 0; i < _preferenceFoods.length; i++)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Row(
+                  children: [
+                    // 排名徽章（1/2/3 用 primary/tertiary/secondary，其余用 outline）
+                    Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: i == 0
+                            ? cs.primary
+                            : i == 1
+                                ? cs.tertiary
+                                : i == 2
+                                    ? cs.secondary
+                                    : cs.outline,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text(
+                        '${i + 1}',
+                        style: TextStyle(
+                          color: i < 3 ? cs.onPrimary : cs.onSurface,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    // 食物名 + 频次
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(_preferenceFoods[i],
+                              style: tt.bodyMedium?.copyWith(color: cs.onSurface),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                          if (i < ids.length)
+                            Text(
+                              '${_preferenceFoodCounts[ids[i]] ?? 0} 次',
+                              style: tt.bodySmall?.copyWith(
+                                  color: cs.onSurfaceVariant, fontSize: 11),
+                            ),
+                        ],
+                      ),
+                    ),
+                    // 热量贡献条 + 数字
+                    if (i < ids.length && totalCal > 0)
+                      SizedBox(
+                        width: 80,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              '${(_preferenceFoodCalories[ids[i]] ?? 0).round()} kcal',
+                              style: tt.labelSmall?.copyWith(
+                                color: cs.onSurfaceVariant,
+                                fontFeatures: const [FontFeature.tabularFigures()],
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(2),
+                              child: LinearProgressIndicator(
+                                value: ((_preferenceFoodCalories[ids[i]] ?? 0) /
+                                        totalCal)
+                                    .clamp(0.0, 1.0),
+                                backgroundColor: cs.primary.withValues(alpha: 0.1),
+                                color: cs.primary,
+                                minHeight: 4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 月报周环比卡片：30 天按 7 天分组（4-5 周），每周算日均热量
+  ///
+  /// 仅 monthly 显示。用 BarChart 展示每周日均热量，让用户看到周环比趋势。
+  /// 配合参考线显示总体日均，方便对比。
+  Widget _buildWeeklyBreakdownCard() {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    if (_weeklyBreakdown.isEmpty) return const SizedBox.shrink();
+    // 总体日均（参考线）
+    final validWeeks = _weeklyBreakdown.where((w) => w.avgCal > 0).toList();
+    final overallAvg = validWeeks.isEmpty
+        ? 0.0
+        : validWeeks.map((w) => w.avgCal).reduce((a, b) => a + b) /
+            validWeeks.length;
+    final maxCal = _weeklyBreakdown
+        .map((w) => w.avgCal)
+        .fold<double>(0.0, (a, b) => a > b ? a : b);
+    final maxY = (maxCal * 1.2).clamp(100.0, double.infinity);
+    final groups = <BarChartGroupData>[];
+    for (var i = 0; i < _weeklyBreakdown.length; i++) {
+      final w = _weeklyBreakdown[i];
+      groups.add(BarChartGroupData(
+        x: i,
+        barRods: [
+          BarChartRodData(
+            toY: w.avgCal,
+            color: cs.primary,
+            width: 22,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+          ),
+        ],
+      ));
+    }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.calendar_view_week_rounded, size: 18, color: cs.primary),
+                const SizedBox(width: 6),
+                Text('周环比',
+                    style: tt.titleSmall
+                        ?.copyWith(color: cs.primary, fontWeight: FontWeight.w600)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text('每周日均热量（kcal），参考线=总体日均',
+                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant, fontSize: 11)),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 180,
+              child: BarChart(BarChartData(
+                alignment: BarChartAlignment.spaceAround,
+                maxY: maxY,
+                groupsSpace: 12,
+                barTouchData: BarTouchData(
+                  touchTooltipData: BarTouchTooltipData(
+                    getTooltipItem: (group, gIdx, rod, rIdx) {
+                      final w = _weeklyBreakdown[gIdx];
+                      return BarTooltipItem(
+                        '第${gIdx + 1}周\n${w.weekStart}~${w.weekEnd}\n日均 ${rod.toY.round()} kcal',
+                        TextStyle(
+                          color: cs.onInverseSurface,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          height: 1.4,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 22,
+                      getTitlesWidget: (value, meta) {
+                        final idx = value.toInt();
+                        if (idx < 0 || idx >= _weeklyBreakdown.length) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text('W${idx + 1}',
+                              style: TextStyle(
+                                  fontSize: 11, color: cs.onSurfaceVariant)),
+                        );
+                      },
+                    ),
+                  ),
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 40,
+                      interval: (maxY / 4).clamp(50.0, double.infinity),
+                      getTitlesWidget: (value, meta) {
+                        if (value == 0) return const SizedBox.shrink();
+                        return Text('${value.round()}',
+                            style: TextStyle(
+                                fontSize: 10, color: cs.onSurfaceVariant));
+                      },
+                    ),
+                  ),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                ),
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  horizontalInterval: (maxY / 4).clamp(50.0, double.infinity),
+                  getDrawingHorizontalLine: (v) => FlLine(
+                    color: cs.outlineVariant.withValues(alpha: 0.4),
+                    strokeWidth: 1,
+                    dashArray: [3, 3],
+                  ),
+                ),
+                borderData: FlBorderData(
+                  show: true,
+                  border: Border(
+                    left: BorderSide(color: cs.outlineVariant),
+                    bottom: BorderSide(color: cs.outlineVariant),
+                    top: BorderSide.none,
+                    right: BorderSide.none,
+                  ),
+                ),
+                extraLinesData: ExtraLinesData(
+                  horizontalLines: [
+                    if (overallAvg > 0)
+                      HorizontalLine(
+                        y: overallAvg,
+                        color: cs.tertiary.withValues(alpha: 0.7),
+                        strokeWidth: 1.5,
+                        dashArray: [6, 4],
+                        label: HorizontalLineLabel(
+                          show: true,
+                          alignment: Alignment.topLeft,
+                          padding: const EdgeInsets.only(left: 44, bottom: 4),
+                          style: TextStyle(
+                              fontSize: 10,
+                              color: cs.tertiary,
+                              fontWeight: FontWeight.w600),
+                          labelResolver: (_) => '总体日均 ${overallAvg.round()}',
+                        ),
+                      ),
+                  ],
+                ),
+                barGroups: groups,
+              )),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
