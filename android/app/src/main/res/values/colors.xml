@@ -4,9 +4,9 @@
          让 native splash → Flutter UI 过渡无颜色跳变（减少"黑/白屏一两秒"的突兀感）。
          用户若切了主题色，splash 仍是默认紫调 surface——native 启动太快读不到 secure_storage，可接受。 -->
     <color name="splash_background">#FCF9F9</color>
-    <!-- M22：图标反转配色——白底 #FFFFFF + 紫前景 #6750A4（Google Camera 风）
-         M15 暖橙纯色 → M17 紫橙渐变 → M20 紫橙渐变+Lens 风 → M22 白底紫前景（用户反馈「颜色丑、不像谷歌」重设计）
-         白底最 Google 风，紫前景呼应 App 主题种子色，用户切主题色不影响图标识别 -->
+    <!-- M25：图标自然绿配色——白底 #FFFFFF + 自然绿前景 #2E7D32（对标 MyFitnessPal，紫色抑制食欲改绿）
+         M15 暖橙纯色 → M17 紫橙渐变 → M20 紫橙渐变+Lens 风 → M22 白底紫前景 → M25 白底自然绿前景
+         白底最衬托食物 App 语义，自然绿健康/平衡不抑制食欲，用户切主题色不影响图标识别 -->
     <color name="ic_launcher_background">#FFFFFF</color>
-    <color name="ic_launcher_foreground">#6750A4</color>
+    <color name="ic_launcher_foreground">#2E7D32</color>
 </resources>
