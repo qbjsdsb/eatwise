@@ -139,7 +139,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 TextField(
                   controller: _qwenKeyCtrl,
                   decoration: const InputDecoration(
-                      labelText: 'Qwen API Key', border: InputBorder.none),
+                      labelText: 'Qwen API Key',
+                      border: InputBorder.none,
+                      focusedBorder: UnderlineInputBorder()),
                   obscureText: true,
                   // 敏感凭证：禁用自动纠错与建议，避免键盘记录/泄漏
                   autocorrect: false,
@@ -153,12 +155,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   decoration: InputDecoration(
                       labelText: 'Qwen Base URL (留空用默认)',
                       hintText: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
-                      border: InputBorder.none),
+                      border: InputBorder.none,
+                      focusedBorder: const UnderlineInputBorder()),
                 ),
                 TextField(
                   controller: _glmKeyCtrl,
                   decoration: const InputDecoration(
-                      labelText: 'GLM API Key', border: InputBorder.none),
+                      labelText: 'GLM API Key',
+                      border: InputBorder.none,
+                      focusedBorder: UnderlineInputBorder()),
                   obscureText: true,
                   // 敏感凭证：禁用自动纠错与建议
                   autocorrect: false,
@@ -172,7 +177,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                   decoration: InputDecoration(
                       labelText: 'GLM Base URL (留空用默认)',
                       hintText: 'https://open.bigmodel.cn/api/paas/v4',
-                      border: InputBorder.none),
+                      border: InputBorder.none,
+                      focusedBorder: const UnderlineInputBorder()),
                 ),
               ]),
               SectionTitle('监控与校准'),
@@ -198,7 +204,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 TextField(
                   controller: _sentryDsnCtrl,
                   decoration: const InputDecoration(
-                      labelText: 'Sentry DSN', border: InputBorder.none),
+                      labelText: 'Sentry DSN',
+                      border: InputBorder.none,
+                      focusedBorder: UnderlineInputBorder()),
                   // 技术标识符（DSN）：禁用自动纠错与建议，避免被改成自然语言
                   autocorrect: false,
                   enableSuggestions: false,

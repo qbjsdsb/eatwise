@@ -54,14 +54,14 @@
 
 ## D 类编辑流程一致性
 
-- [ ] meal_edit_dialog 加 _dirty 状态 + 所有编辑控件 onChanged 调 _markDirty
-- [ ] meal_edit_dialog 外层 PopScope + confirmDiscardChanges
-- [ ] today_meals_page:529 showDialog 加 barrierDismissible: false
-- [ ] backup_page _import 入口加 _busy 检查
-- [ ] settings_page 5 处 TextField 加 focusedBorder
-- [ ] update_page AnimatedSize 检查 MediaQuery.accessibleNavigation
-- [ ] 新增 2 个测试文件覆盖 D 类修复
-- [ ] D 类 commit 完成，flutter analyze + flutter test 通过
+- [x] meal_edit_dialog 加 _dirty 状态 + 所有编辑控件 onChanged 调 _markDirty
+- [x] meal_edit_dialog 外层 PopScope + confirmDiscardChanges
+- [x] today_meals_page:529 showDialog 加 barrierDismissible: false
+- [x] backup_page _import 入口加 _busy 检查
+- [x] settings_page 5 处 TextField 加 focusedBorder
+- [x] update_page AnimatedSize 检查 MediaQuery.accessibleNavigation
+- [x] 新增 2 个测试文件覆盖 D 类修复
+- [x] D 类 commit 完成，flutter analyze + flutter test 通过
 
 ## E 类错误反馈与状态覆盖
 

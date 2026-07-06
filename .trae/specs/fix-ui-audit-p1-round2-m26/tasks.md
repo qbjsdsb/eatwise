@@ -93,22 +93,22 @@
 
 ## Commit 4: D 类编辑流程一致性（4 条）
 
-- [ ] Task 22: 修复 meal_edit_dialog 无 dirty 拦截
-  - [ ] SubTask 22.1: meal_edit_dialog.dart 加 `_dirty` 状态字段
-  - [ ] SubTask 22.2: 所有编辑控件 onChanged 调 `setState(() => _dirty = true)`
-  - [ ] SubTask 22.3: AlertDialog 外层包 `PopScope(canPop: false, onPopInvoked: ...)` + `_dirty` 时调 `confirmDiscardChanges`
-  - [ ] SubTask 22.4: 调用方 today_meals_page.dart:529 showDialog 加 `barrierDismissible: false`
-- [ ] Task 23: 修复 backup_page _import 重入窗口
-  - [ ] SubTask 23.1: backup_page.dart:119 `_import()` 入口加 `if (_busy) return;` 检查
-- [ ] Task 24: 修复 settings_page TextField focus ring
-  - [ ] SubTask 24.1: settings_page.dart:139-205 5 处 TextField 的 `border: InputBorder.none` 加 `focusedBorder: OutlineInputBorder()` 或保留 border:none 但加 `focusedBorder: UnderlineInputBorder()`
-- [ ] Task 25: 修复 update_page AnimatedSize reduced-motion
-  - [ ] SubTask 25.1: update_page.dart:315 AnimatedSize duration 改读 `MediaQuery.accessibleNavigation ? Duration.zero : Duration(milliseconds: 300)`
-- [ ] Task 26: 新增 D 类针对性测试
-  - [ ] SubTask 26.1: 新增 `test/features/meal_edit_dialog_dirty_test.dart` 覆盖 dirty 拦截
-  - [ ] SubTask 26.2: 扩展 backup_page_test 覆盖 _import 重入
-- [ ] Task 27: 验证 D 类修复（同 Task 7 三步）
-- [ ] Task 28: Commit D 类修复（消息："M26 D: 修复 4 条编辑流程一致性 P1（meal_edit dirty + backup 重入 + settings focus ring + update reduced-motion）"）
+- [x] Task 22: 修复 meal_edit_dialog 无 dirty 拦截
+  - [x] SubTask 22.1: meal_edit_dialog.dart 加 `_dirty` 状态字段
+  - [x] SubTask 22.2: 所有编辑控件 onChanged 调 `setState(() => _dirty = true)`
+  - [x] SubTask 22.3: AlertDialog 外层包 `PopScope(canPop: false, onPopInvoked: ...)` + `_dirty` 时调 `confirmDiscardChanges`
+  - [x] SubTask 22.4: 调用方 today_meals_page.dart:529 showDialog 加 `barrierDismissible: false`
+- [x] Task 23: 修复 backup_page _import 重入窗口
+  - [x] SubTask 23.1: backup_page.dart:119 `_import()` 入口加 `if (_busy) return;` 检查
+- [x] Task 24: 修复 settings_page TextField focus ring
+  - [x] SubTask 24.1: settings_page.dart:139-205 5 处 TextField 的 `border: InputBorder.none` 加 `focusedBorder: OutlineInputBorder()` 或保留 border:none 但加 `focusedBorder: UnderlineInputBorder()`
+- [x] Task 25: 修复 update_page AnimatedSize reduced-motion
+  - [x] SubTask 25.1: update_page.dart:315 AnimatedSize duration 改读 `MediaQuery.accessibleNavigation ? Duration.zero : Duration(milliseconds: 300)`
+- [x] Task 26: 新增 D 类针对性测试
+  - [x] SubTask 26.1: 新增 `test/features/meal_edit_dialog_dirty_test.dart` 覆盖 dirty 拦截
+  - [x] SubTask 26.2: 扩展 backup_page_test 覆盖 _import 重入
+- [x] Task 27: 验证 D 类修复（同 Task 7 三步）
+- [x] Task 28: Commit D 类修复（消息："M26 D: 修复 4 条编辑流程一致性 P1（meal_edit dirty + backup 重入 + settings focus ring + update reduced-motion）"）
 
 ## Commit 5: E 类错误反馈与状态覆盖（5 条）
 

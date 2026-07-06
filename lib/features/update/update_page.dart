@@ -338,7 +338,10 @@ class _ExpandableReleaseNotesState extends State<_ExpandableReleaseNotes> {
       mainAxisSize: MainAxisSize.min,
       children: [
         AnimatedSize(
-          duration: const Duration(milliseconds: 300),
+          // 尊重系统"移除动画"辅助功能：开启时即时完成，无过渡
+          duration: MediaQuery.of(context).accessibleNavigation
+              ? Duration.zero
+              : const Duration(milliseconds: 300),
           curve: Curves.easeInOut,
           child: _expanded
               ? SingleChildScrollView(

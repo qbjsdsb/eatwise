@@ -91,6 +91,8 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
   bool _advancedExpanded = false;
   // 用户是否手动改过 advanced 任意一个营养值（决定保存时是否覆盖比例重算）
   bool _nutritionOverridden = false;
+  // 用户是否改过任意字段（PopScope 未保存确认用）
+  bool _dirty = false;
 
   @override
   void initState() {
@@ -113,12 +115,19 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
     _proteinCtrl.addListener(_markOverride);
     _fatCtrl.addListener(_markOverride);
     _carbsCtrl.addListener(_markOverride);
+    // 份量变化标记 dirty（PopScope 拦截返回用）
+    _servingCtrl.addListener(_markDirty);
   }
 
   void _markOverride() {
     if (_advancedExpanded && !_nutritionOverridden) {
       setState(() => _nutritionOverridden = true);
     }
+    _markDirty();
+  }
+
+  void _markDirty() {
+    if (!_dirty) setState(() => _dirty = true);
   }
 
   @override
@@ -159,6 +168,7 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
       _nutritionOverridden = false;
       _advancedExpanded = false;
     });
+    _markDirty();
     // 立即用新食物的 per100g × 当前份量重算 advanced 4 个值（预填，用户可继续调整）
     _recalcNutritionFromFood();
   }
@@ -244,6 +254,7 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
       return;
     }
     final n = _computeNutrition();
+    _dirty = false; // 清 dirty 让 PopScope 放行 programmatic pop
     Navigator.of(context).pop(MealEditResult(
       servingG: serving,
       mealType: _mealType,
@@ -259,7 +270,15 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return AlertDialog(
+    return PopScope(
+      canPop: !_dirty,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await confirmDiscardChanges(context) && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: AlertDialog(
       title: const Text('编辑餐次'),
       content: SizedBox(
         width: double.maxFinite,
@@ -302,7 +321,10 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
               // 餐次切换器（复用共享 MealTypeSelector，与 recognize/manual_entry 一致）
               MealTypeSelector(
                 value: _mealType,
-                onChanged: (v) => setState(() => _mealType = v),
+                onChanged: (v) {
+                  setState(() => _mealType = v);
+                  _markDirty();
+                },
               ),
               const SizedBox(height: 12),
               // 日期选择器
@@ -320,6 +342,7 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
                   );
                   if (picked != null) {
                     setState(() => _selectedDate = picked);
+                    _markDirty();
                   }
                 },
               ),
@@ -407,6 +430,7 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
           child: const Text('保存'),
         ),
       ],
+      ),
     );
   }
 }

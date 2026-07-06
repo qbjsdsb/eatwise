@@ -528,8 +528,10 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
   Future<void> _showEditDialog(MealLog m) async {
     if (_busy) return; // 防重入
     // dialog 在 root Navigator，避免 tab 页嵌套 Navigator 误 pop（陷阱 7）
+    // barrierDismissible:false 防止点 barrier 误丢弃修改（与 PopScope 配合）
     final result = await showDialog<MealEditResult>(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => MealEditDialog(
         mealLog: m,
         currentFoodName: _foodNames[m.foodItemId] ?? placeholderFoodName(m.foodItemId),

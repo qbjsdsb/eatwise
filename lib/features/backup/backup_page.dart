@@ -120,6 +120,7 @@ class _BackupPageState extends ConsumerState<BackupPage> {
   }
 
   Future<void> _import() async {
+    if (_busy) return; // 防重入：UI 按钮已禁用，但 await 期间可能被其它路径触发
     final ctrl = TextEditingController();
     String? jsonStr;
     try {
