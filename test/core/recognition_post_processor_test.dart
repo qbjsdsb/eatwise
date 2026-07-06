@@ -131,9 +131,10 @@ void main() {
     });
   });
 
-  group('process 完整链路 - 营养素自洽修正', () {
-    test('calories 不自洽（偏差>10%）反推修正', () {
-      // expected = 4*0+9*460+4*0 = 4140, cal=5000, 偏差 17.2% → 修正
+  group('process 完整链路 - 营养素自洽（v2：保留 AI 值 + warnings 提示）', () {
+    test('v2: calories 不自洽（偏差>10%）保留 AI 值 + warnings 含不自洽提示', () {
+      // expected = 4*0+9*460+4*0 = 4140, cal=5000, 偏差 17.2%
+      // v2 改动 A：删除 Atwater 修正，保留 AI 值 5000 + warnings 提示用户核对
       final original = VisionRecognitionResult(
         dishName: '油',
         estimatedWeightGLow: 460,
@@ -150,7 +151,12 @@ void main() {
         estimatedCarbsG: 0,
       );
       final result = RecognitionPostProcessor.process(original);
-      expect(result.estimatedCalories, 4140);
+      // v2：AI 值绝对优先，不被 Atwater 修正覆盖
+      expect(result.estimatedCalories, 5000,
+          reason: 'v2 改动 A：AI 值 5000 不被 Atwater 修正为 4140');
+      // warnings 应含"宏量与热量不自洽"提示
+      expect(result.warnings.any((w) => w.contains('不自洽')), isTrue,
+          reason: 'v2 改动 A：偏差>10% 应输出 warnings 提示用户核对');
     });
 
     test('calories 自洽（偏差<10%）不修正', () {
@@ -240,8 +246,8 @@ void main() {
     });
   });
 
-  group('process 完整链路 - additionalDishes 修正', () {
-    test('附加菜 calories 不自洽 → 修正', () {
+  group('process 完整链路 - additionalDishes 修正（v2：保留 AI 值 + warnings）', () {
+    test('v2: 附加菜 calories 不自洽 → 保留 AI 值 + warnings 提示', () {
       final additional = VisionRecognitionResult(
         dishName: '油',
         estimatedWeightGLow: 460,
@@ -270,7 +276,15 @@ void main() {
         additionalDishes: [additional],
       );
       final result = RecognitionPostProcessor.process(original);
-      expect(result.additionalDishes.first.estimatedCalories, 4140);
+      // v2 改动 A：附加菜 AI 值绝对优先，不被 Atwater 修正覆盖
+      expect(result.additionalDishes.first.estimatedCalories, 5000,
+          reason: 'v2：附加菜 AI 值 5000 不被 Atwater 修正为 4140');
+      // warnings 应含"不自洽"提示（透传到附加菜）
+      expect(
+          result.additionalDishes.first.warnings
+              .any((w) => w.contains('不自洽')),
+          isTrue,
+          reason: 'v2：附加菜偏差>10% 应输出 warnings 提示');
     });
 
     test('附加菜密度换算（500ml 油 → 460g）', () {
@@ -355,9 +369,9 @@ void main() {
       expect(result.foodComponents[1].estimatedG, closeTo(230, 0.5));
     });
 
-    test('密度换算 → 营养素自洽：换算后不影响自洽判断（用宏量营养素反推）', () {
+    test('v2: 密度换算不影响 warnings 检测（换算后保留 AI 值 + warnings 提示）', () {
       // 油瓶 mid=500ml→460g，calories 不自洽
-      // 验证：自洽判断用 estimatedFatG（460g）反推，不受 mid 换算影响
+      // v2 改动 A：删除 Atwater 修正，密度换算后仍保留 AI 值 9999 + warnings 提示
       final original = VisionRecognitionResult(
         dishName: '食用油',
         estimatedWeightGLow: 485,
@@ -379,9 +393,13 @@ void main() {
         estimatedCarbsG: 0,
       );
       final result = RecognitionPostProcessor.process(original);
-      // expected = 4*0+9*460+4*0 = 4140
-      expect(result.estimatedCalories, 4140);
+      // v2：AI 值绝对优先，密度换算后仍保留 AI 值 9999（不被 Atwater 修正为 4140）
+      expect(result.estimatedCalories, 9999,
+          reason: 'v2：AI 值 9999 不被 Atwater 修正');
       expect(result.estimatedWeightGMid, closeTo(460, 0.1));
+      // warnings 应含"不自洽"提示
+      expect(result.warnings.any((w) => w.contains('不自洽')), isTrue,
+          reason: 'v2：偏差>10% 应输出 warnings 提示用户核对');
     });
   });
 

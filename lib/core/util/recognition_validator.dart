@@ -1,24 +1,24 @@
-// 识别结果校验器（批次 1）
+// 识别结果校验器（重构：AI 绝对优先 + warnings 检测不修改）
 //
-// 三层校验：
+// 设计变更（v2）：
 // 1. 字段合理性（dishName 非空、confidence 在 [0,1]、weight>0、区间不倒置）
 //    —— 不合理触发 needsRetry，让 controller 重试 1 次（模型偶发错误）
-// 2. 营养素自洽性（4*protein + 9*fat + 4*carb ≈ calories，误差 ±10%）
-//    —— 不自洽返回 correctedCalories，controller 自动修正（宏量营养素相对可信，calories 易瞎算）
-//    —— 参考：Atwater 系数（蛋白质 4 kcal/g、脂肪 9 kcal/g、碳水 4 kcal/g）
-// 3. v1.10：宏量营养素反推修正（cal>0 但三宏量全 0 → 按品类默认比例反推）
-//    —— 解决"盒装菊花茶有 cal 但碳水=0"问题：含糖饮料碳水必标，AI 漏填时按品类反推
+// 2. 物理约束检测（Atwater 偏差/宏量缺失/密度异常/宏量上限）
+//    —— 不修改 AI 估算值，仅输出 warnings 提示用户核对
+// 3. 组分份量交叉验证（sum(components) vs mid 偏差>15% 按 mid 缩放）
+//    —— 信任 mid（AI 整菜估算），不是覆盖 AI 估算
 //
-// 设计依据：营养素自洽校验是食品科学的基础约束，AI 瞎算 calories 时
-// 用宏量营养素反推比"重试赌运气"更稳定（重试可能再次瞎算）。
+// 删除的旧逻辑：
+// - Atwater 自洽修正（4p+9f+4c≠cal > 10% → 用宏量反推覆盖 cal）
+// - 宏量反推（cal>0 但宏量缺失 → 按品类默认比例填充）
+// - cal≤0 但 expected>0 → 用宏量反推覆盖
+//
+// 设计依据：AI 估算值绝对不被静默修改（用户感知"reasoning 显示值=记录值"）。
+// 物理约束改为 warnings 提示，用户作为最终兜底（UI 显示警告 + 手动编辑入口）。
 import '../../ai/vision_provider.dart';
-import '../../data/seed/food_category_defaults.dart';
 
 class RecognitionValidator {
   RecognitionValidator._();
-
-  /// 营养素自洽性误差容忍度（±10%）
-  static const double _calorieTolerance = 0.10;
 
   /// 校验识别结果
   ///
@@ -26,6 +26,7 @@ class RecognitionValidator {
   /// 返回 [RecognitionValidationResult]
   static RecognitionValidationResult validate(VisionRecognitionResult result) {
     final reasons = <String>[];
+    final warnings = <String>[];
     var needsRetry = false;
 
     // 1. dishName 非空
@@ -59,91 +60,61 @@ class RecognitionValidator {
       needsRetry = true;
     }
 
-    // 5. 营养素自洽性校验（仅当 AI 提供了 estimated_calories 时检查）
-    //    旧 prompt（v1.0-v1.3）无此字段 → 跳过，向后兼容
-    double? correctedCalories;
-    // v1.10：宏量营养素反推修正（cal>0 但宏量缺失 → 按品类默认比例反推/填充）
-    // 解决"盒装菊花茶有 cal 但碳水=0"问题：含糖饮料碳水必标，AI 漏填时按品类反推
-    double? correctedProteinG;
-    double? correctedFatG;
-    double? correctedCarbsG;
+    // 5. 物理约束检测（不修改值，仅输出 warnings）
+    //    AI 估算值绝对保留，用户通过 UI 警告 + 手动编辑兜底
     final cal = result.estimatedCalories;
     if (cal != null) {
       final protein = result.estimatedProteinG ?? 0;
       final fat = result.estimatedFatG ?? 0;
       final carbs = result.estimatedCarbsG ?? 0;
 
-      // v1.10：宏量营养素缺失/为 0 时，先用品类默认比例填充缺失项
-      // 典型场景：
-      //   a) 三宏量全 0（含糖茶饮 AI 漏填全部）→ 全量反推
-      //   b) 部分宏量非 0（蛋白饮料 protein=3 但 carbs=0 漏填）→ 仅填充缺失项
-      // 这样避免部分宏量漏填时自洽校验错误修正 cal（BUG-2 修复）
-      if (cal > 0 && (protein == 0 || fat == 0 || carbs == 0)) {
-        final def = FoodCategoryDefaults.defaults[result.foodCategory];
-        if (def != null && def.$1 > 0) {
-          final scale = cal / def.$1;
-          // 仅填充为 0 的项（非 0 项保留 AI 值，避免覆盖正确数据）
-          final p = protein == 0 ? def.$2 * scale : protein;
-          final f = fat == 0 ? def.$3 * scale : fat;
-          final c = carbs == 0 ? def.$4 * scale : carbs;
-          // 仅当至少有一项被填充（非 0）才回写，避免无意义覆盖
-          if (p != protein || f != fat || c != carbs) {
-            correctedProteinG = p;
-            correctedFatG = f;
-            correctedCarbsG = c;
-            reasons.add('宏量营养素缺失但 calories=$cal，按品类 '
-                '${result.foodCategory} 默认比例填充缺失项: '
-                'p=${p.toStringAsFixed(1)}, '
-                'f=${f.toStringAsFixed(1)}, '
-                'c=${c.toStringAsFixed(1)}');
-          }
+      // 5a. 宏量全缺失检测（cal>0 但三宏量全 0）
+      //     含糖饮料 AI 漏填全部宏量等场景，提示用户核对
+      //     注意：p=0/f=0 但 carbs>0（如可乐）是合理的，不警告
+      if (cal > 0 && protein == 0 && fat == 0 && carbs == 0) {
+        warnings.add('AI 估算热量=${cal.toStringAsFixed(0)}kcal 但宏量全为 0，请核对');
+      }
+
+      // 5b. Atwater 自洽性检测（不修正，仅警告）
+      //     酒精饮料豁免：酒精热量（7kcal/g）不在 Atwater 系数（4p+9f+4c）内
+      final isAlcohol = result.foodCategory == 'beer' ||
+          result.foodCategory == 'wine' ||
+          result.foodCategory == 'alcohol';
+      final expected = 4 * protein + 9 * fat + 4 * carbs;
+      if (!isAlcohol && cal > 0 && expected > 0) {
+        final diff = (expected - cal).abs();
+        final ratio = diff / cal;
+        if (ratio > 0.10) {
+          warnings.add('宏量与热量不自洽：AI 估算 ${cal.toStringAsFixed(0)}kcal，'
+              '宏量加和 ${expected.toStringAsFixed(0)}kcal（偏差 ${(ratio * 100).toStringAsFixed(1)}%），请核对');
+        }
+      }
+      // 5c. cal≤0 但有宏量（异常但不修改，提示用户）
+      if (cal <= 0 && expected > 0) {
+        warnings.add('AI 估算 calories=$cal，但宏量加和=${expected.toStringAsFixed(0)}kcal，请核对');
+      }
+
+      // 5d. 密度异常检测（per100g > 900，物理上限约 900）
+      //     纯脂肪油 889 kcal/100g 是物理上限，>900 多半是 AI 幻觉
+      //     不覆盖 AI 值，提示用户核对
+      if (mid > 0) {
+        final per100g = cal * 100 / mid;
+        if (per100g > 900) {
+          warnings.add('密度异常高（${per100g.toStringAsFixed(0)}kcal/100g），请核对');
         }
       }
 
-      // 自洽校验：仅在未触发填充时执行
-      // 触发填充意味着 AI 宏量数据不完整（部分漏填），品类填充值仅是"猜测"，
-      // 用猜测值 + AI 部分值重算 expected 来覆盖 cal 不可靠（BUG-2 修复核心）。
-      // 且填充前提是 cal>0，AI 已给出整菜 cal 估算，应信任 AI 的 cal。
-      // 注意：cal<=0 但有宏量的修正分支不受影响（填充要求 cal>0，不会进入此场景）。
-      final didFill = correctedProteinG != null ||
-          correctedFatG != null ||
-          correctedCarbsG != null;
-      if (!didFill) {
-        final expected = 4 * protein + 9 * fat + 4 * carbs;
-        // calories 为 0 但有宏量营养素 → 瞎算，修正
-        // calories > 0 但偏差超 ±10% → 修正（仅当 expected>0 才修正，
-        //   expected=0 时可能是酒精饮料/纤维等非 Atwater 来源，强制清零会丢热量）
-        if (cal <= 0 && expected > 0) {
-          reasons.add('calories=0 但宏量营养素之和=$expected，修正为 $expected');
-          correctedCalories = expected;
-        } else if (cal > 0 && expected > 0) {
-          // 方案 D（M25）：酒精饮料豁免 Atwater 校验
-          // 啤酒/葡萄酒/烈酒的 calories 主要来自酒精（7 kcal/g），不在 Atwater 系数（4p+9f+4c）内。
-          // 例：1 瓶 330ml 啤酒 cal=129, p=1.5, f=0, c=9.3, expected=43.8
-          // 修复前：偏差 66% > 10% → 修正为 43.8（丢失 85 kcal 酒精热量）
-          // 修复后：beer/wine/alcohol 品类豁免，保留 AI cal
-          final isAlcohol = result.foodCategory == 'beer' ||
-              result.foodCategory == 'wine' ||
-              result.foodCategory == 'alcohol';
-          if (isAlcohol) {
-            // 酒精饮料：保留 AI cal，不修正（酒精热量不在 Atwater 系数内）
-            // 不添加 reason，避免 Sentry 噪音
-          } else {
-            final diff = (expected - cal).abs();
-            final ratio = diff / cal;
-            if (ratio > _calorieTolerance) {
-              reasons.add('营养素不自洽: calories=$cal, 期望=$expected (4p+9f+4c), '
-                  '偏差 ${(ratio * 100).toStringAsFixed(1)}%，修正为 $expected');
-              correctedCalories = expected;
-            }
-          }
+      // 5e. 宏量物理上限检测（蛋白+脂肪+碳水 > 100g/100g 不可能）
+      //     食物每 100g 中宏量加和不可能 > 100g
+      if (mid > 0) {
+        final macroSumPer100 = (protein + fat + carbs) * 100 / mid;
+        if (macroSumPer100 > 100) {
+          warnings.add('宏量超出物理上限（蛋白+脂肪+碳水=${macroSumPer100.toStringAsFixed(0)}g/100g），请核对');
         }
-        // expected == 0 且 cal > 0：可能是酒精饮料（7 kcal/g 不在 Atwater 系数内）、
-        // 糖醇、膳食纤维等，无法用宏量校验，保留 AI 的 calories 不修正
       }
     }
 
-    // 建议 7：复合菜组分份量交叉验证
+    // 6. 建议 7：复合菜组分份量交叉验证（保留，信任 mid）
     // sum(components.estimated_g) 应 ≈ estimated_weight_g_mid（±15%）
     // AI 常出现"鸡蛋120g+番茄150g=270g"但整菜 mid=250g 的不自洽
     // 不自洽时按 mid 比例缩放各组分（mid 是 AI 整菜估算，相对可信）
@@ -169,11 +140,8 @@ class RecognitionValidator {
     return RecognitionValidationResult(
       isValid: reasons.isEmpty,
       needsRetry: needsRetry,
-      correctedCalories: correctedCalories,
       correctedComponents: correctedComponents,
-      correctedProteinG: correctedProteinG,
-      correctedFatG: correctedFatG,
-      correctedCarbsG: correctedCarbsG,
+      warnings: warnings,
       reasons: reasons,
     );
   }
@@ -181,37 +149,29 @@ class RecognitionValidator {
 
 /// 校验结果
 class RecognitionValidationResult {
-  /// 是否通过校验（无任何问题）
+  /// 是否通过校验（无字段合理性问题）
   final bool isValid;
 
   /// 是否需要重试（字段严重不合理：dishName 空 / confidence 越界 / weight 非正 / 区间倒置）
   final bool needsRetry;
 
-  /// 营养素自洽性修正后的 calories（null 表示无需修正或不适用）
-  /// controller 用此值覆盖 VisionRecognitionResult.estimatedCalories
-  final double? correctedCalories;
-
   /// 建议 7：组分份量交叉验证修正后的组分列表（null 表示无需修正或不适用）
   /// controller 用此值覆盖 VisionRecognitionResult.foodComponents
+  /// 保留：这是信任 mid（AI 整菜估算），不是覆盖 AI 估算
   final List<FoodComponent>? correctedComponents;
 
-  /// v1.10：宏量营养素反推修正（cal>0 但三宏量全 0 时按品类默认比例反推）
-  /// controller 用此值覆盖 VisionRecognitionResult.estimatedProteinG/FatG/CarbsG
-  final double? correctedProteinG;
-  final double? correctedFatG;
-  final double? correctedCarbsG;
+  /// 物理约束警告（不修改 AI 估算值，提示用户核对）
+  /// UI 在 reasoning 卡片下方显示警告横幅，用户可手动编辑营养值兜底
+  final List<String> warnings;
 
-  /// 校验失败原因（用于 Sentry 上报 + 调试日志）
+  /// 校验失败原因（字段合理性，用于 Sentry 上报 + 调试日志）
   final List<String> reasons;
 
   const RecognitionValidationResult({
     required this.isValid,
     required this.needsRetry,
-    required this.correctedCalories,
     required this.correctedComponents,
-    this.correctedProteinG,
-    this.correctedFatG,
-    this.correctedCarbsG,
+    required this.warnings,
     required this.reasons,
   });
 }

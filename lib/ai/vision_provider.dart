@@ -62,6 +62,10 @@ class VisionRecognitionResult {
   // package_servings_per_pack：每包装份数（如 8）
   final double? packageTotalG;
   final double? packageServingsPerPack;
+  // v2 重构：物理约束警告（transient，不参与 JSON 序列化）
+  // PostProcessor 调 validator 后设置，UI 在 reasoning 卡片下方显示警告横幅。
+  // 默认空表示无警告（合法自洽结果）。
+  final List<String> warnings;
 
   const VisionRecognitionResult({
     required this.dishName,
@@ -94,6 +98,7 @@ class VisionRecognitionResult {
     this.packageServingCarbsG,
     this.packageTotalG,
     this.packageServingsPerPack,
+    this.warnings = const [],
   });
 
   /// 是否多菜（additionalDishes 非空）
@@ -219,6 +224,10 @@ class VisionRecognitionResult {
     double? packageServingCarbsG,
     double? packageTotalG,
     double? packageServingsPerPack,
+    // v2 重构：warnings 透传（PostProcessor → UI）
+    List<String>? warnings,
+    // additionalDishes 透传（密度换算/校验后重建）
+    List<VisionRecognitionResult>? additionalDishes,
   }) {
     return VisionRecognitionResult(
       dishName: dishName ?? this.dishName,
@@ -231,7 +240,7 @@ class VisionRecognitionResult {
       isSingleItem: isSingleItem,
       confidence: confidence,
       promptVersion: promptVersion,
-      additionalDishes: additionalDishes,
+      additionalDishes: additionalDishes ?? this.additionalDishes,
       quantity: quantity,
       unit: unit,
       perUnitG: perUnitG ?? this.perUnitG,
@@ -242,7 +251,6 @@ class VisionRecognitionResult {
       weightSource: weightSource,
       foodCategory: foodCategory ?? this.foodCategory,
       reasoning: reasoning ?? this.reasoning,
-      // M6 修复：package_* 字段支持 copyWith 修改
       packageNutritionTableOcr: packageNutritionTableOcr ?? this.packageNutritionTableOcr,
       packageServingG: packageServingG ?? this.packageServingG,
       packageServingKj: packageServingKj ?? this.packageServingKj,
@@ -252,6 +260,7 @@ class VisionRecognitionResult {
       packageServingCarbsG: packageServingCarbsG ?? this.packageServingCarbsG,
       packageTotalG: packageTotalG ?? this.packageTotalG,
       packageServingsPerPack: packageServingsPerPack ?? this.packageServingsPerPack,
+      warnings: warnings ?? this.warnings,
     );
   }
 

@@ -179,4 +179,87 @@ void main() {
     expect(capturedCalories, closeTo(250, 0.5),
         reason: 'onConfirm 传值应与预览一致（AI 估算 250，与记录同源）');
   });
+
+  // v2 改动 D：复合菜预览/记录与 multi_dish_page 一致（AI 优先）
+  // 旧逻辑：calibration_page 复合菜用组分累加 + 用油量，与 multi_dish_page AI 优先不一致
+  // 新逻辑：复合菜 + aiFallback 非空 + 无包装 → 走 computeCompositeLookupHit AI 优先
+  // 组分累加仅作为无 aiFallback 时的 fallback
+  testWidgets('v2 改动 D: 复合菜 + aiFallback 非空：预览/记录用 AI 值（与 multi_dish_page 一致）',
+      (tester) async {
+    // mid=200g, AI cal=250 → per100g=125
+    // composite 组分：鸡肉 200g, caloriesPer100g=80 → 组分累加 160 kcal（旧逻辑值）
+    // aiFallback: 250 kcal（对应 mid=200 份量）
+    // 期望：actualCalories = 250（AI 值），不是 160（组分累加）
+    const r = VisionRecognitionResult(
+      dishName: '宫保鸡丁',
+      estimatedWeightGLow: 180,
+      estimatedWeightGMid: 200,
+      estimatedWeightGHigh: 220,
+      estimatedCalories: 250,
+      estimatedProteinG: 10,
+      estimatedFatG: 15,
+      estimatedCarbsG: 20,
+      foodComponents: [],
+      cookingMethod: 'stir_fry',
+      isSingleItem: false,
+      confidence: 0.9,
+      promptVersion: 'v1.10',
+      foodCategory: 'solid',
+    );
+    final composite = CompositeNutritionResult(
+      calories: 160, // 鸡肉组分累加（旧逻辑值）
+      proteinG: 10,
+      fatG: 8,
+      carbsG: 5,
+      oilG: 0,
+      componentHits: [
+        ComponentHit(
+          name: '鸡肉',
+          foodItemId: 1,
+          estimatedG: 200, // sum(estimatedG) = 200 = mid
+          caloriesPer100g: 80,
+          proteinPer100g: 10,
+          fatPer100g: 8,
+          carbsPer100g: 5,
+        ),
+      ],
+      componentMisses: [],
+    );
+    final aiFallback = NutritionResult(
+      foodItemId: 0,
+      calories: 250, // AI 估算（对应 mid=200 份量）
+      proteinG: 10,
+      fatG: 15,
+      carbsG: 20,
+      oilG: 0,
+      source: NutritionSource.aiEstimate,
+    );
+
+    double? capturedCalories;
+    await tester.pumpWidget(MaterialApp(
+      home: CalibrationPage(
+        recognitionResult: r,
+        compositeNutrition: composite,
+        aiFallbackNutrition: aiFallback,
+        foodItemRepo: foodRepo,
+        onConfirm: (servingG, calories, protein, fat, carbs,
+            {componentsSnapshot}) async {
+          capturedCalories = calories;
+        },
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // 预览应显示 250（AI 值，与 multi_dish_page 一致），不是 160（组分累加）
+    expect(find.text('250'), findsOneWidget,
+        reason: 'v2 复合菜 + aiFallback 预览应显示 AI 值 250，与 multi_dish_page 一致');
+
+    // 点确认：onConfirm 传值应与预览一致
+    await tester.tap(find.text('确认记录'));
+    await tester.pumpAndSettle();
+
+    expect(capturedCalories, isNotNull);
+    expect(capturedCalories, closeTo(250, 0.5),
+        reason: 'v2 复合菜记录用 AI 值 250，与 multi_dish_page 一致');
+  });
 }

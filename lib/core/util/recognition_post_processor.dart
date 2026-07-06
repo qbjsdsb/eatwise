@@ -7,8 +7,14 @@
 // 后处理四步（顺序敏感）：
 // 1. 密度换算（建议 3）：包装液体 ml→g，perUnitG×density，重算 mid/区间
 // 2. 字段校验（批次 1）：dishName/confidence/weight/区间 → needsRetry 标记
-// 3. 营养素自洽修正（批次 1）：4p+9f+4c≠cal 时用宏量营养素反推
+// 3. 物理约束检测（v2 重构）：Atwater 偏差/宏量缺失/密度异常 → warnings 提示（不修改值）
 // 4. 组分份量交叉验证（建议 7）：sum(components) vs mid 偏差>15% 按 mid 缩放
+//
+// v2 重构变更：
+// - 删除 Atwater 修正回写（correctedCalories）
+// - 删除宏量反推回写（correctedProteinG/FatG/CarbsG）
+// - 新增 warnings 透传（validation.warnings 设置到 result.warnings）
+// - 保留组份缩放回写（correctedComponents，信任 mid）
 //
 // 设计：纯静态方法，不持有状态，不依赖 provider/imageBase64（重试在调用方）。
 // 调用方：recognize_controller._validateAndMaybeRetry / offline_queue_controller.processPending
@@ -21,7 +27,7 @@ import 'recognition_validator.dart';
 class RecognitionPostProcessor {
   RecognitionPostProcessor._();
 
-  /// 完整后处理：密度换算 → 校验修正（calories + components + additionalDishes）
+  /// 完整后处理：密度换算 → 校验（组份缩放 + warnings 透传，不修改 AI 估算值）
   ///
   /// 调用方在 recognize 成功后、查库前调用。
   /// 不含重试（重试需要 imageBase64 + provider，留在调用方）。
@@ -30,26 +36,17 @@ class RecognitionPostProcessor {
     // 1. 密度换算（建议 3）
     var result = applyDensityConversion(original);
 
-    // 2. 校验 + 修正（批次 1 + 建议 7 + v1.10 宏量反推）
+    // 2. 校验 + 组份缩放 + warnings 透传（v2：不修改 AI 估算值）
     final validation = RecognitionValidator.validate(result);
-    if (validation.correctedCalories != null) {
-      result = result.copyWith(estimatedCalories: validation.correctedCalories);
-    }
     if (validation.correctedComponents != null) {
       result = result.copyWith(foodComponents: validation.correctedComponents);
     }
-    // v1.10：宏量反推修正（cal>0 但三宏量全 0 时按品类默认比例反推）
-    if (validation.correctedProteinG != null ||
-        validation.correctedFatG != null ||
-        validation.correctedCarbsG != null) {
-      result = result.copyWith(
-        estimatedProteinG: validation.correctedProteinG,
-        estimatedFatG: validation.correctedFatG,
-        estimatedCarbsG: validation.correctedCarbsG,
-      );
+    // v2：透传 warnings 到 result（UI 在 reasoning 卡片下方显示警告横幅）
+    if (validation.warnings.isNotEmpty) {
+      result = result.copyWith(warnings: validation.warnings);
     }
 
-    // 3. additionalDishes 修正（calories + components）
+    // 3. additionalDishes 修正（组份缩放 + warnings 透传）
     result = correctAdditionalDishes(result);
 
     return result;
@@ -88,38 +85,7 @@ class RecognitionPostProcessor {
     // v1.9：透传 reasoning + 6 个 package_* 字段（OCR 数据不参与换算，原样保留）
     // v1.10：透传 3 个新字段 packageServingProteinG/FatG/CarbsG（含糖饮料碳水必标，
     //   丢失会导致 computePackageNutritionPer100g 第 1 层优先级失效，回退 OCR 正则）
-    return VisionRecognitionResult(
-      dishName: convertedMain.dishName,
-      brand: convertedMain.brand,
-      estimatedWeightGLow: convertedMain.estimatedWeightGLow,
-      estimatedWeightGMid: convertedMain.estimatedWeightGMid,
-      estimatedWeightGHigh: convertedMain.estimatedWeightGHigh,
-      foodComponents: convertedMain.foodComponents,
-      cookingMethod: convertedMain.cookingMethod,
-      isSingleItem: convertedMain.isSingleItem,
-      confidence: convertedMain.confidence,
-      promptVersion: convertedMain.promptVersion,
-      additionalDishes: convertedAdditional,
-      quantity: convertedMain.quantity,
-      unit: convertedMain.unit,
-      perUnitG: convertedMain.perUnitG,
-      estimatedCalories: convertedMain.estimatedCalories,
-      estimatedProteinG: convertedMain.estimatedProteinG,
-      estimatedFatG: convertedMain.estimatedFatG,
-      estimatedCarbsG: convertedMain.estimatedCarbsG,
-      weightSource: convertedMain.weightSource,
-      foodCategory: convertedMain.foodCategory,
-      reasoning: convertedMain.reasoning,
-      packageNutritionTableOcr: convertedMain.packageNutritionTableOcr,
-      packageServingG: convertedMain.packageServingG,
-      packageServingKj: convertedMain.packageServingKj,
-      packageServingKcal: convertedMain.packageServingKcal,
-      packageServingProteinG: convertedMain.packageServingProteinG,
-      packageServingFatG: convertedMain.packageServingFatG,
-      packageServingCarbsG: convertedMain.packageServingCarbsG,
-      packageTotalG: convertedMain.packageTotalG,
-      packageServingsPerPack: convertedMain.packageServingsPerPack,
-    );
+    return convertedMain.copyWith(additionalDishes: convertedAdditional);
   }
 
   /// 单个 dish 的密度换算（仅包装液体）
@@ -163,7 +129,7 @@ class RecognitionPostProcessor {
     return true;
   }
 
-  /// 批次 1 + 建议 7：校验并修正 additionalDishes（calories + 组分份量，不重试）
+  /// 批次 1 + 建议 7：校验并修正 additionalDishes（组份缩放 + warnings 透传，不修改 AI 估算值）
   static VisionRecognitionResult correctAdditionalDishes(
       VisionRecognitionResult result) {
     if (result.additionalDishes.isEmpty) return result;
@@ -177,24 +143,14 @@ class RecognitionPostProcessor {
       }
       var modified = dish;
       var dishChanged = false;
-      if (v.correctedCalories != null) {
-        modified = modified.copyWith(estimatedCalories: v.correctedCalories);
-        dishChanged = true;
-      }
-      // 建议 7：组分份量交叉验证修正
+      // 建议 7：组分份量交叉验证修正（保留，信任 mid）
       if (v.correctedComponents != null) {
         modified = modified.copyWith(foodComponents: v.correctedComponents);
         dishChanged = true;
       }
-      // v1.10：宏量反推修正（cal>0 但三宏量全 0 时按品类默认比例反推）
-      if (v.correctedProteinG != null ||
-          v.correctedFatG != null ||
-          v.correctedCarbsG != null) {
-        modified = modified.copyWith(
-          estimatedProteinG: v.correctedProteinG,
-          estimatedFatG: v.correctedFatG,
-          estimatedCarbsG: v.correctedCarbsG,
-        );
+      // v2：透传 warnings（不修改 AI 估算值）
+      if (v.warnings.isNotEmpty) {
+        modified = modified.copyWith(warnings: v.warnings);
         dishChanged = true;
       }
       if (dishChanged) changed = true;
@@ -202,39 +158,7 @@ class RecognitionPostProcessor {
     }
     if (!changed) return result;
     // 重建 result 带修正后的 additionalDishes
-    // v1.9：透传 reasoning + 6 个 package_* 字段（主菜 OCR 数据不参与附加菜修正，原样保留）
-    // v1.10：透传 3 个新字段 packageServingProteinG/FatG/CarbsG（与 applyDensityConversion 一致）
-    return VisionRecognitionResult(
-      dishName: result.dishName,
-      brand: result.brand,
-      estimatedWeightGLow: result.estimatedWeightGLow,
-      estimatedWeightGMid: result.estimatedWeightGMid,
-      estimatedWeightGHigh: result.estimatedWeightGHigh,
-      foodComponents: result.foodComponents,
-      cookingMethod: result.cookingMethod,
-      isSingleItem: result.isSingleItem,
-      confidence: result.confidence,
-      promptVersion: result.promptVersion,
-      additionalDishes: corrected,
-      quantity: result.quantity,
-      unit: result.unit,
-      perUnitG: result.perUnitG,
-      estimatedCalories: result.estimatedCalories,
-      estimatedProteinG: result.estimatedProteinG,
-      estimatedFatG: result.estimatedFatG,
-      estimatedCarbsG: result.estimatedCarbsG,
-      weightSource: result.weightSource,
-      foodCategory: result.foodCategory,
-      reasoning: result.reasoning,
-      packageNutritionTableOcr: result.packageNutritionTableOcr,
-      packageServingG: result.packageServingG,
-      packageServingKj: result.packageServingKj,
-      packageServingKcal: result.packageServingKcal,
-      packageServingProteinG: result.packageServingProteinG,
-      packageServingFatG: result.packageServingFatG,
-      packageServingCarbsG: result.packageServingCarbsG,
-      packageTotalG: result.packageTotalG,
-      packageServingsPerPack: result.packageServingsPerPack,
-    );
+    return result.copyWith(additionalDishes: corrected);
   }
 }
+

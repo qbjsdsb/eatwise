@@ -536,7 +536,9 @@ void main() {
           reason: 'M16.9 diffRatio=0 ≤ 5% 时不写库（无意义）');
     });
 
-    test('M16.9: AI per100g 离谱（>900）时用库值兜底 + 不更新库', () {
+    test('v2: AI per100g 离谱（>900）时始终用 AI 值 + 更新库', () {
+      // v2 重构：删除 aiValid 离谱兜底，始终用 AI 反算 per100g 写库 + 用 AI 值记 meal_log
+      // AI 离谱通过 validator warnings 提示用户手动纠正，不再用库值覆盖
       // AI 估 2000 kcal（per100g = 2000 * 100 / 200 = 1000 > 900 离谱）
       final r = VisionRecognitionResult(
         dishName: '水',
@@ -577,16 +579,17 @@ void main() {
         servingG: 200,
         lookupHitNutrition: lookupHit,
       );
-      // 库 per100g = 160 * 100 / 200 = 80
-      expect(result.caloriesPer100g, closeTo(80, 0.1),
-          reason: 'M16.9 AI 离谱时用库 per100g 兜底');
-      expect(result.actualCalories, closeTo(160, 0.1),
-          reason: 'actualCalories 用库值（160）');
-      expect(result.shouldUpdateFoodItem, isFalse,
-          reason: 'M16.9 AI 离谱时不更新库');
+      // v2 新逻辑：始终用 AI 反算值
+      expect(result.caloriesPer100g, closeTo(1000, 0.1),
+          reason: 'v2 AI 离谱时仍用 AI per100g=1000，不用库值 80 兜底');
+      expect(result.actualCalories, closeTo(2000, 0.1),
+          reason: 'actualCalories 用 AI 值 2000');
+      expect(result.shouldUpdateFoodItem, isTrue,
+          reason: 'v2 AI 离谱也写库（让用户后续可见，库值跟随 AI）');
     });
 
-    test('M16.9: AI per100g 负值时用库值兜底', () {
+    test('v2: AI per100g 负值时始终用 AI 值', () {
+      // v2 重构：AI 负值不再用库值兜底（用户通过 warnings 手动纠正）
       final r = VisionRecognitionResult(
         dishName: '番茄炒蛋',
         estimatedWeightGLow: 180,
@@ -626,9 +629,14 @@ void main() {
         servingG: 200,
         lookupHitNutrition: lookupHit,
       );
-      expect(result.caloriesPer100g, closeTo(80, 0.1),
-          reason: 'M16.9 AI 负值时用库 per100g 兜底');
-      expect(result.shouldUpdateFoodItem, isFalse);
+      // v2 新逻辑：始终用 AI 反算值（负值也照记，warnings 提示用户）
+      expect(result.caloriesPer100g, closeTo(-25, 0.1),
+          reason: 'v2 AI 负值时仍用 AI per100g=-25，不用库值兜底');
+      expect(result.actualCalories, closeTo(-50, 0.1),
+          reason: 'actualCalories 用 AI 值 -50');
+      // diffRatio = (aiPer100Calories - dbPer100Calories).abs() / dbPer100Calories
+      // = (-25 - 80).abs() / 80 = 1.3125 > 0 → shouldUpdateFoodItem = true
+      expect(result.shouldUpdateFoodItem, isTrue);
     });
 
     test('查库命中 + 用户调整滑块：actualXxx 按新 servingG 缩放', () {
@@ -765,14 +773,22 @@ void main() {
           reason: 'M18: 始终写库，让 AI 值进入食物库');
     });
 
-    test('M18: AI 离谱（per100g>900）时返回 null（调用方走原 ratio 兜底）', () {
+    test('v2: AI 离谱（per100g>900）时仍返回 AI 值（不再返回 null）', () {
+      // v2 重构：删除 aiValid 检查，始终返回 AI 反算值
+      // AI 离谱通过 validator warnings 提示用户手动纠正，调用方不再走 ratio 兜底
       // aiFallback.calories=2000, mid=200 → aiPer100 = 1000 > 900 离谱
       final result = CalibratedNutritionCalculator.computeCompositeLookupHit(
         aiFallback: aiFallback500(calories: 2000),
         servingG: 200,
         mid: 200,
       );
-      expect(result, isNull, reason: 'AI 离谱时返回 null，调用方走原 ratio 兜底');
+      expect(result, isNotNull, reason: 'v2 AI 离谱时仍返回 AI 值，不再返回 null');
+      expect(result!.caloriesPer100g, closeTo(1000, 0.1),
+          reason: 'per100g=2000*100/200=1000');
+      expect(result.actualCalories, closeTo(2000, 0.1),
+          reason: 'actualCalories=1000*200/100=2000');
+      expect(result.shouldUpdateFoodItem, isTrue,
+          reason: '复合菜始终写库，让 AI 值进入食物库');
     });
 
     test('M18: mid=0 时返回 null（防除零）', () {

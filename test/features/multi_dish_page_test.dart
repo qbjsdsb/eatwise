@@ -471,9 +471,11 @@ void main() {
         reason: 'M18: carbsPer100g = 5 * 100 / 200 = 2.5');
   });
 
-  // M16.9：复合菜 AI 整菜估算离谱（per100g > 900）时用组分累加库值兜底
+  // v2 重构：复合菜 AI 整菜估算离谱（per100g > 900）时仍用 AI 值记录
+  // 旧逻辑（M16.9）：AI 离谱返回 null，调用方走组分累加库值兜底
+  // 新逻辑（v2）：删除 aiValid 检查，始终用 AI 反算值，warnings 提示用户手动纠正
   testWidgets(
-      'M16.9: 复合菜 AI 整菜估算离谱（per100g>900）时用组分累加库值兜底',
+      'v2: 复合菜 AI 整菜估算离谱（per100g>900）时仍用 AI 值记录',
       (tester) async {
     final db = EatWiseDatabase(NativeDatabase.memory());
     addTearDown(db.close);
@@ -560,10 +562,11 @@ void main() {
     final meals = await db.mealLogs.select().get();
     expect(meals.length, 1);
 
-    // AI 离谱时用组分累加库值兜底：225（鸡肉组分累加，multi_dish_page _calcNutrition
-    // 复合菜兜底分支不加油脂热量，是既有行为，非 M16.9 引入）
-    expect(meals.first.actualCalories, closeTo(225, 0.5),
-        reason: 'AI 离谱时用组分累加库值兜底（鸡肉 225）');
+    // v2 新逻辑：AI 离谱时仍用 AI 值记录（2000），不再用组分累加库值兜底
+    // per100g = 2000 * 100 / 200 = 1000，actualCalories = 1000 * 200 / 100 = 2000
+    // AI 离谱值通过 validator warnings 提示用户手动纠正
+    expect(meals.first.actualCalories, closeTo(2000, 0.5),
+        reason: 'v2 AI 离谱时仍用 AI 值 2000 记录，不用组分累加库值 225 兜底');
   });
 
   // ============================================================

@@ -70,10 +70,31 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
   late String _currentDishName;
   late NutritionResult? _currentNutrition;
   bool _isRenaming = false; // 改菜名防重入
+  // v2 改动 E：用户手动编辑的营养值覆盖（用户最终兜底）。
+  // 键 'cal'/'protein'/'fat'/'carbs'，值是 actualXxx（摄入值，对应 servingG 份量）。
+  // _applyUserOverrides 优先用 _userOverrides，否则用 AI 估算值。
+  // 编辑后 _dirty=true（PopScope 未保存确认），onConfirm 传用户输入值。
+  final Map<String, double> _userOverrides = {};
 
   void _markDirty() {
     if (_dirty) return;
     setState(() => _dirty = true);
+  }
+
+  /// v2 改动 E：用户手动编辑值优先（最终兜底覆盖 AI 估算）。
+  /// 未编辑的字段保持 AI 估算值（_computeSingleItemActual / 组分累加的结果）。
+  (double, double, double, double) _applyUserOverrides(
+    double cal,
+    double protein,
+    double fat,
+    double carbs,
+  ) {
+    return (
+      _userOverrides['cal'] ?? cal,
+      _userOverrides['protein'] ?? protein,
+      _userOverrides['fat'] ?? fat,
+      _userOverrides['carbs'] ?? carbs,
+    );
   }
 
   /// v1.3：动态滑块上限。多份场景 perUnitG×20 可能超 1000（如 5 碗米饭=1250g），
@@ -381,6 +402,13 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
                     // v1.3：数量步进器（同物多份场景，仅单品 + perUnitG > 0 显示）
                     _buildQuantityStepper(),
                     const SizedBox(height: 24),
+                    // v2 改动 E：物理约束警告横幅（warnings 非空时显示）
+                    // validator 检测的物理约束（Atwater 偏差/密度异常/宏量缺失/宏量超限）
+                    // 不修改 AI 值，只提示用户核对，用户可点击下方数值手动编辑
+                    if (widget.recognitionResult.warnings.isNotEmpty) ...[
+                      _buildWarningsBanner(),
+                      const SizedBox(height: 12),
+                    ],
                     // 实时营养素预览（基于当前滑块值重算）
                     _buildNutritionPreview(),
                     if (widget.compositeNutrition != null) ...[
@@ -480,7 +508,11 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
   Widget _buildNutritionPreview() {
     if (_currentNutrition != null) {
       // 单品路径：用 _computeSingleItemActual 重算（改菜名后用 _currentNutrition，营养会随之刷新）
-      final (cal, protein, fat, carbs) = _computeSingleItemActual(_servingG);
+      final (cal0, protein0, fat0, carbs0) =
+          _computeSingleItemActual(_servingG);
+      // v2 改动 E：用户手动编辑优先（最终兜底）
+      final (cal, protein, fat, carbs) =
+          _applyUserOverrides(cal0, protein0, fat0, carbs0);
       // 防除零：mid <= 0 时 lowRatio/highRatio = 1（不显示区间）
       final mid = widget.recognitionResult.estimatedWeightGMid;
       final lowRatio = mid > 0 ? widget.recognitionResult.estimatedWeightGLow / mid : 1.0;
@@ -489,8 +521,36 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
       return _nutritionCard(cal, protein, fat, carbs, calRange: calRange);
     }
     if (widget.compositeNutrition != null) {
-      // 复合菜路径：按各组分滑块 + 用油量实时重算
+      // 复合菜路径：v2 改动 D 与 multi_dish_page 一致（AI 优先）
+      // 优先级：包装 OCR > AI 估算（computeCompositeLookupHit）> 组分累加 fallback
       final composite = widget.compositeNutrition!;
+      // v2 改动 D：aiFallback 非空 + 无包装 → 走 AI 优先（与 multi_dish_page 一致）
+      // 避免"校准页用组分累加 + 多菜页用 AI 优先"导致数值不一致
+      if (widget.aiFallbackNutrition != null &&
+          !widget.recognitionResult.hasPackageNutrition) {
+        // servingG 用组分份量之和（用户调整组分滑块时 totalG 变，actualXxx 按比例变）
+        double totalG = 0;
+        for (var i = 0; i < composite.componentHits.length; i++) {
+          totalG += _componentServings[i] ?? composite.componentHits[i].estimatedG;
+        }
+        final calibrated =
+            CalibratedNutritionCalculator.computeCompositeLookupHit(
+          aiFallback: widget.aiFallbackNutrition!,
+          servingG: totalG,
+          mid: widget.recognitionResult.estimatedWeightGMid,
+        );
+        if (calibrated != null) {
+          // v2 改动 E：用户手动编辑优先（最终兜底）
+          final (cal, protein, fat, carbs) = _applyUserOverrides(
+            calibrated.actualCalories,
+            calibrated.actualProteinG,
+            calibrated.actualFatG,
+            calibrated.actualCarbsG,
+          );
+          return _nutritionCard(cal, protein, fat, carbs);
+        }
+      }
+      // fallback：无 aiFallback / 有包装 / mid=0 → 按各组分滑块 + 用油量实时重算
       double cal = 0, protein = 0, fat = 0, carbs = 0;
       for (var i = 0; i < composite.componentHits.length; i++) {
         final hit = composite.componentHits[i];
@@ -502,7 +562,10 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
       }
       cal += oilCaloriesPer100g * _oilG / 100;
       fat += oilFatPer100g * _oilG / 100;
-      return _nutritionCard(cal, protein, fat, carbs);
+      // v2 改动 E：用户手动编辑优先（最终兜底）
+      final (cal2, protein2, fat2, carbs2) =
+          _applyUserOverrides(cal, protein, fat, carbs);
+      return _nutritionCard(cal2, protein2, fat2, carbs2);
     }
     return const SizedBox.shrink();
   }
@@ -510,28 +573,43 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
   Widget _nutritionCard(double cal, double protein, double fat, double carbs, {String? calRange}) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    // v2 改动 E：所有数值可点击 → 弹出手动编辑对话框（用户最终兜底）
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            // 热量突出：大数字 + primary 色
+            // 热量突出：大数字 + primary 色，点击可手动编辑
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
-                Text(cal.toStringAsFixed(0),
-                    style: tt.headlineMedium?.copyWith(
-                        color: cs.primary,
-                        fontWeight: FontWeight.w600,
-                        fontFeatures: const [
-                          FontFeature.tabularFigures()
-                        ])),
+                InkWell(
+                  onTap: _showEditNutritionDialog,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Text(cal.toStringAsFixed(0),
+                      key: const ValueKey('cal_value'),
+                      style: tt.headlineMedium?.copyWith(
+                          color: cs.primary,
+                          fontWeight: FontWeight.w600,
+                          fontFeatures: const [
+                            FontFeature.tabularFigures()
+                          ],
+                          decoration: TextDecoration.underline,
+                          decorationColor: cs.primary.withValues(alpha: 0.3),
+                          decorationStyle: TextDecorationStyle.dotted)),
+                ),
                 const SizedBox(width: 4),
                 Text('kcal',
                     style: tt.labelLarge
                         ?.copyWith(color: cs.onSurfaceVariant)),
+                const SizedBox(width: 6),
+                // 编辑提示图标（视觉暗示可点击编辑）
+                ExcludeSemantics(
+                  child: Icon(Icons.edit_outlined,
+                      size: 14, color: cs.onSurfaceVariant),
+                ),
               ],
             ),
             if (calRange != null)
@@ -542,12 +620,15 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
                         ?.copyWith(color: cs.onSurfaceVariant)),
               ),
             const SizedBox(height: 16),
-            // 三大宏量均分三列
+            // 三大宏量均分三列，点击也可手动编辑
             Row(
               children: [
-                _macroColumn('蛋白', protein, cs.tertiary),
-                _macroColumn('脂肪', fat, cs.secondary),
-                _macroColumn('碳水', carbs, cs.primary),
+                _macroColumn('蛋白', protein, cs.tertiary,
+                    valueKey: const ValueKey('protein_value')),
+                _macroColumn('脂肪', fat, cs.secondary,
+                    valueKey: const ValueKey('fat_value')),
+                _macroColumn('碳水', carbs, cs.primary,
+                    valueKey: const ValueKey('carbs_value')),
               ],
             ),
           ],
@@ -556,8 +637,8 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
     );
   }
 
-  /// 宏量列：label 小字 + 数值 titleMedium，均分一行
-  Widget _macroColumn(String label, double value, Color color) {
+  /// 宏量列：label 小字 + 数值 titleMedium，均分一行。点击数值可手动编辑。
+  Widget _macroColumn(String label, double value, Color color, {Key? valueKey}) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     return Expanded(
@@ -566,11 +647,19 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
           Text(label,
               style: tt.labelMedium?.copyWith(color: cs.onSurfaceVariant)),
           const SizedBox(height: 4),
-          Text('${value.toStringAsFixed(0)} g',
-              style: tt.titleMedium?.copyWith(
-                  color: color,
-                  fontWeight: FontWeight.w600,
-                  fontFeatures: const [FontFeature.tabularFigures()])),
+          InkWell(
+            onTap: _showEditNutritionDialog,
+            borderRadius: BorderRadius.circular(8),
+            child: Text('${value.toStringAsFixed(0)} g',
+                key: valueKey,
+                style: tt.titleMedium?.copyWith(
+                    color: color,
+                    fontWeight: FontWeight.w600,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                    decoration: TextDecoration.underline,
+                    decorationColor: color.withValues(alpha: 0.3),
+                    decorationStyle: TextDecorationStyle.dotted)),
+          ),
         ],
       ),
     );
@@ -765,11 +854,14 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
     setState(() => _isRecording = true);
     try {
       if (_currentNutrition != null) {
-        // 与 _buildNutritionPreview 共用 _computeSingleItemActual，
+        // 与 _buildNutritionPreview 共用 _computeSingleItemActual + _applyUserOverrides，
         // 保证预览显示值与 onConfirm 传入值完全一致
-        // （AI 兜底哨兵路径用品类校准后 per100g，查库命中路径用原 ratio 逻辑）
-        final (cal, protein, fat, carbs) =
+        // （AI 兜底哨兵路径用品类校准后 per100g，查库命中路径用原 ratio 逻辑，
+        // 用户手动编辑值通过 _applyUserOverrides 优先覆盖）
+        final (cal0, protein0, fat0, carbs0) =
             _computeSingleItemActual(servingG);
+        final (cal, protein, fat, carbs) =
+            _applyUserOverrides(cal0, protein0, fat0, carbs0);
         await widget.onConfirm(servingG, cal, protein, fat, carbs);
       } else if (widget.compositeNutrition != null) {
         // 复合菜用总组分份量之和
@@ -783,8 +875,10 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
                 ? widget.recognitionResult.computePackageNutritionPer100g(
                     estimatedProteinG:
                         widget.recognitionResult.estimatedProteinG,
-                    estimatedFatG: widget.recognitionResult.estimatedFatG,
-                    estimatedCarbsG: widget.recognitionResult.estimatedCarbsG,
+                    estimatedFatG:
+                        widget.recognitionResult.estimatedFatG,
+                    estimatedCarbsG:
+                        widget.recognitionResult.estimatedCarbsG,
                   )
                 : null;
         // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
@@ -793,16 +887,74 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
             packagePer100.$3 == 0 &&
             packagePer100.$4 == 0;
         if (packagePer100 != null && !packageMacrosAllZero) {
-          await widget.onConfirm(
-            totalG,
+          // v2 改动 E：用户手动编辑优先（最终兜底）
+          final (cal, protein, fat, carbs) = _applyUserOverrides(
             packagePer100.$1 * totalG / 100,
             packagePer100.$2 * totalG / 100,
             packagePer100.$3 * totalG / 100,
             packagePer100.$4 * totalG / 100,
+          );
+          await widget.onConfirm(
+            totalG,
+            cal,
+            protein,
+            fat,
+            carbs,
             componentsSnapshot: _buildSnapshotJson(),
           );
+        } else if (widget.aiFallbackNutrition != null) {
+          // v2 改动 D：无包装 + aiFallback 非空 → 走 AI 优先（与 multi_dish_page / _buildNutritionPreview 一致）
+          // 保证校准页预览值=记录值=多菜页记录值（用户感知"AI 推理值=记录值"）
+          final calibrated =
+              CalibratedNutritionCalculator.computeCompositeLookupHit(
+            aiFallback: widget.aiFallbackNutrition!,
+            servingG: totalG,
+            mid: widget.recognitionResult.estimatedWeightGMid,
+          );
+          if (calibrated != null) {
+            // v2 改动 E：用户手动编辑优先（最终兜底）
+            final (cal, protein, fat, carbs) = _applyUserOverrides(
+              calibrated.actualCalories,
+              calibrated.actualProteinG,
+              calibrated.actualFatG,
+              calibrated.actualCarbsG,
+            );
+            await widget.onConfirm(
+              totalG,
+              cal,
+              protein,
+              fat,
+              carbs,
+              componentsSnapshot: _buildSnapshotJson(),
+            );
+          } else {
+            // mid<=0 防除零兜底：回退组分累加（极端情况，正常不会触发）
+            final composite = widget.compositeNutrition!;
+            double cal = 0, protein = 0, fat = 0, carbs = 0;
+            for (var i = 0; i < composite.componentHits.length; i++) {
+              final hit = composite.componentHits[i];
+              final g = _componentServings[i] ?? hit.estimatedG;
+              cal += hit.caloriesPer100g * g / 100;
+              protein += hit.proteinPer100g * g / 100;
+              fat += hit.fatPer100g * g / 100;
+              carbs += hit.carbsPer100g * g / 100;
+            }
+            cal += oilCaloriesPer100g * _oilG / 100;
+            fat += oilFatPer100g * _oilG / 100;
+            // v2 改动 E：用户手动编辑优先（最终兜底）
+            final (cal2, protein2, fat2, carbs2) =
+                _applyUserOverrides(cal, protein, fat, carbs);
+            await widget.onConfirm(
+              totalG,
+              cal2,
+              protein2,
+              fat2,
+              carbs2,
+              componentsSnapshot: _buildSnapshotJson(),
+            );
+          }
         } else {
-          // 无包装数据 / 包装换算宏量全 0 → 按调整后组分份量重算（原逻辑）
+          // 无包装数据 / 无 aiFallback → 按调整后组分份量重算（原逻辑 fallback）
           final composite = widget.compositeNutrition!;
           double cal = 0, protein = 0, fat = 0, carbs = 0;
           for (var i = 0; i < composite.componentHits.length; i++) {
@@ -815,12 +967,15 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
           }
           cal += oilCaloriesPer100g * _oilG / 100;
           fat += oilFatPer100g * _oilG / 100;
+          // v2 改动 E：用户手动编辑优先（最终兜底）
+          final (cal2, protein2, fat2, carbs2) =
+              _applyUserOverrides(cal, protein, fat, carbs);
           await widget.onConfirm(
             totalG,
-            cal,
-            protein,
-            fat,
-            carbs,
+            cal2,
+            protein2,
+            fat2,
+            carbs2,
             componentsSnapshot: _buildSnapshotJson(),
           );
         }
@@ -853,6 +1008,214 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
       'components': components,
       'oil_g': _oilG,
     });
+  }
+
+  /// v2 改动 E：物理约束警告横幅。
+  /// validator 检测的物理约束（Atwater 偏差/密度异常/宏量缺失/宏量超限）不修改 AI 值，
+  /// 只通过 warnings 提示用户核对。用户可点击下方营养数值手动编辑（最终兜底）。
+  Widget _buildWarningsBanner() {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: cs.tertiaryContainer.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: cs.onTertiaryContainer.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ExcludeSemantics(
+            child: Icon(Icons.warning_amber_rounded,
+                size: 20, color: cs.onTertiaryContainer),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '请核对以下异常（点下方数值可手动修改）',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: cs.onTertiaryContainer,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                for (final w in widget.recognitionResult.warnings)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(w,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: cs.onTertiaryContainer,
+                        )),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// v2 改动 E：手动编辑营养值对话框（用户最终兜底）。
+  /// 4 个 TextField 预填当前显示值，用户输入新值后 _userOverrides 覆盖 AI 估算。
+  /// 编辑后 _dirty=true（PopScope 未保存确认），_buildNutritionPreview / _confirmWithServing
+  /// 都通过 _applyUserOverrides 应用覆盖。
+  Future<void> _showEditNutritionDialog() async {
+    // 当前显示值（已应用 _userOverrides 的）作为对话框初始值
+    final (curCal, curProtein, curFat, curCarbs) = _currentDisplayedValues();
+    final calCtrl =
+        TextEditingController(text: curCal.toStringAsFixed(0));
+    final proteinCtrl =
+        TextEditingController(text: curProtein.toStringAsFixed(0));
+    final fatCtrl =
+        TextEditingController(text: curFat.toStringAsFixed(0));
+    final carbsCtrl =
+        TextEditingController(text: curCarbs.toStringAsFixed(0));
+
+    final result = await showDialog<Map<String, double>?>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('手动修改营养值'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '修改后预览和记录都用你输入的值，覆盖 AI 估算。',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                key: const ValueKey('edit_cal_field'),
+                controller: calCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(
+                  labelText: '热量 (kcal)',
+                  helperText: '本次摄入热量',
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                key: const ValueKey('edit_protein_field'),
+                controller: proteinCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(labelText: '蛋白质 (g)'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                key: const ValueKey('edit_fat_field'),
+                controller: fatCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(labelText: '脂肪 (g)'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                key: const ValueKey('edit_carbs_field'),
+                controller: carbsCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: const InputDecoration(labelText: '碳水 (g)'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(null),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final cal = double.tryParse(calCtrl.text.trim());
+              final protein = double.tryParse(proteinCtrl.text.trim());
+              final fat = double.tryParse(fatCtrl.text.trim());
+              final carbs = double.tryParse(carbsCtrl.text.trim());
+              Navigator.of(ctx).pop(<String, double>{
+                if (cal != null) 'cal': cal,
+                if (protein != null) 'protein': protein,
+                if (fat != null) 'fat': fat,
+                if (carbs != null) 'carbs': carbs,
+              });
+            },
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+
+    // 用户取消（result == null）→ 不修改
+    if (result == null) return;
+    if (!mounted) return;
+    // 用户确认 → 应用覆盖
+    setState(() {
+      _userOverrides.addAll(result);
+      _dirty = true;
+    });
+  }
+
+  /// 取当前预览显示的 4 个数值（已应用 _userOverrides），
+  /// 用于编辑对话框初始值。与 _buildNutritionPreview 同源。
+  (double, double, double, double) _currentDisplayedValues() {
+    if (_currentNutrition != null) {
+      final (cal0, protein0, fat0, carbs0) =
+          _computeSingleItemActual(_servingG);
+      return _applyUserOverrides(cal0, protein0, fat0, carbs0);
+    }
+    if (widget.compositeNutrition != null) {
+      final composite = widget.compositeNutrition!;
+      if (widget.aiFallbackNutrition != null &&
+          !widget.recognitionResult.hasPackageNutrition) {
+        double totalG = 0;
+        for (var i = 0; i < composite.componentHits.length; i++) {
+          totalG +=
+              _componentServings[i] ?? composite.componentHits[i].estimatedG;
+        }
+        final calibrated =
+            CalibratedNutritionCalculator.computeCompositeLookupHit(
+          aiFallback: widget.aiFallbackNutrition!,
+          servingG: totalG,
+          mid: widget.recognitionResult.estimatedWeightGMid,
+        );
+        if (calibrated != null) {
+          return _applyUserOverrides(
+            calibrated.actualCalories,
+            calibrated.actualProteinG,
+            calibrated.actualFatG,
+            calibrated.actualCarbsG,
+          );
+        }
+      }
+      // fallback：组分累加
+      double cal = 0, protein = 0, fat = 0, carbs = 0;
+      for (var i = 0; i < composite.componentHits.length; i++) {
+        final hit = composite.componentHits[i];
+        final g = _componentServings[i] ?? hit.estimatedG;
+        cal += hit.caloriesPer100g * g / 100;
+        protein += hit.proteinPer100g * g / 100;
+        fat += hit.fatPer100g * g / 100;
+        carbs += hit.carbsPer100g * g / 100;
+      }
+      cal += oilCaloriesPer100g * _oilG / 100;
+      fat += oilFatPer100g * _oilG / 100;
+      return _applyUserOverrides(cal, protein, fat, carbs);
+    }
+    return (0, 0, 0, 0);
   }
 
   /// 数据来源徽章：库匹配 / AI 估算，提示用户数据可信度

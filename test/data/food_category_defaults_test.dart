@@ -1,29 +1,16 @@
 import 'package:eatwise/data/seed/food_category_defaults.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// FoodCategoryDefaults 品类默认值校准测试（P0-1/P0-2 + 方案 D M25）
+/// FoodCategoryDefaults.calibrate 物理 clamp 测试（方案 D M25 + v2 改动 F）
 ///
 /// 方案 D（M25）废弃品类校准：
 ///   - calibrate 不再用品类均值覆盖 AI 估算（米粉汤 bug 修复）
 ///   - 4 项全保留 AI 值，只做物理 clamp [0,900] + 宏量 [0,100]
-///   - defaults 表保留（PostProcessor 宏量反推仍用）
+///
+/// v2 改动 F：删除 defaults 表 + 4 个 getter（lib 层无引用）。
+///   品类默认值测试用例已删除，calibrate 物理 clamp 测试保留。
 void main() {
-  group('FoodCategoryDefaults', () {
-    test('啤酒默认值 43 kcal/100g', () {
-      expect(FoodCategoryDefaults.caloriesPer100g('beer'), 43);
-      expect(FoodCategoryDefaults.proteinPer100g('beer'), 0.5);
-      expect(FoodCategoryDefaults.fatPer100g('beer'), 0);
-      expect(FoodCategoryDefaults.carbsPer100g('beer'), 3.1);
-    });
-
-    test('solid 无默认值（差异太大，AI 估算优先）', () {
-      expect(FoodCategoryDefaults.caloriesPer100g('solid'), isNull);
-    });
-
-    test('未知品类无默认值', () {
-      expect(FoodCategoryDefaults.caloriesPer100g('unknown'), isNull);
-    });
-
+  group('FoodCategoryDefaults.calibrate', () {
     test('calibrate 啤酒 AI 估算合理（50）保留 AI 值', () {
       final result = FoodCategoryDefaults.calibrate(
         aiCaloriesPer100g: 50,
@@ -169,29 +156,8 @@ void main() {
     });
   });
 
-  // v1.10：新增 3 个含糖饮料品类
-  group('v1.10 新增品类（tea/protein_drink/energy_drink）', () {
-    test('tea 默认值 43 kcal/100g（含糖茶饮，近似 carbonated）', () {
-      expect(FoodCategoryDefaults.caloriesPer100g('tea'), 43);
-      expect(FoodCategoryDefaults.proteinPer100g('tea'), 0.1);
-      expect(FoodCategoryDefaults.fatPer100g('tea'), 0);
-      expect(FoodCategoryDefaults.carbsPer100g('tea'), 10.6);
-    });
-
-    test('protein_drink 默认值 60 kcal/100g（豆奶/杏仁奶/蛋白饮料）', () {
-      expect(FoodCategoryDefaults.caloriesPer100g('protein_drink'), 60);
-      expect(FoodCategoryDefaults.proteinPer100g('protein_drink'), 3);
-      expect(FoodCategoryDefaults.fatPer100g('protein_drink'), 1.5);
-      expect(FoodCategoryDefaults.carbsPer100g('protein_drink'), 5);
-    });
-
-    test('energy_drink 默认值 45 kcal/100g（红牛/魔爪等功能饮料）', () {
-      expect(FoodCategoryDefaults.caloriesPer100g('energy_drink'), 45);
-      expect(FoodCategoryDefaults.proteinPer100g('energy_drink'), 0);
-      expect(FoodCategoryDefaults.fatPer100g('energy_drink'), 0);
-      expect(FoodCategoryDefaults.carbsPer100g('energy_drink'), 11);
-    });
-
+  // v1.10：新增 3 个含糖饮料品类（v2 改动 F：defaults 表已删，只保留 calibrate 测试）
+  group('v1.10 新增品类 calibrate（tea/protein_drink/energy_drink）', () {
     test('calibrate tea AI 估算合理（26）保留（菊花茶包装换算值）', () {
       final result = FoodCategoryDefaults.calibrate(
         aiCaloriesPer100g: 26,
