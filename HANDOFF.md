@@ -34,7 +34,17 @@
 
 ## 2. 当前状态（每次会话结束更新）
 
-**最后更新**：2026-07-06
+**最后更新**：2026-07-07
+
+**M26 第二轮 Web Interface Guidelines 深度审查 P1 修复完成（2026-07-07，未发版）—— 5 个 commit 修 45 条 P1**：第二轮深度审查发现 45 条 P1，分 5 类串行 commit。spec 见 `/workspace/.trae/specs/fix-ui-audit-p1-round2-m26/`（spec.md / tasks.md / checklist.md 三件套，38 个 Task 全部勾选完成）。
+
+- **Commit A (37d2b17) 数据一致性（5 条）**：calibration_page 复合菜 3 处路径（_buildNutritionPreview / _confirmWithServing / _currentDisplayedValues）统一为"包装优先→AI 优先→组分累加"链路；AI 优先分支累加用油量（cal = calibrated.actualCalories + oilCaloriesPer100g * _oilG / 100）；profile goalRate 改 TextFormField + 4 字段范围校验（身高 50-250 / 体重 20-300 / 年龄 10-120 / 体脂率 0-60）；weight 编辑 dialog 改 Form + TextFormField + validator；backup_page 导入成功后 invalidate 4 个 provider + RefreshBus.notify。新增 5 个测试文件。
+- **Commit B (e3a5775) 核心流程（3 条）**：confirmAction content 包 ConstrainedBox(40% 屏幕) + SingleChildScrollView 防长内容溢出；update_page 新增 _FailedStage enum + _lastFailedStage + _retry 方法，error 态按钮按失败阶段调对应方法；dish_name_editor 文案"食物库未命中「改菜名」"→"食物库未命中此菜名"。新增 3 个测试文件。
+- **Commit C (3ec25bf) 系统性根因（4 类批量整改）**：showAppToast SnackBar content 包 Semantics(liveRegion: true)；EmptyState 新增 actionIcon 参数（默认 camera_alt_rounded）；18 处错误文案改"<操作>失败：<原因推测>。<修复步骤>" + debugPrint 原始异常；7 个文件 28 处 TextField 加 inputFormatters（FilteringTextInputFormatter.allow + RegExp）。新增 3 个测试文件。
+- **Commit D (f25bf82) 编辑流程一致性（4 条）**：meal_edit_dialog 加 _dirty + _markDirty + PopScope(canPop: !_dirty) + confirmDiscardChanges；today_meals_page meal_edit dialog 加 barrierDismissible: false；backup_page _import 入口加 _busy 防重入；settings_page 5 处 TextField 加 focusedBorder；update_page AnimatedSize duration 读 MediaQuery.accessibleNavigation。新增 2 个测试文件。
+- **Commit E (808ea10) 错误反馈与状态覆盖（5 条）**：recognize_page SnackBar + today_meals_page Undo SnackBar content 包 Semantics(liveRegion: true)；today_meals_page Image.file 加 semanticLabel '食物图片'；today_meals_page 反馈纠正 dialog 加 barrierDismissible: false；4 文件（meal_edit_dialog / food_edit_page / manual_entry_page / weight_page）校验失败 toast 改轻量 `_xxxError` 状态字段 + InputDecoration.errorText 内联（避免完整 Form 改造）。新增 2 个测试文件（today_meals_page_e_test 3 测试 + inline_error_text_test 5 测试）。
+
+最终验证：flutter analyze No issues / flutter test 1136 passed / 3 skipped / 0 failed（基线 1107 → A 后 1103 → B 后 1115 → C 后 1122 → D 后 1128 → E 后 1136，0 回归）/ 6+1 硬约束满足（minify=false / shrink=false / minSdk=31 / meal_log 外键 / AI 三路径 / per100g 反算基于 mid / SecureConfigStore / initSentryAndRunApp）/ v2 契约 4 断言满足（AI 估算值不被静默修改 / 预览值=onConfirm 写库值 / warnings 透传 / 用户手动编辑覆盖 AI 值）。**未打 tag 未发版**（等用户明确指令）。
 
 **v2 重构拍照识别完成（2026-07-06，未发版）—— AI 绝对优先 + warnings 提示 + 用户手动兜底**：用户报告"AI 推理和最后显示的内容不一样"，要求"基本全部采用 AI 的判断，库作为最后最后的保底"+"兜底也用 AI，进行严谨的验证，但是最后用户可以手动修改"。重构 6 个改动（A-F）+ 端到端验证修复 3 个问题 + 全量回归（G）。
 
