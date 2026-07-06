@@ -130,13 +130,54 @@ jobs:
             build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 90
 
+      - name: Extract changelog for this version
+        # 从 CHANGELOG.md 提取本版本（v0.25.0 → v0.25.0）对应段落
+        # 用 python 解析 markdown：找 "## [vX.Y.Z]" 段，到下一个 "## " 结束
+        id: changelog
+        run: |
+          python3 << 'PYEOF' > /tmp/changelog.md
+          import re, sys
+          tag = "${{ steps.tag.outputs.release_tag }}"  # e.g. "v0.25.0"
+          with open("CHANGELOG.md", "r", encoding="utf-8") as f:
+              content = f.read()
+          # 匹配 ## [vX.Y.Z] 段（含或不含日期）
+          pattern = re.compile(
+              r"(##\s*\[" + re.escape(tag) + r"\][^\n]*\n)(.*?)(?=\n##\s*\[|\Z)",
+              re.DOTALL,
+          )
+          m = pattern.search(content)
+          if m:
+              # 段落正文（不含标题行）
+              body = m.group(2).strip()
+              # 如果是空 Unreleased 占位，写明无变更
+              if not body:
+                  print("(本版本 CHANGELOG 段为空，详见仓库 CHANGELOG.md)")
+              else:
+                  print(body)
+          else:
+              print(f"(未在 CHANGELOG.md 找到 {tag} 段，详见仓库 CHANGELOG.md)")
+          PYEOF
+          echo "=== 提取到的 changelog ==="
+          cat /tmp/changelog.md
+          # 用 delimiter 多行写入 GITHUB_OUTPUT，避免换行被吞
+          {
+            echo "body<<CHANGELOG_EOF"
+            cat /tmp/changelog.md
+            echo ""
+            echo "CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
           name: EatWise ${{ steps.tag.outputs.release_tag }}
           body: |
-            ## 安装说明
+            ${{ steps.changelog.outputs.body }}
+
+            ---
+
+            ## 📦 安装说明
 
             1. 下载下方 apk（优先下 app-release.apk）
             2. 手机用数据线传过去（或扫码下载）
@@ -161,6 +202,7 @@ jobs:
             - 应用版本: ${{ steps.version.outputs.pubspec_version }}
             - 构建时间: ${{ github.run_id }}
             - 提交: ${{ github.sha }}
+            - 完整 changelog: [CHANGELOG.md](https://github.com/qbjsdsb/eatwise/blob/main/CHANGELOG.md)
           files: |
             build/app/outputs/flutter-apk/app-release.apk
             build/app/outputs/flutter-apk/app-debug.apk
