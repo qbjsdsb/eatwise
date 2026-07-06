@@ -294,7 +294,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         ),
                         validator: (v) {
                           // maintain goal 时不渲染此字段，无需校验
-                          if (v == null || v.isEmpty) return '必填';
+                          // 空值放行：cut/bulk 时空值表示用默认 -500/+500 deficit
+                          if (v == null || v.isEmpty) return null;
                           final r = double.tryParse(v);
                           if (r == null) return '请输入有效数字';
                           if (r < 0.1 || r > 2.0) return '目标速率需在 0.1-2.0 kg/周之间';
@@ -420,9 +421,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       final bodyFat =
           _bodyFatCtrl.text.isEmpty ? null : double.parse(_bodyFatCtrl.text);
       // goalRate：maintain goal 时不渲染字段（_goalRateCtrl.text 可能为旧值），
-      // 直接置 0；cut/bulk 时 Form 已 validate 通过（0.1-2.0），安全 parse
+      // 直接置 0；cut/bulk 时空值表示用默认 -500/+500 deficit（GoalRate=0 回退），
+      // 非空值 Form 已 validate 通过（0.1-2.0），安全 parse
       final goalRate = (_goal == 'cut' || _goal == 'bulk')
-          ? double.parse(_goalRateCtrl.text)
+          ? (double.tryParse(_goalRateCtrl.text) ?? 0.0)
           : 0.0;
       // 枚举转换：String → Gender/Goal
       final genderEnum =

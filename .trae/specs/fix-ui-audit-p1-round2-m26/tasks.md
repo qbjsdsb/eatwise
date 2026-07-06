@@ -4,40 +4,40 @@
 
 ## Commit 1: A 类数据一致性（5 条）
 
-- [ ] Task 1: 修复 calibration_page 复合菜预览/记录路径优先级不一致
-  - [ ] SubTask 1.1: 调整 `_buildNutritionPreview`（L523-568）复合菜路径，将"包装优先（宏量非全0）→ AI 优先 → 组分累加"作为统一优先级链路
-  - [ ] SubTask 1.2: 调整 `_confirmWithServing`（L869-984）复合菜路径，与 _buildNutritionPreview 条件完全对齐
-  - [ ] SubTask 1.3: 验证两条路径在"包装+宏量全0+aiFallback"场景下都走 AI 优先
-- [ ] Task 2: 修复 calibration_page 复合菜 AI 优先路径未含用油量
-  - [ ] SubTask 2.1: 在 `_buildNutritionPreview` AI 优先分支（L542-550）累加 `oilCaloriesPer100g * _oilG / 100` 到 calories + `oilFatPer100g * _oilG / 100` 到 fat
-  - [ ] SubTask 2.2: 在 `_confirmWithServing` AI 优先分支（L908-932）同样累加油量
-  - [ ] SubTask 2.3: 在 `_confirmWithServing` mid<=0 兜底分支（L933-958）已含油量，无需改
-- [ ] Task 3: 修复 profile_page goalRate 游离 Form + 全页数值无范围校验
-  - [ ] SubTask 3.1: goalRate `TextField`（L279-287）改 `TextFormField` + validator（0.1-2.0 kg/周）
-  - [ ] SubTask 3.2: 身高 validator（L150-154）加范围校验 50-250
-  - [ ] SubTask 3.3: 体重 validator（L163-167）加范围校验 20-300
-  - [ ] SubTask 3.4: 年龄 validator（L174-178）加范围校验 10-120
-  - [ ] SubTask 3.5: 体脂率 validator（L202-206）加范围校验 0-60
-  - [ ] SubTask 3.6: _save（L393）的 `double.tryParse(_goalRateCtrl.text) ?? 0` 改为读 Form 校验通过值
-- [ ] Task 4: 修复 weight_page 编辑 dialog 完全无校验静默 return
-  - [ ] SubTask 4.1: 编辑 dialog 改用 `Form` + `TextFormField` + validator（>0 且 ≤500）
-  - [ ] SubTask 4.2: "保存"按钮点击时调 `Form.validate()`，失败时不关闭 dialog 显示 errorText
-  - [ ] SubTask 4.3: 删除调用方 `if (result.weightKg == null || result.weightKg! <= 0) return;` 静默 return（dialog 内已校验）
-- [ ] Task 5: 修复 backup_page 导入后未 invalidate provider
-  - [ ] SubTask 5.1: 导入成功后（L184-188 之间）加 `ref.invalidate(appConfigProvider)` + `ref.invalidate(mealLogRepoProvider)` + `ref.invalidate(weightLogRepoProvider)` + `ref.invalidate(profileRepoProvider)`
-  - [ ] SubTask 5.2: 加 `RefreshBus.instance.notify()` 通知非 Riverpod 页面刷新
-- [ ] Task 6: 新增 A 类针对性测试
-  - [ ] SubTask 6.1: 新增 `test/features/recognize/calibration_composite_consistency_test.dart` 覆盖"包装+宏量全0+aiFallback"场景的预览=记录
-  - [ ] SubTask 6.2: 新增 `test/features/recognize/calibration_composite_oil_test.dart` 覆盖 AI 优先路径含用油量
-  - [x] SubTask 6.3: 扩展 `test/features/profile_page_test.dart` 覆盖范围校验（身高 0/999、体重 0/9999、goalRate "abc"）
+- [x] Task 1: 修复 calibration_page 复合菜预览/记录路径优先级不一致
+  - [x] SubTask 1.1: 调整 `_buildNutritionPreview`（L523-568）复合菜路径，将"包装优先（宏量非全0）→ AI 优先 → 组分累加"作为统一优先级链路
+  - [x] SubTask 1.2: 调整 `_confirmWithServing`（L869-984）复合菜路径，与 _buildNutritionPreview 条件完全对齐
+  - [x] SubTask 1.3: 验证两条路径在"包装+宏量全0+aiFallback"场景下都走 AI 优先
+- [x] Task 2: 修复 calibration_page 复合菜 AI 优先路径未含用油量
+  - [x] SubTask 2.1: 在 `_buildNutritionPreview` AI 优先分支（L542-550）累加 `oilCaloriesPer100g * _oilG / 100` 到 calories + `oilFatPer100g * _oilG / 100` 到 fat
+  - [x] SubTask 2.2: 在 `_confirmWithServing` AI 优先分支（L908-932）同样累加油量
+  - [x] SubTask 2.3: 在 `_confirmWithServing` mid<=0 兜底分支（L933-958）已含油量，无需改
+- [x] Task 3: 修复 profile_page goalRate 游离 Form + 全页数值无范围校验
+  - [x] SubTask 3.1: goalRate `TextField`（L279-287）改 `TextFormField` + validator（0.1-2.0 kg/周）
+  - [x] SubTask 3.2: 身高 validator（L150-154）加范围校验 50-250
+  - [x] SubTask 3.3: 体重 validator（L163-167）加范围校验 20-300
+  - [x] SubTask 3.4: 年龄 validator（L174-178）加范围校验 10-120
+  - [x] SubTask 3.5: 体脂率 validator（L202-206）加范围校验 0-60
+  - [x] SubTask 3.6: _save（L393）的 `double.tryParse(_goalRateCtrl.text) ?? 0` 改为读 Form 校验通过值
+- [x] Task 4: 修复 weight_page 编辑 dialog 完全无校验静默 return
+  - [x] SubTask 4.1: 编辑 dialog 改用 `Form` + `TextFormField` + validator（>0 且 ≤500）
+  - [x] SubTask 4.2: "保存"按钮点击时调 `Form.validate()`，失败时不关闭 dialog 显示 errorText
+  - [x] SubTask 4.3: 删除调用方 `if (result.weightKg == null || result.weightKg! <= 0) return;` 静默 return（dialog 内已校验）
+- [x] Task 5: 修复 backup_page 导入后未 invalidate provider
+  - [x] SubTask 5.1: 导入成功后（L184-188 之间）加 `ref.invalidate(appConfigProvider)` + `ref.invalidate(mealLogRepoProvider)` + `ref.invalidate(weightLogRepoProvider)` + `ref.invalidate(profileRepoProvider)`
+  - [x] SubTask 5.2: 加 `RefreshBus.instance.notify()` 通知非 Riverpod 页面刷新
+- [x] Task 6: 新增 A 类针对性测试
+  - [x] SubTask 6.1: 新增 `test/features/calibration_composite_consistency_test.dart` 覆盖"包装+宏量全0+aiFallback"场景的预览=记录
+  - [x] SubTask 6.2: 新增 `test/features/calibration_composite_oil_test.dart` 覆盖 AI 优先路径含用油量
+  - [x] SubTask 6.3: 扩展 `test/features/profile/profile_page_test.dart` 覆盖范围校验（身高 0/999、体重 0/9999、goalRate "abc"）
   - [x] SubTask 6.4: 新增 `test/features/weight_edit_dialog_validation_test.dart` 覆盖无效输入不关闭 dialog
   - [x] SubTask 6.5: 新增 `test/features/backup_import_invalidate_test.dart` 覆盖导入后 provider invalidate
-- [ ] Task 7: 验证 A 类修复
-  - [ ] SubTask 7.1: `flutter analyze` No issues
-  - [ ] SubTask 7.2: `flutter test` 全量通过 0 回归
-  - [ ] SubTask 7.3: 6+1 硬约束核查（未碰 build.gradle / meal_log 外键 / AI 三路径 / per100g 反算基于 mid / SecureConfigStore / initSentryAndRunApp / minSdk=31）
-  - [ ] SubTask 7.4: v2 重构 4 断言（AI 估算值不被静默修改 / 预览值=onConfirm 写库值 / warnings 透传 / 用户手动编辑覆盖 AI 值）
-- [ ] Task 8: Commit A 类修复（消息："M26 A: 修复 5 个 v2 重构后数据一致性 P1 bug"）
+- [x] Task 7: 验证 A 类修复
+  - [x] SubTask 7.1: `flutter analyze` No issues
+  - [x] SubTask 7.2: `flutter test` 全量通过 0 回归
+  - [x] SubTask 7.3: 6+1 硬约束核查（未碰 build.gradle / meal_log 外键 / AI 三路径 / per100g 反算基于 mid / SecureConfigStore / initSentryAndRunApp / minSdk=31）
+  - [x] SubTask 7.4: v2 重构 4 断言（AI 估算值不被静默修改 / 预览值=onConfirm 写库值 / warnings 透传 / 用户手动编辑覆盖 AI 值）
+- [x] Task 8: Commit A 类修复（消息："M26 A: 修复 5 个 v2 重构后数据一致性 P1 bug"）
 
 ## Commit 2: B 类核心流程（3 条）
 
