@@ -54,14 +54,20 @@ void main() {
     // FutureProvider 一旦 read 即开始加载，future 由 provider 持有，无需手动 await。
     container.read(appConfigProvider.future);
 
-    // 主题种子色：runApp 前快速读（轻量 secure_storage 单 key），首帧即用正确主题色，避免换肤闪烁
-    // 复用 secureConfigStoreProvider 实例（后续 appConfigProvider 也会用它），避免重复实例化
+    // 主题种子色 + 动态取色开关：runApp 前并行读（两次独立 secure_storage 读取无依赖），
+    // 首帧即用正确主题色，避免换肤闪烁。Future.wait 总时间 = max 而非 sum（省 100-300ms）。
     try {
       final store = container.read(secureConfigStoreProvider);
-      final seed = await store.getThemeSeed();
-      container.read(themeSeedProvider.notifier).set(seed);
+      final results = await Future.wait<dynamic>([
+        store.getThemeSeed(),
+        store.getUseDynamicColor(),
+      ]);
+      container.read(themeSeedProvider.notifier).set(results[0] as int);
+      container
+          .read(useDynamicColorProvider.notifier)
+          .set(results[1] as bool);
     } catch (_) {
-      // 读取失败用默认色（莫奈《睡莲》青绿），不阻塞启动
+      // 读取失败用默认值（紫种子色 0xFF6750A4 + 动态取色关闭），不阻塞启动
     }
 
     // 用 Sentry 包裹 app（DSN 为空时 initSentryAndRunApp 直接返回原 app，跳过 Sentry）
