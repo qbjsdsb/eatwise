@@ -4,6 +4,18 @@
 
 ## [Unreleased]
 
+### Bug 修复：SnackBar 横幅累积"存在非常久"+ 撤销时序不同步
+- **根因**：(1) ScaffoldMessenger 默认队列式，连续操作时 N 个横幅依次显示 N×duration，用户连删多条时横幅"存在非常久"；(2) today_meals_page 撤销横幅用 `Future.delayed(3s)` 等待撤销窗口，与 SnackBar 实际显示时序不同步（排队/被挤掉/超时都会让撤销按钮变无效）
+- **修复**：`showAppToast` 显示前 `clearSnackBars` 清空队列；today_meals_page 撤销横幅改用 `controller.closed` 替代 `Future.delayed`，正确感知关闭原因（action/timeout/swipe/被挤掉）；缩短 duration（撤销 4→3s / 识别失败 6→4s / 备份 5→4s 共 6 处）
+- **测试**：新增 `test/widgets/snackbar_clear_test.dart` 5 个测试（clearSnackBars 不排队 / 单次显示 / 默认 4s / 自定义 duration / 撤销 reason==action）
+- **验证**：flutter analyze No issues / flutter test 1062 passed / 0 回归
+
+### Bug 修复：AI 推荐冷启动加载失败（connectivity 误报 + 缓存不刷新）
+- **根因**：(1) `networkAvailableProvider` 是 `FutureProvider<bool>`（无 autoDispose），connectivity_plus 6.x 在 Android 冷启动时 ConnectivityManager 的 NetworkCallback 尚未首次回调，`checkConnectivity()` 误报 `[none]` 即使设备有网，首次 false 永久缓存导致 dashboard AI 推荐"刚打开软件就加载失败"；(2) `_loadAiRecommendations` 用 `ref.read` 不刷新 provider，重试按钮也无效（forceRefresh=true 时仍读缓存 false）
+- **修复**：`networkAvailableProvider` 改 `FutureProvider.autoDispose<bool>`（页面重建/重新进入时重新查询，避免冷启动 false 永久缓存）+ 冷启动校正（首次返回 [none] 时 delay 500ms 重查一次）；`_loadAiRecommendations` forceRefresh=true 时用 `ref.refresh` 强制刷新网络状态，确保重试按钮生效
+- **测试**：新增 `test/features/network_available_provider_test.dart` 4 个测试（冷启动校正 / 真离线 / 在线不重查 / autoDispose invalidate 重新查询），用 MethodChannel mock connectivity_plus
+- **验证**：flutter analyze No issues / flutter test 1062 passed / 0 回归
+
 ## [v0.24.0] - 2026-07-06
 
 ### M25 主题动态取色（Material You 壁纸取色）

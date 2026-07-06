@@ -36,6 +36,14 @@
 
 **最后更新**：2026-07-06
 
+**两个 UX Bug 修复完成（2026-07-06，未发版）—— 方案 A 双 commit**：用户报告两个问题：(1) 删除食物时撤销横幅"存在非常久"；(2) AI 智能推荐刚打开软件时经常加载失败。用户决策"两个一起全面修（推荐）"+"就方案 a 吧"（分问题双 commit）。
+
+Bug 1（SnackBar 横幅累积）— commit cc2c172：根因有二：(a) ScaffoldMessenger 默认队列式，连续操作时 N 个横幅依次显示 N×duration，用户连删多条时横幅"存在非常久"；(b) today_meals_page 撤销横幅用 `Future.delayed(3s)` 等待撤销窗口，与 SnackBar 实际显示时序不同步（排队/被挤掉/超时都会让撤销按钮变无效）。修复：`showAppToast` 显示前 `clearSnackBars` 清空队列（50+ 调用点一次性覆盖）；today_meals_page 撤销横幅改用 `controller.closed` 替代 `Future.delayed`，正确感知关闭原因（action/timeout/swipe/被挤掉）；缩短 duration（撤销 4→3s / 识别失败 6→4s / 备份 5→4s 共 6 处）。新增 `test/widgets/snackbar_clear_test.dart` 5 个测试。
+
+Bug 2（AI 推荐冷启动加载失败）— commit 01f9997：根因有二：(a) `networkAvailableProvider` 是 `FutureProvider<bool>`（无 autoDispose），connectivity_plus 6.x 在 Android 冷启动时 ConnectivityManager 的 NetworkCallback 尚未首次回调，`checkConnectivity()` 误报 `[none]` 即使设备有网，首次 false 永久缓存导致 dashboard AI 推荐"刚打开软件就加载失败"；(b) `_loadAiRecommendations` 用 `ref.read` 不刷新 provider，重试按钮也无效。修复：`networkAvailableProvider` 改 `FutureProvider.autoDispose<bool>` + 冷启动校正（首次返回 [none] 时 delay 500ms 重查一次）；`_loadAiRecommendations` forceRefresh=true 时用 `ref.refresh` 强制刷新网络状态。新增 `test/features/network_available_provider_test.dart` 4 个测试（用 MethodChannel mock connectivity_plus 通道 `dev.fluttercommunity.plus/connectivity` 方法 `check`）。
+
+最终验证：flutter analyze No issues / flutter test 1062 passed（基线 1056 → +9 新测试，0 回归）/ 6+1 硬约束满足（minify=false / shrink=false / minSdk=31 等未碰）/ 0 回归。**未打 tag 未发版**（用户明确指令"修完后先 push，不要打 tag 发布"）。
+
 **v0.24.0+36 已发布（2026-07-06）—— M25 主题动态取色 + 图标精修**：用户指令"反复检查确定没有问题后严肃打tag发布"。包含 2 个新功能：(1) M25 主题动态取色（Material You）：dynamic_color 包 + DynamicColorBuilder 包裹 MaterialApp.router，三态决策（动态色可用/不可用/开关关闭），新增 `useDynamicColorProvider` + SecureConfigStore key `use_dynamic_color`，main.dart `Future.wait` 并行读，设置页 SwitchListTile + 色板 Opacity 0.38 + AbsorbPointer 硬互斥，minSdk 24→31（新增第 7 条硬约束）。(2) M25 图标精修：对标 MyFitnessPal 圆盘容器，紫 #6750A4→自然绿 #2E7D32，四角 L 角标→圆环描边盘+中心实心碗（黄金分割 0.393 + 0.5dp 网格）。bump 0.23.0+35 → 0.24.0+36，tag v0.24.0。flutter analyze No issues / flutter test 1056 passed / 6+1 硬约束满足 / 0 回归。
 
 **v0.23.0+35 已发布（2026-07-06）—— M25 方案 D + GitHub 主页同步**：用户报告"AI 推理米粉汤 526 kcal 但页面显示 171 kcal"。根因：`FoodCategoryDefaults.calibrate` 用"品类均值（soup=30）"覆盖"AI 具体估算（per100g=92.3，比值 3.08>2 触发校准）"，且 calories 用默认值、宏量保留 AI 值，破坏 Atwater 自洽（4×16+9×13+4×75=481 ≠ 171）。方案 D 废弃品类校准，4 项全保留 AI 估算值，只做物理 clamp [0,900] + 宏量 [0,100]；酒精饮料（beer/wine/alcohol）豁免 Atwater 校验（酒精 7kcal/g 不在 4p+9f+4c 系数内）。同时清理历史啤酒补丁（雪花啤酒被识别成雪碧的 workaround，AI 识别精准后无意义）。bump 0.22.0+34 → 0.23.0+35，tag v0.23.0。
