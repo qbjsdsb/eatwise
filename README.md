@@ -2,12 +2,12 @@
 
 > 拍照识别食物热量 + 营养记录 + AI 周/月汇总建议 — Flutter Android App（个人自用）
 
-![Version](https://img.shields.io/badge/version-v0.23.0-blue)
+![Version](https://img.shields.io/badge/version-v0.24.0-blue)
 ![Flutter](https://img.shields.io/badge/Flutter-3.44.4-blue)
 ![Dart](https://img.shields.io/badge/Dart-3.x-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Android-green)
-![Tests](https://img.shields.io/badge/tests-1038%20passed-brightgreen)
+![Tests](https://img.shields.io/badge/tests-1056%20passed-brightgreen)
 
 ## 核心特性
 
@@ -112,6 +112,7 @@ CHANGELOG.md            # 版本变更记录
 
 | 版本 | 日期 | 核心改动 |
 |---|---|---|
+| v0.24.0 | 2026-07-06 | M25 主题动态取色（Material You）+ 图标精修重设计（对标 MyFitnessPal） |
 | v0.23.0 | 2026-07-06 | M25 方案 D 废弃品类校准 + 酒精豁免 Atwater（米粉汤 bug 修复）+ GitHub 主页同步 |
 | v0.22.0 | 2026-07-05 | M24 P1 清零（13 项 P1 修复 + 5 项架构重构） |
 | v0.21.0 | 2026-07-05 | M22 图标精修 + 识别等待动画重构 |
@@ -134,7 +135,7 @@ CHANGELOG.md            # 版本变更记录
 
 ## 状态
 
-✅ **v0.23.0 已发布**（2026-07-06）— [Release v0.23.0](https://github.com/qbjsdsb/eatwise/releases/tag/v0.23.0)
+✅ **v0.24.0 已发布**（2026-07-06）— [Release v0.24.0](https://github.com/qbjsdsb/eatwise/releases/tag/v0.24.0)
 
 ## 文档
 

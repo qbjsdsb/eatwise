@@ -4,8 +4,22 @@
 
 ## [Unreleased]
 
-- M25 图标精修重设计：对标 MyFitnessPal，紫色 #6750A4 → 自然绿 #2E7D32，四角 L 角标 → 圆环描边盘（黄金分割比例 + 0.5dp 网格对齐）
-- M25 主题动态取色：dynamic_color 包 + DynamicColorBuilder，开关优先 + Switch 与色板硬互斥，minSdk 24 → 31（新增第 7 条硬约束）
+## [v0.24.0] - 2026-07-06
+
+### M25 主题动态取色（Material You 壁纸取色）
+- **方案**：dynamic_color 包 + DynamicColorBuilder 包裹 MaterialApp.router，三态决策（动态色可用/不可用/开关关闭）
+- **新增**：`useDynamicColorProvider`（bool，默认 false）+ SecureConfigStore key `use_dynamic_color`
+- **启动期**：main.dart `Future.wait` 并行读 themeSeed + useDynamicColor（省 100-300ms）
+- **UI**：设置页 SwitchListTile + 色板 Opacity 0.38 + AbsorbPointer 硬互斥（开启时色板灰显不可点）
+- **minSdk**：24 → 31（dynamic_color 包硬性要求，新增第 7 条硬约束）
+- **影响**：Android 12+ 用户开启动态取色后主题跟随壁纸；< 12 自动 fallback 到 fromSeed
+- **验证**：flutter analyze No issues / flutter test 1056 passed（基线 1040 + 16 新增）/ 6+1 硬约束满足 / 0 回归
+
+### M25 图标精修重设计
+- 对标 MyFitnessPal 圆盘容器语言
+- 配色：紫色 #6750A4 → 自然绿 #2E7D32（紫色抑制食欲改绿，WCAG AAA 7.2:1）
+- 几何：四角 L 角标（8 线段 36dp span）→ 圆环描边盘（56dp 外径 + 中心实心碗 22×11dp），黄金分割 0.393 + 0.5dp 网格对齐
+- 元素：9 个（8 L + 1 碗）减为 2 个（1 圆环 + 1 碗），克制留白足
 
 ## [v0.23.0] - 2026-07-06
 

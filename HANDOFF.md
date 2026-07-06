@@ -36,6 +36,8 @@
 
 **最后更新**：2026-07-06
 
+**v0.24.0+36 已发布（2026-07-06）—— M25 主题动态取色 + 图标精修**：用户指令"反复检查确定没有问题后严肃打tag发布"。包含 2 个新功能：(1) M25 主题动态取色（Material You）：dynamic_color 包 + DynamicColorBuilder 包裹 MaterialApp.router，三态决策（动态色可用/不可用/开关关闭），新增 `useDynamicColorProvider` + SecureConfigStore key `use_dynamic_color`，main.dart `Future.wait` 并行读，设置页 SwitchListTile + 色板 Opacity 0.38 + AbsorbPointer 硬互斥，minSdk 24→31（新增第 7 条硬约束）。(2) M25 图标精修：对标 MyFitnessPal 圆盘容器，紫 #6750A4→自然绿 #2E7D32，四角 L 角标→圆环描边盘+中心实心碗（黄金分割 0.393 + 0.5dp 网格）。bump 0.23.0+35 → 0.24.0+36，tag v0.24.0。flutter analyze No issues / flutter test 1056 passed / 6+1 硬约束满足 / 0 回归。
+
 **v0.23.0+35 已发布（2026-07-06）—— M25 方案 D + GitHub 主页同步**：用户报告"AI 推理米粉汤 526 kcal 但页面显示 171 kcal"。根因：`FoodCategoryDefaults.calibrate` 用"品类均值（soup=30）"覆盖"AI 具体估算（per100g=92.3，比值 3.08>2 触发校准）"，且 calories 用默认值、宏量保留 AI 值，破坏 Atwater 自洽（4×16+9×13+4×75=481 ≠ 171）。方案 D 废弃品类校准，4 项全保留 AI 估算值，只做物理 clamp [0,900] + 宏量 [0,100]；酒精饮料（beer/wine/alcohol）豁免 Atwater 校验（酒精 7kcal/g 不在 4p+9f+4c 系数内）。同时清理历史啤酒补丁（雪花啤酒被识别成雪碧的 workaround，AI 识别精准后无意义）。bump 0.22.0+34 → 0.23.0+35，tag v0.23.0。
 
 **M25 方案 D 完成（2026-07-06）—— 废弃品类校准 + 酒精豁免 Atwater（米粉汤 bug 修复）**：用户报告"AI 推理米粉汤 526 kcal 但页面显示 171 kcal"。根因：`FoodCategoryDefaults.calibrate` 用"品类均值（soup=30）"覆盖"AI 具体估算（per100g=92.3，比值 3.08>2 触发校准）"，且 calories 用默认值、宏量保留 AI 值，破坏 Atwater 自洽（4×16+9×13+4×75=481 ≠ 171）。方案 D 废弃品类校准，4 项全保留 AI 估算值，只做物理 clamp [0,900] + 宏量 [0,100]；酒精饮料（beer/wine/alcohol）豁免 Atwater 校验（酒精 7kcal/g 不在 4p+9f+4c 系数内）。同时清理历史啤酒补丁（雪花啤酒被识别成雪碧的 workaround，AI 识别精准后无意义）。
