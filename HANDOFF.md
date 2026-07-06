@@ -89,7 +89,7 @@ C1 验证（反复检查后发现并修复 1 处遗漏）：recognize_page L224 
 - 创建 LICENSE（MIT，版权 qbjsdsb）
 - 创建 CHANGELOG.md（Keep a Changelog 格式，16 个版本段 v0.15.0→v0.22.0 + Unreleased 段）
 - PATCH Release v0.22.0 notes：补 M24 changelog 段（13 项修复 + 5 项重构 + 验证 + 升级须知）+ 保留原 4 段通用模板
-- 设置 About 卡片 description + 12 个 topics（flutter/android/food-tracking/nutrition/ai/qwen-vl/glm-4v/drift/material-3/local-first/privacy/sqlite）
+- 设置 About 卡片 description + 12 个 topics（flutter/android/food-tracking/nutrition/ai/qwen-vl/glm-4v/drift/material-3/local-first/privacy/sqlite）—— **description 仓库已有（"Flutter App" 版本，可接受），topics 设置 API 返回 403（token 无 Administration:write 权限），需用户在 GitHub web UI 手动设置**
 - spec + plan 文件：`.trae/specs/m25-github-homepage-sync/{spec,plan}.md`
 - 用户指令"根据我的handoff把github界面完善一下，因为改动很大，我的项目主页进行同步"+"挺好的，不过release我好像已经发布了，可以把changelog写好"
 
