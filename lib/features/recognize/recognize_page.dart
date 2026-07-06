@@ -565,7 +565,10 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
           !msg.contains('安全过滤');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('识别失败：$msg'),
+          content: Semantics(
+            liveRegion: true,
+            child: Text('识别失败：$msg'),
+          ),
           duration: const Duration(seconds: 4),
           action: canRetry
               ? SnackBarAction(

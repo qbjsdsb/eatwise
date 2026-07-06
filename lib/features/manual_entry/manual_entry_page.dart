@@ -33,10 +33,35 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
   late bool _customMode;
   bool _busy = false; // 防重入：记录期间禁用按钮，避免双击重复写库
   bool _dirty = false; // 用户是否改过任意字段（PopScope 未保存确认用）
+  // 各字段校验错误（内联显示在 TextField 下方，替代 toast）
+  String? _servingError;
+  String? _nameError;
+  String? _calError;
+  String? _proteinError;
+  String? _fatError;
+  String? _carbsError;
 
   void _markDirty() {
-    if (_dirty) return;
-    setState(() => _dirty = true);
+    // 已 dirty 且无任何错误时不重复 setState（保留原优化）
+    if (_dirty &&
+        _servingError == null &&
+        _nameError == null &&
+        _calError == null &&
+        _proteinError == null &&
+        _fatError == null &&
+        _carbsError == null) {
+      return;
+    }
+    setState(() {
+      _dirty = true;
+      // 用户重新编辑任一字段时清掉所有旧错误提示
+      _servingError = null;
+      _nameError = null;
+      _calError = null;
+      _proteinError = null;
+      _fatError = null;
+      _carbsError = null;
+    });
   }
 
   @override
@@ -124,7 +149,8 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                   ],
                   autocorrect: false,
                   enableSuggestions: false,
-                  decoration: const InputDecoration(labelText: '份量 (g)')),
+                  decoration: InputDecoration(
+                      labelText: '份量 (g)', errorText: _servingError)),
               const SizedBox(height: 24),
               FilledButton(
                   onPressed: _busy ? null : _logFromLibrary,
@@ -153,7 +179,8 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                   children: [
                     TextField(
                         controller: _nameCtrl,
-                        decoration: const InputDecoration(labelText: '食物名称')),
+                        decoration: InputDecoration(
+                            labelText: '食物名称', errorText: _nameError)),
                     const SizedBox(height: 12),
                     TextField(
                         controller: _servingCtrl,
@@ -163,7 +190,8 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                         ],
                         autocorrect: false,
                         enableSuggestions: false,
-                        decoration: const InputDecoration(labelText: '份量 (g)')),
+                        decoration: InputDecoration(
+                      labelText: '份量 (g)', errorText: _servingError)),
                   ],
                 ),
               ),
@@ -182,7 +210,8 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                         ],
                         autocorrect: false,
                         enableSuggestions: false,
-                        decoration: const InputDecoration(labelText: '热量 (kcal)')),
+                        decoration: InputDecoration(
+                            labelText: '热量 (kcal)', errorText: _calError)),
                     const SizedBox(height: 12),
                     TextField(
                         controller: _proteinCtrl,
@@ -192,7 +221,8 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                         ],
                         autocorrect: false,
                         enableSuggestions: false,
-                        decoration: const InputDecoration(labelText: '蛋白质 (g)')),
+                        decoration: InputDecoration(
+                            labelText: '蛋白质 (g)', errorText: _proteinError)),
                     const SizedBox(height: 12),
                     TextField(
                         controller: _fatCtrl,
@@ -202,7 +232,8 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                         ],
                         autocorrect: false,
                         enableSuggestions: false,
-                        decoration: const InputDecoration(labelText: '脂肪 (g)')),
+                        decoration: InputDecoration(
+                            labelText: '脂肪 (g)', errorText: _fatError)),
                     const SizedBox(height: 12),
                     TextField(
                         controller: _carbsCtrl,
@@ -212,7 +243,8 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
                         ],
                         autocorrect: false,
                         enableSuggestions: false,
-                        decoration: const InputDecoration(labelText: '碳水 (g)')),
+                        decoration: InputDecoration(
+                            labelText: '碳水 (g)', errorText: _carbsError)),
                   ],
                 ),
               ),
@@ -245,7 +277,7 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
     if (_selected == null) return;
     final serving = double.tryParse(_servingCtrl.text);
     if (serving == null || serving <= 0) {
-      _showError('请输入有效的份量');
+      setState(() => _servingError = '份量需大于 0');
       return;
     }
     setState(() => _busy = true);
@@ -281,22 +313,35 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
 
   Future<void> _logCustom() async {
     if (_busy) return; // 防重入
-    if (_nameCtrl.text.isEmpty) {
-      _showError('请输入食物名称');
-      return;
-    }
-    // 自定义模式：5 个数值字段需逐个校验
+    // 自定义模式：6 个字段需逐个校验
+    final name = _nameCtrl.text.trim();
     final cal = double.tryParse(_calCtrl.text);
     final protein = double.tryParse(_proteinCtrl.text);
     final fat = double.tryParse(_fatCtrl.text);
     final carbs = double.tryParse(_carbsCtrl.text);
     final serving = double.tryParse(_servingCtrl.text);
-    if (cal == null || protein == null || fat == null || carbs == null) {
-      _showError('热量/蛋白质/脂肪/碳水 必须为数字');
-      return;
-    }
-    if (serving == null || serving <= 0) {
-      _showError('请输入有效的份量');
+    // 逐字段生成错误文案，一次性展示所有错误
+    final newNameError = name.isEmpty ? '请输入食物名称' : null;
+    final newCalError = cal == null ? '请输入有效数字' : null;
+    final newProteinError = protein == null ? '请输入有效数字' : null;
+    final newFatError = fat == null ? '请输入有效数字' : null;
+    final newCarbsError = carbs == null ? '请输入有效数字' : null;
+    final newServingError =
+        (serving == null || serving <= 0) ? '份量需大于 0' : null;
+    if (newNameError != null ||
+        newCalError != null ||
+        newProteinError != null ||
+        newFatError != null ||
+        newCarbsError != null ||
+        newServingError != null) {
+      setState(() {
+        _nameError = newNameError;
+        _calError = newCalError;
+        _proteinError = newProteinError;
+        _fatError = newFatError;
+        _carbsError = newCarbsError;
+        _servingError = newServingError;
+      });
       return;
     }
     setState(() => _busy = true);
@@ -307,7 +352,7 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
       // 先存库（source=manual，用 T9 新增的 insertManual 方法）
       // 自动学习：若 modelDishName 非空且与用户输入 name 不同，存为 alias，
       // 下次模型返回同名时自动命中（无需用户再手动录入）
-      final userInputName = _nameCtrl.text.trim();
+      final userInputName = name;
       final modelDishName = widget.modelDishName?.trim();
       final aliases = (modelDishName != null &&
               modelDishName.isNotEmpty &&
@@ -317,15 +362,17 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
 
       final foodId = await foodRepo.insertManual(
         name: userInputName,
-        caloriesPer100g: cal,
-        proteinPer100g: protein,
-        fatPer100g: fat,
-        carbsPer100g: carbs,
+        // 校验已通过，所有数值非空（! 断言安全）
+        caloriesPer100g: cal!,
+        proteinPer100g: protein!,
+        fatPer100g: fat!,
+        carbsPer100g: carbs!,
         aliases: aliases,
       );
 
-      final ratio = serving / 100;
+      final ratio = serving! / 100;
       final today = todayYmd();
+      // 上方 serving! 及 insertManual 内的 ! 已将 final 局部变量提升为非空
       await mealRepo.insertMealLog(
         date: today,
         mealType: _mealType,
@@ -349,10 +396,5 @@ class _ManualEntryPageState extends ConsumerState<ManualEntryPage> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
-  }
-
-  void _showError(String msg) {
-    if (!mounted) return;
-    showAppToast(context, msg);
   }
 }

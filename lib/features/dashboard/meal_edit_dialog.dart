@@ -93,6 +93,8 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
   bool _nutritionOverridden = false;
   // 用户是否改过任意字段（PopScope 未保存确认用）
   bool _dirty = false;
+  // 份量校验错误（内联显示在 TextField 下方，替代 toast）
+  String? _servingError;
 
   @override
   void initState() {
@@ -127,7 +129,13 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
   }
 
   void _markDirty() {
-    if (!_dirty) setState(() => _dirty = true);
+    // 已 dirty 且无错误时不重复 setState（保留原优化）
+    if (_dirty && _servingError == null) return;
+    setState(() {
+      _dirty = true;
+      // 用户重新编辑份量时清掉旧错误提示
+      _servingError = null;
+    });
   }
 
   @override
@@ -250,7 +258,7 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
   void _save() {
     final serving = double.tryParse(_servingCtrl.text.trim());
     if (serving == null || serving <= 0) {
-      showAppToast(context, '请输入有效份量');
+      setState(() => _servingError = '份量需大于 0');
       return;
     }
     final n = _computeNutrition();
@@ -315,7 +323,10 @@ class _MealEditDialogState extends ConsumerState<MealEditDialog> {
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))
                 ],
-                decoration: const InputDecoration(labelText: '份量 (g)'),
+                decoration: InputDecoration(
+                  labelText: '份量 (g)',
+                  errorText: _servingError,
+                ),
               ),
               const SizedBox(height: 12),
               // 餐次切换器（复用共享 MealTypeSelector，与 recognize/manual_entry 一致）

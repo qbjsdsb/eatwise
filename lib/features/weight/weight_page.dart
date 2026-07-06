@@ -31,6 +31,8 @@ class WeightPageState extends ConsumerState<WeightPage> {
   // M14：用户是否改过输入（PopScope 未保存确认用）
   // _loading 守卫防初始赋值（_load 后清空 _weightCtrl 不应误标 dirty）
   bool _dirty = false;
+  // 体重校验错误（内联显示在主表单 TextField 下方，替代 toast）
+  String? _weightError;
 
   @override
   void initState() {
@@ -43,8 +45,13 @@ class WeightPageState extends ConsumerState<WeightPage> {
   /// M14：标记用户已修改输入（PopScope 弹放弃确认用）
   void _markDirty() {
     if (_loading) return;
-    if (_dirty) return; // 已是 dirty 不重复 setState
-    setState(() => _dirty = true);
+    // 已 dirty 且无错误时不重复 setState（保留原优化）
+    if (_dirty && _weightError == null) return;
+    setState(() {
+      _dirty = true;
+      // 用户重新编辑体重时清掉旧错误提示
+      _weightError = null;
+    });
   }
 
   /// 公开刷新方法：切换到该页时由父容器调用
@@ -117,7 +124,10 @@ class WeightPageState extends ConsumerState<WeightPage> {
                     ],
                     autocorrect: false,
                     enableSuggestions: false,
-                    decoration: const InputDecoration(labelText: '今日体重 (kg)'),
+                    decoration: InputDecoration(
+                      labelText: '今日体重 (kg)',
+                      errorText: _weightError,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -386,7 +396,7 @@ class WeightPageState extends ConsumerState<WeightPage> {
     final weight = double.tryParse(_weightCtrl.text);
     if (weight == null || weight <= 0) {
       if (!mounted) return;
-      showAppToast(context, '请输入有效的体重数字');
+      setState(() => _weightError = '体重需大于 0');
       return;
     }
     setState(() => _busy = true);

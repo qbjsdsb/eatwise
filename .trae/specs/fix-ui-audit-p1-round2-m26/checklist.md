@@ -65,16 +65,16 @@
 
 ## E 类错误反馈与状态覆盖
 
-- [ ] recognize_page:567 内联 SnackBar content 包 Semantics(liveRegion: true)
-- [ ] today_meals_page:346-364 Undo SnackBar content 包 Semantics(liveRegion: true)
-- [ ] today_meals_page:402-419 Image.file 加 semanticLabel: '食物图片'
-- [ ] today_meals_page:603-638 反馈纠正 dialog 加 barrierDismissible: false
-- [ ] meal_edit_dialog _save 校验改 Form + errorText
-- [ ] food_edit_page _saveServingOnly/_saveAll 校验改 errorText
-- [ ] manual_entry_page _logFromLibrary/_logCustom 校验改 errorText
-- [ ] weight_page _save 校验改 errorText
-- [ ] 新增 2 个测试文件覆盖 E 类修复
-- [ ] E 类 commit 完成，flutter analyze + flutter test 通过
+- [x] recognize_page:567 内联 SnackBar content 包 Semantics(liveRegion: true)
+- [x] today_meals_page:346-364 Undo SnackBar content 包 Semantics(liveRegion: true)
+- [x] today_meals_page:402-419 Image.file 加 semanticLabel: '食物图片'
+- [x] today_meals_page:603-638 反馈纠正 dialog 加 barrierDismissible: false
+- [x] meal_edit_dialog _save 校验改 Form + errorText
+- [x] food_edit_page _saveServingOnly/_saveAll 校验改 errorText
+- [x] manual_entry_page _logFromLibrary/_logCustom 校验改 errorText
+- [x] weight_page _save 校验改 errorText
+- [x] 新增 2 个测试文件覆盖 E 类修复
+- [x] E 类 commit 完成，flutter analyze + flutter test 通过
 
 ## 最终验证
 

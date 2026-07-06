@@ -346,8 +346,11 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         messenger.clearSnackBars();
         final controller = messenger.showSnackBar(
           SnackBar(
-            content: Text(
-                '已删除 ${_foodNames[m.foodItemId] ?? placeholderFoodName(m.foodItemId)}'),
+            content: Semantics(
+              liveRegion: true,
+              child: Text(
+                  '已删除 ${_foodNames[m.foodItemId] ?? placeholderFoodName(m.foodItemId)}'),
+            ),
             duration: const Duration(seconds: 3),
             action: SnackBarAction(
               label: '撤销',
@@ -405,6 +408,7 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
                           width: 56,
                           height: 56,
                           fit: BoxFit.cover,
+                          semanticLabel: '食物图片',
                           errorBuilder: (_, __, ___) => Container(
                             width: 56,
                             height: 56,
@@ -606,9 +610,10 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         final servingCtrl = TextEditingController();
         try {
           final correction = await showDialog<_CorrectionResult>(
-            context: context,
-            builder: (ctx) => AlertDialog(
-              title: const Text('请输入正确信息'),
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Text('请输入正确信息'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [

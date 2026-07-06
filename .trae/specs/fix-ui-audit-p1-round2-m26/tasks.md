@@ -112,24 +112,24 @@
 
 ## Commit 5: E 类错误反馈与状态覆盖（5 条）
 
-- [ ] Task 29: 修复 recognize_page SnackBar 缺 liveRegion
-  - [ ] SubTask 29.1: recognize_page.dart:567 内联 SnackBar content 外包 `Semantics(liveRegion: true, child: Text(...))`
-- [ ] Task 30: 修复 today_meals_page Undo SnackBar 缺 liveRegion
-  - [ ] SubTask 30.1: today_meals_page.dart:346-364 Undo SnackBar content 外包 `Semantics(liveRegion: true, child: Text(...))`
-- [ ] Task 31: 修复 today_meals_page Image.file 无 semanticLabel
-  - [ ] SubTask 31.1: today_meals_page.dart:402-419 `Image.file(...)` 加 `semanticLabel: '食物图片'`
-- [ ] Task 32: 修复 today_meals_page 反馈纠正 dialog barrierDismissible
-  - [ ] SubTask 32.1: today_meals_page.dart:603-638 反馈纠正 dialog showDialog 加 `barrierDismissible: false`
-- [ ] Task 33: 4 个文件校验错误走 toast 改 errorText 内联
-  - [ ] SubTask 33.1: meal_edit_dialog.dart:239-244 _save 校验改 Form + TextFormField + validator + errorText
-  - [ ] SubTask 33.2: food_edit_page.dart:158-217 _saveServingOnly/_saveAll 校验改 errorText
-  - [ ] SubTask 33.3: manual_entry_page.dart:224-281 _logFromLibrary/_logCustom 校验改 errorText
-  - [ ] SubTask 33.4: weight_page.dart:379-387 _save 校验改 errorText（与 Task 4 编辑 dialog 改造协同）
-- [ ] Task 34: 新增 E 类针对性测试
-  - [ ] SubTask 34.1: 扩展 today_meals_page_test 覆盖 Undo SnackBar liveRegion + Image semanticLabel + 反馈纠正 dialog barrierDismissible
-  - [ ] SubTask 34.2: 新增 `test/features/inline_error_text_test.dart` 覆盖 4 个文件 errorText 内联
-- [ ] Task 35: 验证 E 类修复（同 Task 7 三步）
-- [ ] Task 36: Commit E 类修复（消息："M26 E: 修复 5 条错误反馈与状态覆盖 P1（liveRegion + Image semanticLabel + barrierDismissible + 4 文件 errorText）"）
+- [x] Task 29: 修复 recognize_page SnackBar 缺 liveRegion
+  - [x] SubTask 29.1: recognize_page.dart:567 内联 SnackBar content 外包 `Semantics(liveRegion: true, child: Text(...))`
+- [x] Task 30: 修复 today_meals_page Undo SnackBar 缺 liveRegion
+  - [x] SubTask 30.1: today_meals_page.dart:346-364 Undo SnackBar content 外包 `Semantics(liveRegion: true, child: Text(...))`
+- [x] Task 31: 修复 today_meals_page Image.file 无 semanticLabel
+  - [x] SubTask 31.1: today_meals_page.dart:402-419 `Image.file(...)` 加 `semanticLabel: '食物图片'`
+- [x] Task 32: 修复 today_meals_page 反馈纠正 dialog barrierDismissible
+  - [x] SubTask 32.1: today_meals_page.dart:603-638 反馈纠正 dialog showDialog 加 `barrierDismissible: false`
+- [x] Task 33: 4 个文件校验错误走 toast 改 errorText 内联
+  - [x] SubTask 33.1: meal_edit_dialog.dart:239-244 _save 校验改 Form + TextFormField + validator + errorText
+  - [x] SubTask 33.2: food_edit_page.dart:158-217 _saveServingOnly/_saveAll 校验改 errorText
+  - [x] SubTask 33.3: manual_entry_page.dart:224-281 _logFromLibrary/_logCustom 校验改 errorText
+  - [x] SubTask 33.4: weight_page.dart:379-387 _save 校验改 errorText（与 Task 4 编辑 dialog 改造协同）
+- [x] Task 34: 新增 E 类针对性测试
+  - [x] SubTask 34.1: 扩展 today_meals_page_test 覆盖 Undo SnackBar liveRegion + Image semanticLabel + 反馈纠正 dialog barrierDismissible
+  - [x] SubTask 34.2: 新增 `test/features/inline_error_text_test.dart` 覆盖 4 个文件 errorText 内联
+- [x] Task 35: 验证 E 类修复（同 Task 7 三步）
+- [x] Task 36: Commit E 类修复（消息："M26 E: 修复 5 条错误反馈与状态覆盖 P1（liveRegion + Image semanticLabel + barrierDismissible + 4 文件 errorText）"）
 
 ## 最终验证
 

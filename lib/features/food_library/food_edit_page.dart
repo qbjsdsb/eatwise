@@ -25,9 +25,32 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
   late final TextEditingController _carbsCtrl;
   bool _busy = false; // 防重入：保存期间禁用按钮，避免双击重复写库
   bool _dirty = false; // 用户是否改过任意字段（PopScope 未保存确认用）
+  // 各字段校验错误（内联显示在 TextField 下方，替代 toast）
+  String? _servingError;
+  String? _calError;
+  String? _proteinError;
+  String? _fatError;
+  String? _carbsError;
 
   void _markDirty() {
-    if (!_dirty) setState(() => _dirty = true);
+    // 已 dirty 且无任何错误时不重复 setState（保留原优化）
+    if (_dirty &&
+        _servingError == null &&
+        _calError == null &&
+        _proteinError == null &&
+        _fatError == null &&
+        _carbsError == null) {
+      return;
+    }
+    setState(() {
+      _dirty = true;
+      // 用户重新编辑任一字段时清掉所有旧错误提示
+      _servingError = null;
+      _calError = null;
+      _proteinError = null;
+      _fatError = null;
+      _carbsError = null;
+    });
   }
 
   @override
@@ -99,7 +122,8 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
               ],
               autocorrect: false,
               enableSuggestions: false,
-              decoration: const InputDecoration(labelText: '默认份量 (g)')),
+              decoration: InputDecoration(
+                  labelText: '默认份量 (g)', errorText: _servingError)),
           TextField(
               controller: _calCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -109,7 +133,8 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
               autocorrect: false,
               enableSuggestions: false,
               enabled: editable,
-              decoration: const InputDecoration(labelText: '热量 /100 g (kcal)')),
+              decoration: InputDecoration(
+                  labelText: '热量 /100 g (kcal)', errorText: _calError)),
           TextField(
               controller: _proteinCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -119,7 +144,8 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
               autocorrect: false,
               enableSuggestions: false,
               enabled: editable,
-              decoration: const InputDecoration(labelText: '蛋白质 /100 g (g)')),
+              decoration: InputDecoration(
+                  labelText: '蛋白质 /100 g (g)', errorText: _proteinError)),
           TextField(
               controller: _fatCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -129,7 +155,8 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
               autocorrect: false,
               enableSuggestions: false,
               enabled: editable,
-              decoration: const InputDecoration(labelText: '脂肪 /100 g (g)')),
+              decoration: InputDecoration(
+                  labelText: '脂肪 /100 g (g)', errorText: _fatError)),
           TextField(
               controller: _carbsCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -139,7 +166,8 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
               autocorrect: false,
               enableSuggestions: false,
               enabled: editable,
-              decoration: const InputDecoration(labelText: '碳水 /100 g (g)')),
+              decoration: InputDecoration(
+                  labelText: '碳水 /100 g (g)', errorText: _carbsError)),
           const SizedBox(height: 24),
           if (editable)
             FilledButton(
@@ -175,7 +203,7 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
     if (_busy) return; // 防重入
     final serving = double.tryParse(_servingCtrl.text);
     if (serving == null || serving <= 0) {
-      _showError('请输入有效的份量');
+      setState(() => _servingError = '份量需大于 0');
       return;
     }
     setState(() => _busy = true);
@@ -202,24 +230,38 @@ class _FoodEditPageState extends ConsumerState<FoodEditPage> {
     final protein = double.tryParse(_proteinCtrl.text);
     final fat = double.tryParse(_fatCtrl.text);
     final carbs = double.tryParse(_carbsCtrl.text);
-    if (serving == null || serving <= 0) {
-      _showError('请输入有效的份量');
-      return;
-    }
-    if (cal == null || protein == null || fat == null || carbs == null) {
-      _showError('热量/蛋白质/脂肪/碳水 必须为数字');
+    // 逐字段生成错误文案，一次性展示所有错误
+    final newServingError =
+        (serving == null || serving <= 0) ? '份量需大于 0' : null;
+    final newCalError = cal == null ? '请输入有效数字' : null;
+    final newProteinError = protein == null ? '请输入有效数字' : null;
+    final newFatError = fat == null ? '请输入有效数字' : null;
+    final newCarbsError = carbs == null ? '请输入有效数字' : null;
+    if (newServingError != null ||
+        newCalError != null ||
+        newProteinError != null ||
+        newFatError != null ||
+        newCarbsError != null) {
+      setState(() {
+        _servingError = newServingError;
+        _calError = newCalError;
+        _proteinError = newProteinError;
+        _fatError = newFatError;
+        _carbsError = newCarbsError;
+      });
       return;
     }
     setState(() => _busy = true);
     try {
       final repo = await ref.read(recognize.foodItemRepoProvider.future);
-      await repo.updateDefaultServing(widget.foodItem.id, serving);
+      // 校验已通过，所有值非空（! 断言安全）
+      await repo.updateDefaultServing(widget.foodItem.id, serving!);
       await repo.updateNutrients(
         id: widget.foodItem.id,
-        caloriesPer100g: cal,
-        proteinPer100g: protein,
-        fatPer100g: fat,
-        carbsPer100g: carbs,
+        caloriesPer100g: cal!,
+        proteinPer100g: protein!,
+        fatPer100g: fat!,
+        carbsPer100g: carbs!,
       );
       if (mounted) {
         showAppToast(context, '已保存');
