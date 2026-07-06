@@ -109,7 +109,13 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
             recommendations: [], fromCache: false);
       }
       // 离线守卫：无网络不调 AI
-      final online = await ref.read(recognize.networkAvailableProvider.future);
+      // forceRefresh（用户点重试）时用 ref.refresh 强制刷新网络状态，
+      // 避免 connectivity 冷启动误报 false 后 ref.read 拿到缓存 false 导致重试也失败
+      // （Bug 2 修复：networkAvailableProvider 已改 autoDispose，但 forceRefresh 场景
+      // 仍需 refresh 确保拿到最新网络状态而非本次 session 内的旧缓存）
+      final online = forceRefresh
+          ? await ref.refresh(recognize.networkAvailableProvider.future)
+          : await ref.read(recognize.networkAvailableProvider.future);
       if (!online) {
         return const AiRecommendationResult(
             recommendations: [],

@@ -138,10 +138,28 @@ final circuitBreakerProvider = Provider<CircuitBreaker>((ref) {
 // 在 RecognizePage 中用 ref.read 按需创建实例，见 recognize_page.dart
 
 /// 网络可用性 Provider（AI 汇总离线守卫用，Sprint 7 T54）
+///
 /// 生产：调 connectivity_plus 检查网络
 /// 测试：overrideWith 返回 false 模拟离线
-final networkAvailableProvider = FutureProvider<bool>((ref) async {
-  final results = await Connectivity().checkConnectivity();
+///
+/// autoDispose（Bug 2 修复）：避免冷启动误报 false 永久缓存。
+/// connectivity_plus 6.x 在 Android 冷启动时 ConnectivityManager 的
+/// NetworkCallback 尚未首次回调，checkConnectivity() 误报 [none] 即使设备有网。
+/// 非 autoDispose 的 FutureProvider 首次结果会永久缓存，导致 dashboard AI 推荐
+/// "刚打开软件就加载失败"，且重试按钮也无效（ref.read 不刷新）。
+/// autoDispose 保证页面重建/重新进入时重新查询。
+///
+/// 冷启动校正：首次返回 [none] 时 delay 500ms 重查一次，
+/// 避免 NetworkCallback 未首次回调的窗口期误报。
+final networkAvailableProvider = FutureProvider.autoDispose<bool>((ref) async {
+  final connectivity = Connectivity();
+  var results = await connectivity.checkConnectivity();
+  // 冷启动校正：connectivity_plus 6.x Android 冷启动 NetworkCallback
+  // 尚未首次回调时 checkConnectivity() 误报 [none]，delay 500ms 重查
+  if (results.every((r) => r == ConnectivityResult.none)) {
+    await Future.delayed(const Duration(milliseconds: 500));
+    results = await connectivity.checkConnectivity();
+  }
   return results.any((r) => r != ConnectivityResult.none);
 });
 
