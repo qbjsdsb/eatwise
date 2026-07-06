@@ -169,7 +169,7 @@ void main() {
 
       // 用 ProviderScope 包裹，因为 pushReplacement 目标 ManualEntryPage 是 Consumer
       final container = ProviderContainer(overrides: [
-        recognize.databaseProvider.overrideWith((ref) async => db),
+        recognize.databaseProvider.overrideWith((ref) => db),
       ]);
       addTearDown(container.dispose);
 
@@ -185,9 +185,13 @@ void main() {
       ));
       await tester.pumpAndSettle();
 
-      // 拖滑块标记 dirty（用户改了份量未保存）
-      await tester.drag(find.byType(Slider).first, const Offset(40, 0));
-      await tester.pump();
+      // v0.28.0：单品路径无份量滑块，通过编辑营养值标记 dirty（用户改了营养未保存）
+      await tester.tap(find.byKey(const ValueKey('cal_value')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+          find.byKey(const ValueKey('edit_cal_field')), '500');
+      await tester.tap(find.text('确认'));
+      await tester.pumpAndSettle();
 
       // 点"转手动"
       await tester.tap(find.text('转手动'));

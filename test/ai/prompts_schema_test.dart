@@ -1,7 +1,7 @@
-// prompts.dart schema 一致性单元测试（v1.10 新增）
+// prompts.dart schema 一致性单元测试（v1.11 新增）
 //
 // 验证 systemPrompt 中所有示例 JSON：
-// 1. Prompts.version == 'v1.10'
+// 1. Prompts.version == 'v1.11'
 // 2. 每个示例 JSON 可被 jsonDecode 解析
 // 3. 每个示例含 v1.10 新增的 3 个字段（package_serving_protein_g/fat_g/carbs_g）
 // 4. food_category 字段值在支持的品类枚举内
@@ -39,8 +39,8 @@ void main() {
   };
 
   group('prompts schema 一致性', () {
-    test('Prompts.version == v1.10', () {
-      expect(Prompts.version, 'v1.10');
+    test('Prompts.version == v1.11', () {
+      expect(Prompts.version, 'v1.11');
     });
 
     test('systemPrompt 非空', () {

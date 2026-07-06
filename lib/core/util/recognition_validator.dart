@@ -118,6 +118,7 @@ class RecognitionValidator {
     // sum(components.estimated_g) 应 ≈ estimated_weight_g_mid（±15%）
     // AI 常出现"鸡蛋120g+番茄150g=270g"但整菜 mid=250g 的不自洽
     // 不自洽时按 mid 比例缩放各组分（mid 是 AI 整菜估算，相对可信）
+    // v1.11：缩放时保留各组分营养字段（calories/proteinG/fatG/carbsG 同比缩放，per100g 不变）
     List<FoodComponent>? correctedComponents;
     if (!result.isSingleItem && result.foodComponents.isNotEmpty) {
       final sumG =
@@ -128,8 +129,7 @@ class RecognitionValidator {
         // 偏差超 15% → 缩放（±15% 内视为合理波动，不修正避免过度干预）
         if ((ratio - 1).abs() > 0.15) {
           correctedComponents = result.foodComponents
-              .map((c) => FoodComponent(
-                  name: c.name, estimatedG: c.estimatedG * ratio))
+              .map((c) => c.scaled(ratio))
               .toList();
           reasons.add('组分份量不自洽: sum=${sumG.toStringAsFixed(0)}g, '
               'mid=${mid.toStringAsFixed(0)}g, 按 mid 缩放 ${ratio.toStringAsFixed(2)}x');

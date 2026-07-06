@@ -8,7 +8,6 @@ import '../../ai/vision_provider.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/repositories/food_item_repository.dart';
 import '../manual_entry/manual_entry_page.dart';
-import 'calibrated_nutrition_calculator.dart';
 import 'dish_name_editor.dart';
 
 /// 校准页：按置信度分级
@@ -28,9 +27,9 @@ class CalibrationPage extends StatefulWidget {
   // 改菜名→搜库→重算 用的 NutritionLookup 实例（recognize_page 注入）
   // null 时隐藏"改菜名"按钮（单品路径才有此按钮；复合菜改菜名语义复杂，跳过）
   final NutritionLookup? nutritionLookup;
-  // M16.8：AI 兜底营养（foodItemId=0，calories 对应 mid 份量），用于查库命中分支差异检测。
-  // 查库命中 + aiFallback 非空时，预览/确认走 CalibratedNutritionCalculator 差异检测，
-  // 与 recognize_page.writeCalibratedMealLog 写库一致；为 null 时查库命中分支保持原 ratio 逻辑。
+  // AI 兜底营养（foodItemId=0，calories 对应 mid 份量）。
+  // v0.28.0：库不参与热量计算，aiFallback 非空时单品路径热量固定 = AI 值，
+  // 复合菜路径用 food_components 自洽缩放后累加；为 null 时（老调用方）查库命中分支走原 ratio 逻辑。
   final NutritionResult? aiFallbackNutrition;
 
   const CalibrationPage({
@@ -52,9 +51,11 @@ class CalibrationPage extends StatefulWidget {
 class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<CalibrationPage> {
   late double _servingG;
   late bool _canSkipCalibration;
-  // 复合菜校准状态
+  // v0.28.0：复合菜校准状态——组分滑块影响热量
+  // _componentServings: 组分索引 → 用户拖动后的份量 g（null 表示未拖动，用 estimatedG）
+  // _scaledComponents: 自洽缩放后的组分列表（initState 一次性处理，用户拖滑块后不再缩放）
   final Map<int, double> _componentServings = {}; // 组分索引 → 份量 g
-  double _oilG = 0; // 用油量 g
+  List<FoodComponent> _scaledComponents = const []; // v1.11 自洽缩放后的组分
   // v1.3：同物多份数量步进器（解决拍两罐可乐只识别一罐的问题）
   // _quantity 当前数量，_perUnitG 单份克数；仅单品路径 + perUnitG > 0 时显示步进器
   // 份量联动：调数量 → _servingG = perUnitG × quantity；拖滑块 → 反推 _quantity
@@ -81,7 +82,7 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
   }
 
   /// v2 改动 E：用户手动编辑值优先（最终兜底覆盖 AI 估算）。
-  /// 未编辑的字段保持 AI 估算值（_computeSingleItemActual / 组分累加的结果）。
+  /// 未编辑的字段保持 AI 估算值（_computeCurrentNutrition 的结果）。
   (double, double, double, double) _applyUserOverrides(
     double cal,
     double protein,
@@ -94,6 +95,62 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
       _userOverrides['fat'] ?? fat,
       _userOverrides['carbs'] ?? carbs,
     );
+  }
+
+  /// v0.28.0：当前份量 g（用于写库 servingG + UI 份量显示）
+  /// 单品路径：_servingG（= AI mid，固定不调）
+  /// 复合菜路径：sum(各组分滑块值)
+  double _currentServingG() {
+    if (_scaledComponents.isEmpty) return _servingG;
+    double total = 0;
+    for (var i = 0; i < _scaledComponents.length; i++) {
+      total += _componentServings[i] ?? _scaledComponents[i].estimatedG;
+    }
+    return total;
+  }
+
+  /// v0.28.0：核心热量计算（预览/确认/编辑对话框初始值三处共用，保证一致）
+  ///
+  /// 架构：完全抛弃库参与热量计算，库仅作 food_item_id 解析兜底。
+  /// - 复合菜路径（_scaledComponents 有营养，sumCal > 0）：
+  ///   总热量 = sum(各组分 per100g × 用户拖动 g / 100)
+  ///   per100g 基于 component.estimatedG 反算（硬约束 #4 精神）
+  /// - 单品路径（无组分 或 组分无营养）：
+  ///   热量固定 = AI 值（aiFallback.calories），用户只能点击营养值手动编辑
+  /// - 向后兼容（aiFallback == null + 查库命中）：走原 ratio 逻辑（老调用方）
+  (double, double, double, double) _computeCurrentNutrition() {
+    final components = _scaledComponents;
+    // 复合菜路径：组分有营养字段时按组分 per100g × g / 100 累加
+    final sumCal = components.fold(0.0, (s, c) => s + c.calories);
+    if (components.isNotEmpty && sumCal > 0) {
+      double cal = 0, protein = 0, fat = 0, carbs = 0;
+      for (var i = 0; i < components.length; i++) {
+        final g = _componentServings[i] ?? components[i].estimatedG;
+        cal += components[i].caloriesPer100g * g / 100;
+        protein += components[i].proteinPer100g * g / 100;
+        fat += components[i].fatPer100g * g / 100;
+        carbs += components[i].carbsPer100g * g / 100;
+      }
+      return _applyUserOverrides(cal, protein, fat, carbs);
+    }
+    // 单品路径：AI 值固定（库不参与热量计算）
+    final ai = widget.aiFallbackNutrition;
+    if (ai != null) {
+      return _applyUserOverrides(ai.calories, ai.proteinG, ai.fatG, ai.carbsG);
+    }
+    // 向后兼容：aiFallback 为 null（老调用方）+ 查库命中 → 走原 ratio 逻辑
+    if (_currentNutrition != null) {
+      final n = _currentNutrition!;
+      final mid = widget.recognitionResult.estimatedWeightGMid;
+      final ratio = mid > 0 ? _servingG / mid : 1.0;
+      return _applyUserOverrides(
+        n.calories * ratio,
+        n.proteinG * ratio,
+        n.fatG * ratio,
+        n.carbsG * ratio,
+      );
+    }
+    return (0, 0, 0, 0);
   }
 
   /// v1.3：动态滑块上限。多份场景 perUnitG×20 可能超 1000（如 5 碗米饭=1250g），
@@ -126,13 +183,32 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
     }
     _canSkipCalibration =
         widget.recognitionResult.confidence >= 0.85 && widget.recognitionResult.isSingleItem;
-    // 复合菜初始化组分份量 + 用油量
-    if (widget.compositeNutrition != null) {
-      final hits = widget.compositeNutrition!.componentHits;
-      for (var i = 0; i < hits.length; i++) {
-        _componentServings[i] = hits[i].estimatedG;
+    // v0.28.0：复合菜组分初始化——从 AI 推理的 foodComponents 读取（不再用库 componentHits）
+    // 自洽缩放：AI 返回的组分热量之和可能 ≠ estimatedCalories，按比例缩放各组分
+    // 使 sum(component.calories) = aiFallback.calories（用户拖滑块后不再缩放）
+    final rawComponents = widget.recognitionResult.foodComponents;
+    final ai = widget.aiFallbackNutrition;
+    if (rawComponents.isNotEmpty && ai != null && ai.calories > 0) {
+      final sumCal = rawComponents.fold(0.0, (s, c) => s + c.calories);
+      if (sumCal > 0) {
+        final diff = (sumCal - ai.calories).abs() / ai.calories;
+        if (diff > 0.01) {
+          // 偏差 > 1% → 按比例缩放各组分（calories/proteinG/fatG/carbsG 同比，per100g 不变）
+          final scale = ai.calories / sumCal;
+          _scaledComponents = rawComponents.map((c) => c.scaled(scale)).toList();
+        } else {
+          _scaledComponents = rawComponents;
+        }
+      } else {
+        // sumCal == 0（旧 prompt 无营养字段）→ 不缩放，_computeCurrentNutrition 走单品路径
+        _scaledComponents = rawComponents;
       }
-      _oilG = widget.compositeNutrition!.oilG;
+    } else {
+      _scaledComponents = rawComponents;
+    }
+    // 组分滑块初值 = 各组分 estimatedG
+    for (var i = 0; i < _scaledComponents.length; i++) {
+      _componentServings[i] = _scaledComponents[i].estimatedG;
     }
     // 改菜名支持：菜名和单品营养从 widget 拷贝到 state（改菜名命中后 setState 替换）
     _currentDishName = widget.recognitionResult.dishName;
@@ -348,36 +424,17 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
                       ),
                     ],
                     const SizedBox(height: 24),
-                    // 复合菜：份量由各组分滑块累加，主滑块无效故隐藏，避免"调了没反应"困惑
-                    // 改菜名后 _currentNutrition 仍非空，滑块继续显示
-                    if (_currentNutrition != null) ...[
-                      Text('份量：${_servingG.toStringAsFixed(0)} g'
+                    // v0.28.0：份量显示（不可调——单品固定 = AI mid，复合菜 = sum(组分 g)）
+                    // 单品路径：显示 AI 估算份量 + 区间（改菜名后 _currentNutrition 仍非空时也显示）
+                    // 复合菜路径：份量由各组分滑块累加，在 _buildCompositeControls 内展示
+                    if (_currentNutrition != null && _scaledComponents.isEmpty) ...[
+                      Text('份量：${_currentServingG().toStringAsFixed(0)} g'
                           ' (估算 ${widget.recognitionResult.estimatedWeightGLow.toStringAsFixed(0)}-${widget.recognitionResult.estimatedWeightGHigh.toStringAsFixed(0)} g)',
                           style: const TextStyle(
                               fontFeatures: [
                                 FontFeature.tabularFigures()
                               ])),
-                      Slider(
-                        value: _servingG,
-                        min: 0,
-                        max: _sliderMax,
-                        divisions: (_sliderMax / 10).round(),
-                        label: '${_servingG.toStringAsFixed(0)} g',
-                        onChanged: (v) {
-                          setState(() {
-                            _servingG = v;
-                            // v1.3：拖滑块反推数量（perUnitG > 0 时，保持数量与份量一致）
-                            if (_perUnitG > 0) {
-                              final q = (v / _perUnitG).round();
-                            if (q >= 1 && q <= 20 && q != _quantity) {
-                              _quantity = q;
-                            }
-                          }
-                          });
-                          _markDirty();
-                        },
-                      ),
-                    ], // end if singleNutrition != null
+                    ], // end if 单品路径份量显示
                     // v1.3：数量步进器（同物多份场景，仅单品 + perUnitG > 0 显示）
                     _buildQuantityStepper(),
                     const SizedBox(height: 24),
@@ -390,7 +447,8 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
                     ],
                     // 实时营养素预览（基于当前滑块值重算）
                     _buildNutritionPreview(),
-                    if (widget.compositeNutrition != null) ...[
+                    // v0.28.0：复合菜组分滑块（组分有营养字段时显示，拖动影响热量）
+                    if (_hasComponentNutrition) ...[
                       const SizedBox(height: 16),
                       _buildCompositeControls(),
                     ],
@@ -421,164 +479,25 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
     );
   }
 
-  /// 单品路径：根据 servingG 计算 (calories, protein, fat, carbs) 实际摄入值。
-  ///
-  /// M16.6 Task 5：AI 兜底哨兵路径（foodItemId=0）必须用品类校准后的 per100g 计算，
-  /// 与 recognize_page 写食物库 per100g 逻辑一致（CalibratedNutritionCalculator），
-  /// 否则预览/记录值与食物库 per100g 数据脱节，用户感知"数值乱跳"。
-  ///
-  /// M16.8 Task 5：查库命中路径（foodItemId>0）+ aiFallbackNutrition 非空时，
-  /// 走差异检测（CalibratedNutritionCalculator.compute 传 lookupHitNutrition），
-  /// 与 recognize_page.writeCalibratedMealLog 写库同源——AI 与库偏差 > 50% 用 AI 估算值
-  /// （与 reasoning 一致），偏差 ≤ 50% 用库值；保证预览/确认与记录值一致。
-  /// aiFallbackNutrition 为 null 时（旧调用方），查库命中保持原 ratio 逻辑。
-  ///
-  /// 预览（_buildNutritionPreview）和确认（_confirmWithServing）共用此方法，
-  /// 保证显示值与记录值完全一致。
-  (double, double, double, double) _computeSingleItemActual(double servingG) {
-    final n = _currentNutrition!;
-    final r = widget.recognitionResult;
-
-    // M16.8：查库命中 + aiFallback 非空 → 差异检测（与 recognize_page 写库一致）
-    if (n.foodItemId > 0 && widget.aiFallbackNutrition != null) {
-      final calibrated = CalibratedNutritionCalculator.compute(
-        recognitionResult: r,
-        aiFallback: widget.aiFallbackNutrition!,
-        servingG: servingG,
-        lookupHitNutrition: n,
-      );
-      return (
-        calibrated.actualCalories,
-        calibrated.actualProteinG,
-        calibrated.actualFatG,
-        calibrated.actualCarbsG,
-      );
-    }
-
-    if (n.foodItemId == 0) {
-      // AI 兜底哨兵：用品类校准后的 per100g 反算 actualXxx（与 recognize_page 一致）
-      final calibrated = CalibratedNutritionCalculator.compute(
-        recognitionResult: r,
-        aiFallback: n,
-        servingG: servingG,
-      );
-      return (
-        calibrated.actualCalories,
-        calibrated.actualProteinG,
-        calibrated.actualFatG,
-        calibrated.actualCarbsG,
-      );
-    }
-    // M16.9：查库命中但无 aiFallback——此分支在 M16.8 后不应触发
-    // （主路径 recognize_page L466-467 / L663-664 已传 aiFallbackNutrition）
-    // 兜底：按 servingG/mid 比例换算库值（保留原 ratio 逻辑）
-    // 防除零：AI 返回 estimatedWeightGMid <= 0 时 ratio=1（用原值，不按比例换算）
-    // 若未来有调用方未传 aiFallbackNutrition，此处仍是安全兜底
-    final mid = r.estimatedWeightGMid;
-    final ratio = mid > 0 ? servingG / mid : 1.0;
-    return (
-      n.calories * ratio,
-      n.proteinG * ratio,
-      n.fatG * ratio,
-      n.carbsG * ratio,
-    );
+  /// v0.28.0：是否有组分营养（决定是否走复合菜路径 + 显示组分滑块）
+  bool get _hasComponentNutrition {
+    if (_scaledComponents.isEmpty) return false;
+    return _scaledComponents.fold(0.0, (s, c) => s + c.calories) > 0;
   }
 
   Widget _buildNutritionPreview() {
-    if (_currentNutrition != null) {
-      // 单品路径：用 _computeSingleItemActual 重算（改菜名后用 _currentNutrition，营养会随之刷新）
-      final (cal0, protein0, fat0, carbs0) =
-          _computeSingleItemActual(_servingG);
-      // v2 改动 E：用户手动编辑优先（最终兜底）
-      final (cal, protein, fat, carbs) =
-          _applyUserOverrides(cal0, protein0, fat0, carbs0);
-      // 防除零：mid <= 0 时 lowRatio/highRatio = 1（不显示区间）
-      final mid = widget.recognitionResult.estimatedWeightGMid;
-      final lowRatio = mid > 0 ? widget.recognitionResult.estimatedWeightGLow / mid : 1.0;
-      final highRatio = mid > 0 ? widget.recognitionResult.estimatedWeightGHigh / mid : 1.0;
-      final calRange = ' (${(cal * lowRatio).toStringAsFixed(0)}-${(cal * highRatio).toStringAsFixed(0)})';
-      return _nutritionCard(cal, protein, fat, carbs, calRange: calRange);
+    final (cal, protein, fat, carbs) = _computeCurrentNutrition();
+    // 单品路径（无组分）显示估算区间；复合菜路径（有组分）不显示区间
+    if (_hasComponentNutrition) {
+      return _nutritionCard(cal, protein, fat, carbs);
     }
-    if (widget.compositeNutrition != null) {
-      // 复合菜路径：v2 改动 D 与 multi_dish_page / _confirmWithServing 一致
-      // 优先级链路：包装(宏量非全0) > AI 优先(computeCompositeLookupHit) > 组分累加 fallback
-      final composite = widget.compositeNutrition!;
-      // servingG 用组分份量之和（用户调整组分滑块时 totalG 变，actualXxx 按比例变）
-      double totalG = 0;
-      for (var i = 0; i < composite.componentHits.length; i++) {
-        totalG += _componentServings[i] ?? composite.componentHits[i].estimatedG;
-      }
-      // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），按包装换算（精确值）
-      // v1.10：包装换算后宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ 回退到下一优先级
-      final packagePer100 =
-          widget.recognitionResult.hasPackageNutrition
-              ? widget.recognitionResult.computePackageNutritionPer100g(
-                  estimatedProteinG:
-                      widget.recognitionResult.estimatedProteinG,
-                  estimatedFatG:
-                      widget.recognitionResult.estimatedFatG,
-                  estimatedCarbsG:
-                      widget.recognitionResult.estimatedCarbsG,
-                )
-              : null;
-      final packageMacrosAllZero = packagePer100 != null &&
-          packagePer100.$2 == 0 &&
-          packagePer100.$3 == 0 &&
-          packagePer100.$4 == 0;
-      if (packagePer100 != null && !packageMacrosAllZero) {
-        // 包装优先：按包装 per100g × totalG / 100
-        // v2 改动 E：用户手动编辑优先（最终兜底）
-        final (cal, protein, fat, carbs) = _applyUserOverrides(
-          packagePer100.$1 * totalG / 100,
-          packagePer100.$2 * totalG / 100,
-          packagePer100.$3 * totalG / 100,
-          packagePer100.$4 * totalG / 100,
-        );
-        return _nutritionCard(cal, protein, fat, carbs);
-      } else if (widget.aiFallbackNutrition != null) {
-        // v2.1 修复：AI 优先分支 servingG 用 mid 而非 totalG
-        // 原因：totalG（组分之和）通常 ≠ mid（AI 整菜估算），按 totalG 缩放会偏离 AI 推理值
-        // 改用 mid 后 actualCalories = aiFallback.calories × mid / mid = aiFallback.calories
-        // 组分滑块只调整组分明细展示，不影响总热量（用户可点击营养值手动编辑）
-        final calibrated =
-            CalibratedNutritionCalculator.computeCompositeLookupHit(
-          aiFallback: widget.aiFallbackNutrition!,
-          servingG: widget.recognitionResult.estimatedWeightGMid,
-          mid: widget.recognitionResult.estimatedWeightGMid,
-        );
-        if (calibrated != null) {
-          // 用油量仍累加（用户拖用油量滑块时热量+脂肪变化）
-          final cal =
-              calibrated.actualCalories + oilCaloriesPer100g * _oilG / 100;
-          final protein = calibrated.actualProteinG;
-          final fat =
-              calibrated.actualFatG + oilFatPer100g * _oilG / 100;
-          final carbs = calibrated.actualCarbsG;
-          // v2 改动 E：用户手动编辑优先（最终兜底）
-          final (cal2, protein2, fat2, carbs2) =
-              _applyUserOverrides(cal, protein, fat, carbs);
-          return _nutritionCard(cal2, protein2, fat2, carbs2);
-        }
-        // calibrated == null (mid<=0 防除零) → 落到组分累加 fallback
-      }
-      // fallback：无包装 / 无 aiFallback / mid<=0 → 按各组分滑块 + 用油量实时重算
-      double cal = 0, protein = 0, fat = 0, carbs = 0;
-      for (var i = 0; i < composite.componentHits.length; i++) {
-        final hit = composite.componentHits[i];
-        final g = _componentServings[i] ?? hit.estimatedG;
-        cal += hit.caloriesPer100g * g / 100;
-        protein += hit.proteinPer100g * g / 100;
-        fat += hit.fatPer100g * g / 100;
-        carbs += hit.carbsPer100g * g / 100;
-      }
-      cal += oilCaloriesPer100g * _oilG / 100;
-      fat += oilFatPer100g * _oilG / 100;
-      // v2 改动 E：用户手动编辑优先（最终兜底）
-      final (cal2, protein2, fat2, carbs2) =
-          _applyUserOverrides(cal, protein, fat, carbs);
-      return _nutritionCard(cal2, protein2, fat2, carbs2);
-    }
-    return const SizedBox.shrink();
+    // 单品路径：显示估算区间（基于 AI 估算 low/mid/high 比例）
+    // 防除零：mid <= 0 时 lowRatio/highRatio = 1（不显示区间）
+    final mid = widget.recognitionResult.estimatedWeightGMid;
+    final lowRatio = mid > 0 ? widget.recognitionResult.estimatedWeightGLow / mid : 1.0;
+    final highRatio = mid > 0 ? widget.recognitionResult.estimatedWeightGHigh / mid : 1.0;
+    final calRange = ' (${(cal * lowRatio).toStringAsFixed(0)}-${(cal * highRatio).toStringAsFixed(0)})';
+    return _nutritionCard(cal, protein, fat, carbs, calRange: calRange);
   }
 
   Widget _nutritionCard(double cal, double protein, double fat, double carbs, {String? calRange}) {
@@ -676,55 +595,54 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
     );
   }
 
+  /// v0.28.0：复合菜组分滑块列表（拖动影响热量）
+  /// 每个组分一个滑块：min=0, max=estimatedG*2, value=estimatedG
+  /// 拖动 → setState 更新 _componentServings[i] → _computeCurrentNutrition 重算总热量
   Widget _buildCompositeControls() {
-    // v2.1 修复：隐藏组分份量滑块 + 未命中列表
-    // 原因：复合菜总热量固定用 AI 值（computeCompositeLookupHit 用 mid），
-    // 组分滑块调整不影响总热量，是多余 UI。未命中列表文案让用户误以为出错。
-    // 只保留用油量滑块（影响热量+脂肪）。
+    final components = _scaledComponents;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('用油量：${_oilG.toStringAsFixed(0)} g',
-            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                fontFeatures: const [FontFeature.tabularFigures()])),
-        Slider(
-          value: _oilG,
-          min: 0,
-          max: 50,
-          divisions: 50,
-          label: '${_oilG.toStringAsFixed(0)} g',
-          onChanged: (v) {
-            setState(() => _oilG = v);
-            _markDirty();
-          },
-        ),
+        Text('组分明细（拖动调整份量）',
+            style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 4),
+        // 总份量由各组分滑块累加，用户拖动时实时刷新
+        Text('总份量：${_currentServingG().toStringAsFixed(0)} g',
+            style: TextStyle(
+                fontSize: 12,
+                fontFeatures: const [FontFeature.tabularFigures()],
+                color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        for (int i = 0; i < components.length; i++)
+          _buildComponentSlider(i, components[i]),
       ],
     );
   }
 
-  // v2.1：_buildCompositeControls 不再调用此方法（组分滑块隐藏），
-  // 保留方法体以备未来恢复；_componentServings 字段仍用于热量计算/snapshot。
-  // ignore: unused_element
-  Widget _buildComponentSlider(int index, ComponentHit hit) {
-    final serving = _componentServings[index] ?? hit.estimatedG;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('${hit.name}：${serving.toStringAsFixed(0)} g',
-            style: const TextStyle(
-                fontFeatures: [FontFeature.tabularFigures()])),
-        Slider(
-          value: serving,
-          min: 0,
-          max: (hit.estimatedG * 2).clamp(50, 1000),
-          divisions: 50,
-          label: '${serving.toStringAsFixed(0)} g',
-          onChanged: (v) {
-            setState(() => _componentServings[index] = v);
-            _markDirty();
-          },
-        ),
-      ],
+  Widget _buildComponentSlider(int index, FoodComponent component) {
+    final serving = _componentServings[index] ?? component.estimatedG;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+              '${component.name}：${serving.toStringAsFixed(0)} g'
+              '（${(component.caloriesPer100g * serving / 100).toStringAsFixed(0)} kcal）',
+              style: const TextStyle(
+                  fontFeatures: [FontFeature.tabularFigures()])),
+          Slider(
+            value: serving,
+            min: 0,
+            max: (component.estimatedG * 2).clamp(50.0, 1000.0),
+            divisions: 50,
+            label: '${serving.toStringAsFixed(0)} g',
+            onChanged: (v) {
+              setState(() => _componentServings[index] = v);
+              _markDirty();
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -843,137 +761,20 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
     if (_isRecording) return; // 防重入
     setState(() => _isRecording = true);
     try {
-      if (_currentNutrition != null) {
-        // 与 _buildNutritionPreview 共用 _computeSingleItemActual + _applyUserOverrides，
-        // 保证预览显示值与 onConfirm 传入值完全一致
-        // （AI 兜底哨兵路径用品类校准后 per100g，查库命中路径用原 ratio 逻辑，
-        // 用户手动编辑值通过 _applyUserOverrides 优先覆盖）
-        final (cal0, protein0, fat0, carbs0) =
-            _computeSingleItemActual(servingG);
-        final (cal, protein, fat, carbs) =
-            _applyUserOverrides(cal0, protein0, fat0, carbs0);
-        await widget.onConfirm(servingG, cal, protein, fat, carbs);
-      } else if (widget.compositeNutrition != null) {
-        // 复合菜用总组分份量之和
-        final totalG = _componentServings.values.fold<double>(0, (s, g) => s + g);
-        // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），按包装换算（精确值），
-        // 跳过组分累加。包装 per100g × totalG / 100 = 整菜热量，与份量一致
-        // v1.10：包装换算后宏量全 0 但 cal>0（含糖饮料 AI 漏填宏量）→ 回退组分累加，
-        //   避免复合菜路径宏量显示 0（与 recognize_page / multi_dish_page 哨兵分支一致）
-        final packagePer100 =
-            widget.recognitionResult.hasPackageNutrition
-                ? widget.recognitionResult.computePackageNutritionPer100g(
-                    estimatedProteinG:
-                        widget.recognitionResult.estimatedProteinG,
-                    estimatedFatG:
-                        widget.recognitionResult.estimatedFatG,
-                    estimatedCarbsG:
-                        widget.recognitionResult.estimatedCarbsG,
-                  )
-                : null;
-        // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
-        final packageMacrosAllZero = packagePer100 != null &&
-            packagePer100.$2 == 0 &&
-            packagePer100.$3 == 0 &&
-            packagePer100.$4 == 0;
-        if (packagePer100 != null && !packageMacrosAllZero) {
-          // v2 改动 E：用户手动编辑优先（最终兜底）
-          final (cal, protein, fat, carbs) = _applyUserOverrides(
-            packagePer100.$1 * totalG / 100,
-            packagePer100.$2 * totalG / 100,
-            packagePer100.$3 * totalG / 100,
-            packagePer100.$4 * totalG / 100,
-          );
-          await widget.onConfirm(
-            totalG,
-            cal,
-            protein,
-            fat,
-            carbs,
-            componentsSnapshot: _buildSnapshotJson(),
-          );
-        } else if (widget.aiFallbackNutrition != null) {
-          // v2.1 修复：AI 优先分支 servingG 用 mid（与 _buildNutritionPreview 一致）
-          final mid = widget.recognitionResult.estimatedWeightGMid;
-          final calibrated =
-              CalibratedNutritionCalculator.computeCompositeLookupHit(
-            aiFallback: widget.aiFallbackNutrition!,
-            servingG: mid,
-            mid: mid,
-          );
-          if (calibrated != null) {
-            final cal =
-                calibrated.actualCalories + oilCaloriesPer100g * _oilG / 100;
-            final fat =
-                calibrated.actualFatG + oilFatPer100g * _oilG / 100;
-            // v2 改动 E：用户手动编辑优先（最终兜底）
-            final (calO, proteinO, fatO, carbsO) = _applyUserOverrides(
-              cal,
-              calibrated.actualProteinG,
-              fat,
-              calibrated.actualCarbsG,
-            );
-            await widget.onConfirm(
-              mid,
-              calO,
-              proteinO,
-              fatO,
-              carbsO,
-              componentsSnapshot: _buildSnapshotJson(),
-            );
-          } else {
-            // mid<=0 防除零兜底：回退组分累加（极端情况，正常不会触发）
-            final composite = widget.compositeNutrition!;
-            double cal = 0, protein = 0, fat = 0, carbs = 0;
-            for (var i = 0; i < composite.componentHits.length; i++) {
-              final hit = composite.componentHits[i];
-              final g = _componentServings[i] ?? hit.estimatedG;
-              cal += hit.caloriesPer100g * g / 100;
-              protein += hit.proteinPer100g * g / 100;
-              fat += hit.fatPer100g * g / 100;
-              carbs += hit.carbsPer100g * g / 100;
-            }
-            cal += oilCaloriesPer100g * _oilG / 100;
-            fat += oilFatPer100g * _oilG / 100;
-            // v2 改动 E：用户手动编辑优先（最终兜底）
-            final (cal2, protein2, fat2, carbs2) =
-                _applyUserOverrides(cal, protein, fat, carbs);
-            await widget.onConfirm(
-              totalG,
-              cal2,
-              protein2,
-              fat2,
-              carbs2,
-              componentsSnapshot: _buildSnapshotJson(),
-            );
-          }
-        } else {
-          // 无包装数据 / 无 aiFallback → 按调整后组分份量重算（原逻辑 fallback）
-          final composite = widget.compositeNutrition!;
-          double cal = 0, protein = 0, fat = 0, carbs = 0;
-          for (var i = 0; i < composite.componentHits.length; i++) {
-            final hit = composite.componentHits[i];
-            final g = _componentServings[i] ?? hit.estimatedG;
-            cal += hit.caloriesPer100g * g / 100;
-            protein += hit.proteinPer100g * g / 100;
-            fat += hit.fatPer100g * g / 100;
-            carbs += hit.carbsPer100g * g / 100;
-          }
-          cal += oilCaloriesPer100g * _oilG / 100;
-          fat += oilFatPer100g * _oilG / 100;
-          // v2 改动 E：用户手动编辑优先（最终兜底）
-          final (cal2, protein2, fat2, carbs2) =
-              _applyUserOverrides(cal, protein, fat, carbs);
-          await widget.onConfirm(
-            totalG,
-            cal2,
-            protein2,
-            fat2,
-            carbs2,
-            componentsSnapshot: _buildSnapshotJson(),
-          );
-        }
-      }
+      // v0.28.0：预览/确认统一走 _computeCurrentNutrition，保证显示值与写库值一致。
+      // servingG 参数保留兼容三处调用（_confirmOneClick/_trustAi/_confirmManual），
+      // 实际写库用 _currentServingG()（单品=AI mid，复合菜=sum(组分滑块)）。
+      final (cal, protein, fat, carbs) = _computeCurrentNutrition();
+      final actualServingG = _currentServingG();
+      final hasComponents = _scaledComponents.isNotEmpty;
+      await widget.onConfirm(
+        actualServingG,
+        cal,
+        protein,
+        fat,
+        carbs,
+        componentsSnapshot: hasComponents ? _buildSnapshotJson() : null,
+      );
       if (mounted) {
         _dirty = false; // 清 dirty 让 PopScope 放行 programmatic pop
         Navigator.of(context).pop();
@@ -988,21 +789,20 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
     }
   }
 
+  /// v0.28.0：组分快照（仅复合菜路径调用，单品路径 _confirmWithServing 传 null）
+  /// 记录各组分 estimated_g（AI 估算）+ actual_g（用户拖动后份量），便于事后追溯
   String _buildSnapshotJson() {
-    if (widget.compositeNutrition == null) return '{}';
-    final composite = widget.compositeNutrition!;
+    if (_scaledComponents.isEmpty) return '{}';
     final components = <Map<String, dynamic>>[];
-    for (var i = 0; i < composite.componentHits.length; i++) {
-      final hit = composite.componentHits[i];
+    for (var i = 0; i < _scaledComponents.length; i++) {
+      final c = _scaledComponents[i];
       components.add({
-        'name': hit.name,
-        'actual_g': _componentServings[i] ?? hit.estimatedG,
+        'name': c.name,
+        'estimated_g': c.estimatedG,
+        'actual_g': _componentServings[i] ?? c.estimatedG,
       });
     }
-    return jsonEncode({
-      'components': components,
-      'oil_g': _oilG,
-    });
+    return jsonEncode({'components': components});
   }
 
   /// v2 改动 E：物理约束警告横幅。
@@ -1176,81 +976,11 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
     });
   }
 
-  /// 取当前预览显示的 4 个数值（已应用 _userOverrides），
-  /// 用于编辑对话框初始值。与 _buildNutritionPreview 同源。
+  /// v0.28.0：取当前预览显示的 4 个数值（已应用 _userOverrides），
+  /// 用于编辑对话框初始值。与 _buildNutritionPreview / _confirmWithServing 同源，
+  /// 三处统一走 _computeCurrentNutrition，保证显示值与写库值一致。
   (double, double, double, double) _currentDisplayedValues() {
-    if (_currentNutrition != null) {
-      final (cal0, protein0, fat0, carbs0) =
-          _computeSingleItemActual(_servingG);
-      return _applyUserOverrides(cal0, protein0, fat0, carbs0);
-    }
-    if (widget.compositeNutrition != null) {
-      // 与 _buildNutritionPreview 同源：包装(宏量非全0) > AI 优先 > 组分累加 fallback
-      final composite = widget.compositeNutrition!;
-      double totalG = 0;
-      for (var i = 0; i < composite.componentHits.length; i++) {
-        totalG +=
-            _componentServings[i] ?? composite.componentHits[i].estimatedG;
-      }
-      final packagePer100 =
-          widget.recognitionResult.hasPackageNutrition
-              ? widget.recognitionResult.computePackageNutritionPer100g(
-                  estimatedProteinG:
-                      widget.recognitionResult.estimatedProteinG,
-                  estimatedFatG:
-                      widget.recognitionResult.estimatedFatG,
-                  estimatedCarbsG:
-                      widget.recognitionResult.estimatedCarbsG,
-                )
-              : null;
-      final packageMacrosAllZero = packagePer100 != null &&
-          packagePer100.$2 == 0 &&
-          packagePer100.$3 == 0 &&
-          packagePer100.$4 == 0;
-      if (packagePer100 != null && !packageMacrosAllZero) {
-        return _applyUserOverrides(
-          packagePer100.$1 * totalG / 100,
-          packagePer100.$2 * totalG / 100,
-          packagePer100.$3 * totalG / 100,
-          packagePer100.$4 * totalG / 100,
-        );
-      } else if (widget.aiFallbackNutrition != null) {
-        // v2.1 修复：AI 优先分支 servingG 用 mid（与 _buildNutritionPreview 一致）
-        final calibrated =
-            CalibratedNutritionCalculator.computeCompositeLookupHit(
-          aiFallback: widget.aiFallbackNutrition!,
-          servingG: widget.recognitionResult.estimatedWeightGMid,
-          mid: widget.recognitionResult.estimatedWeightGMid,
-        );
-        if (calibrated != null) {
-          // 用油量仍累加（与 _buildNutritionPreview 一致）
-          final cal =
-              calibrated.actualCalories + oilCaloriesPer100g * _oilG / 100;
-          final fat =
-              calibrated.actualFatG + oilFatPer100g * _oilG / 100;
-          return _applyUserOverrides(
-            cal,
-            calibrated.actualProteinG,
-            fat,
-            calibrated.actualCarbsG,
-          );
-        }
-      }
-      // fallback：组分累加
-      double cal = 0, protein = 0, fat = 0, carbs = 0;
-      for (var i = 0; i < composite.componentHits.length; i++) {
-        final hit = composite.componentHits[i];
-        final g = _componentServings[i] ?? hit.estimatedG;
-        cal += hit.caloriesPer100g * g / 100;
-        protein += hit.proteinPer100g * g / 100;
-        fat += hit.fatPer100g * g / 100;
-        carbs += hit.carbsPer100g * g / 100;
-      }
-      cal += oilCaloriesPer100g * _oilG / 100;
-      fat += oilFatPer100g * _oilG / 100;
-      return _applyUserOverrides(cal, protein, fat, carbs);
-    }
-    return (0, 0, 0, 0);
+    return _computeCurrentNutrition();
   }
 
   /// 数据来源徽章：库匹配 / AI 估算，提示用户数据可信度

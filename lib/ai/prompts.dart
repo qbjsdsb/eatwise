@@ -40,11 +40,20 @@
 //      AI 实际只能用 estimatedXxxG 反算，含糖饮料漏填 estimated_carbs_g 时碳水显示 0
 //   c) food_category 枚举扩展——新增 tea（含糖茶饮）/ protein_drink（蛋白饮料）/ energy_drink（功能饮料）
 //   d) 示例 8b 菊花茶——含糖茶饮包装营养表 OCR，碳水必标，food_category=tea
+// v1.11（v0.28.0 架构改造，AI 推理组分营养 + 组分滑块影响热量，2026-07-06）：
+//   a) food_components schema 扩展——每个组分新增 4 个营养字段：
+//      calories（该组分热量 kcal）/ protein_g / fat_g / carbs_g
+//      下游 calibration_page 用各组分 per100g（= 该组分营养 × 100 / estimated_g）× 用户拖动 g / 100 重算总热量
+//   b) 组分自洽约束——每个组分满足 4*protein + 9*fat + 4*carbs ≈ calories（±10%）；
+//      所有组分 calories 之和 ≈ estimated_calories（±10%，下游按比例缩放保证一致）
+//   c) 隐藏热量计入对应组分——红油/酱汁等视觉不可见热量计入对应组分的 calories/fat_g，
+//      不单独列"用油"组分组分（v0.28.0 删除用油量滑块，AI reasoning 已含用油）
+//   d) 单品路径 food_components 仍为空数组 []——单品热量固定 = estimated_calories，无组分滑块
 
 class Prompts {
   Prompts._();
 
-  static const version = 'v1.10';
+  static const version = 'v1.11';
 
   /// Qwen-VL system prompt（response_format=json_object 模式）
   /// v1.9：营养师人设 + CoT 推理 + 包装营养表 OCR + 隐藏热量 + 尺度参照
@@ -73,7 +82,7 @@ JSON schema：
   "weight_source": "重量来源: package_label(读取包装标注净含量) 或 ai_estimate(AI视觉估算)",
   "food_category": "食物类别: water/carbonated/juice/milk/cream/oil/honey/sauce/alcohol/beer/wine/yogurt/soup/tea/protein_drink/energy_drink/solid 之一",
   "is_single_item": true表示单品(苹果/鸡蛋/牛奶/可乐等),false表示复合菜(宫保鸡丁/番茄炒蛋等),
-  "food_components": [{"name":"组分名","estimated_g":估算克数}],
+  "food_components": [{"name":"组分名","estimated_g":估算克数,"calories":该组分热量kcal,"protein_g":蛋白g,"fat_g":脂肪g,"carbs_g":碳水g}],
   "cooking_method": "烹饪方式: raw/steam/boil/cold/toss/roast/stir-fry/pan-fry/deep-fry/braise 之一",
   "confidence": 0.0-1.0 置信度,
   "estimated_calories": 按 mid 重量估算的整道菜热量(kcal,数值),
@@ -141,11 +150,21 @@ JSON schema：
    - 关键：包装食品不要靠视觉估算！瓶身形状不规则，视觉估算误差可达 30%+，必须读标签！
 4. 单品(is_single_item=true)时 food_components 为空数组 []
 5. 复合菜(is_single_item=false)时 food_components 必须列出 2-8 个主要食材组分
+   v1.11 组分营养字段（每个组分必填 5 个字段）：
+   - name：组分名（如"嫩豆腐"/"牛肉末"/"蒜苗"）
+   - estimated_g：估算克数
+   - calories：该组分热量 kcal（含隐藏热量：用油/酱汁计入对应组分，不单独列"用油"组分）
+   - protein_g / fat_g / carbs_g：该组分的蛋白/脂肪/碳水克数
+   ⚠️ 组分自洽约束（v1.11 必须满足）：
+   · 每个组分：4*protein_g + 9*fat_g + 4*carbs_g ≈ calories（误差±10%）
+   · 所有组分 calories 之和 ≈ estimated_calories（误差±10%，下游会按比例缩放保证一致）
+   · 隐藏热量（红油/酱汁/勾芡/腌料）计入对应组分的 calories/fat_g，不单独列组分组分
+   · 例：麻婆豆腐红油计入"嫩豆腐"组分的 fat_g（不另列"红油"组分）
 6. estimated_calories/protein_g/fat_g/carbs_g（v1.4 新增，v1.6 自洽约束）：
    - 基于 estimated_weight_g_mid 的重量估算整道菜的营养素
    - 参考常见食物成分表（如中国食物成分表/USDA），含烹饪用油与调味糖
    - 单品按总重量计算（如 2 罐可乐 = 660g × 0.42 kcal/g ≈ 277 kcal）
-   - 复合菜按各组分重量加总 + 烹饪用油热量
+   - 复合菜按各组分热量加总（v1.11：各组分 calories 之和 = estimated_calories，自洽约束）
    - ⚠️ 营养素自洽约束（v1.6 必须满足）：estimated_calories ≈ 4*estimated_protein_g + 9*estimated_fat_g + 4*estimated_carbs_g
      · Atwater 系数：蛋白质 4 kcal/g、脂肪 9 kcal/g、碳水 4 kcal/g
      · 估算完三个宏量营养素后，用公式反算 calories，确保偏差<10%
@@ -204,9 +223,9 @@ JSON schema：
 {"reasoning":"看到两罐红色可口可乐罐，读罐身标注'净含量 330ml'，weight_source=package_label；330ml×2=660ml 可乐，按 0.42kcal/g 估算约 277kcal；4*0+9*0+4*69=276 自洽。","dish_name":"可乐","brand":"可口可乐","quantity":2,"unit":"罐","per_unit_g":330,"estimated_weight_g_low":640,"estimated_weight_g_mid":660,"estimated_weight_g_high":680,"weight_source":"package_label","food_category":"carbonated","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.95,"estimated_calories":277,"estimated_protein_g":0,"estimated_fat_g":0,"estimated_carbs_g":69,"package_nutrition_table_ocr":"","package_serving_g":0,"package_serving_kj":0,"package_serving_kcal":0,"package_serving_protein_g":0,"package_serving_fat_g":0,"package_serving_carbs_g":0,"package_total_g":0,"package_servings_per_pack":0,"additional_dishes":[]}
 注：未读营养成分表（仅读净含量），9 个 package_* 字段全 0；v1.10 加 3 个宏量字段（全 0）保持 schema 一致
 
-示例2（番茄炒蛋-复合菜+营养素自洽 v1.7）：
-{"reasoning":"250g 番茄炒蛋，鸡蛋约 120g + 番茄约 150g，stir-fry 烹饪用油约 10g（90kcal 已计入）；蛋白质主要来自鸡蛋（约 18g），脂肪来自蛋黄+用油（约 25g），碳水来自番茄（约 12g）；4*18+9*25+4*12=345 自洽。","dish_name":"番茄炒蛋","brand":"","quantity":1,"unit":"份","per_unit_g":250,"estimated_weight_g_low":200,"estimated_weight_g_mid":250,"estimated_weight_g_high":300,"weight_source":"ai_estimate","food_category":"solid","is_single_item":false,"food_components":[{"name":"鸡蛋","estimated_g":120},{"name":"番茄","estimated_g":150}],"cooking_method":"stir-fry","confidence":0.85,"estimated_calories":345,"estimated_protein_g":18,"estimated_fat_g":25,"estimated_carbs_g":12,"package_nutrition_table_ocr":"","package_serving_g":0,"package_serving_kj":0,"package_serving_kcal":0,"package_serving_protein_g":0,"package_serving_fat_g":0,"package_serving_carbs_g":0,"package_total_g":0,"package_servings_per_pack":0,"additional_dishes":[]}
-注：4*18+9*25+4*12 = 72+225+48 = 345 ✓ 自洽
+示例2（番茄炒蛋-复合菜+营养素自洽 v1.7，v1.11 组分营养）：
+{"reasoning":"250g 番茄炒蛋，鸡蛋约 120g + 番茄约 150g，stir-fry 烹饪用油约 10g（90kcal 已计入鸡蛋组分的 fat_g）；蛋白质主要来自鸡蛋（约 18g），脂肪来自蛋黄+用油（约 25g），碳水来自番茄（约 12g）；4*18+9*25+4*12=345 自洽。组分热量：鸡蛋 120g≈234kcal（含用油 90kcal），番茄 150g≈27kcal，合计 261kcal 按比例缩放至 345kcal（下游 init 缩放）。","dish_name":"番茄炒蛋","brand":"","quantity":1,"unit":"份","per_unit_g":250,"estimated_weight_g_low":200,"estimated_weight_g_mid":250,"estimated_weight_g_high":300,"weight_source":"ai_estimate","food_category":"solid","is_single_item":false,"food_components":[{"name":"鸡蛋","estimated_g":120,"calories":234,"protein_g":15,"fat_g":18,"carbs_g":1},{"name":"番茄","estimated_g":150,"calories":27,"protein_g":2,"fat_g":0,"carbs_g":6}],"cooking_method":"stir-fry","confidence":0.85,"estimated_calories":345,"estimated_protein_g":18,"estimated_fat_g":25,"estimated_carbs_g":12,"package_nutrition_table_ocr":"","package_serving_g":0,"package_serving_kj":0,"package_serving_kcal":0,"package_serving_protein_g":0,"package_serving_fat_g":0,"package_serving_carbs_g":0,"package_total_g":0,"package_servings_per_pack":0,"additional_dishes":[]}
+注：4*18+9*25+4*12 = 72+225+48 = 345 ✓ 自洽；v1.11 组分营养——鸡蛋组分含用油（fat_g=18 含蛋黄 9g + 用油 9g，calories=4*15+9*18+4*1=223≈234 自洽）；番茄组分 4*2+9*0+4*6=32≈27 自洽；组分 calories 之和 261 ≈ estimated_calories 345（差 24% > 10%，下游 init 按比例缩放各组分使之和=345）
 
 示例3（2可乐+2雪碧+1美年达-多瓶不同饮料+包装容量 v1.7）：
 {"reasoning":"5 瓶不同饮料：2 瓶可口可乐 + 2 瓶雪碧 + 1 瓶美年达，每瓶均读包装标签 500ml，weight_source=package_label。","dish_name":"可乐","brand":"可口可乐","quantity":2,"unit":"瓶","per_unit_g":500,"estimated_weight_g_low":980,"estimated_weight_g_mid":1000,"estimated_weight_g_high":1020,"weight_source":"package_label","food_category":"carbonated","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.9,"estimated_calories":420,"estimated_protein_g":0,"estimated_fat_g":0,"estimated_carbs_g":105,"package_nutrition_table_ocr":"","package_serving_g":0,"package_serving_kj":0,"package_serving_kcal":0,"package_serving_protein_g":0,"package_serving_fat_g":0,"package_serving_carbs_g":0,"package_total_g":0,"package_servings_per_pack":0,"additional_dishes":[{"dish_name":"雪碧","brand":"雪碧","quantity":2,"unit":"瓶","per_unit_g":500,"estimated_weight_g_low":980,"estimated_weight_g_mid":1000,"estimated_weight_g_high":1020,"weight_source":"package_label","food_category":"carbonated","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.85,"estimated_calories":400,"estimated_protein_g":0,"estimated_fat_g":0,"estimated_carbs_g":100,"package_nutrition_table_ocr":"","package_serving_g":0,"package_serving_kj":0,"package_serving_kcal":0,"package_serving_protein_g":0,"package_serving_fat_g":0,"package_serving_carbs_g":0,"package_total_g":0,"package_servings_per_pack":0,"additional_dishes":[]},{"dish_name":"美年达","brand":"美年达","quantity":1,"unit":"瓶","per_unit_g":500,"estimated_weight_g_low":490,"estimated_weight_g_mid":500,"estimated_weight_g_high":510,"weight_source":"package_label","food_category":"carbonated","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.8,"estimated_calories":210,"estimated_protein_g":0,"estimated_fat_g":0,"estimated_carbs_g":52,"package_nutrition_table_ocr":"","package_serving_g":0,"package_serving_kj":0,"package_serving_kcal":0,"package_serving_protein_g":0,"package_serving_fat_g":0,"package_serving_carbs_g":0,"package_total_g":0,"package_servings_per_pack":0,"additional_dishes":[]}]}
@@ -228,9 +247,9 @@ JSON schema：
 {"reasoning":"包装零食，读包装正面是'珍宝珠酸条'，净含量 84g 共 8 条；翻看背面营养成分表：每份=1 条 10.5g，能量 170kJ，蛋白质 0g，脂肪 0g，碳水 10g。按 OCR 精确换算：单份 kcal=170÷4.184≈40.6，整袋 kcal=40.6×8≈325，per100g=40.6×100÷10.5≈387。碳水按比例：10g/份×8 份=80g，4*0+9*0+4*80=320≈325 自洽。","dish_name":"酸条","brand":"珍宝珠","quantity":1,"unit":"包","per_unit_g":84,"estimated_weight_g_low":83,"estimated_weight_g_mid":84,"estimated_weight_g_high":85,"weight_source":"package_label","food_category":"solid","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.95,"estimated_calories":325,"estimated_protein_g":0,"estimated_fat_g":0,"estimated_carbs_g":80,"package_nutrition_table_ocr":"每份10.5g 能量170kJ 蛋白质0g 脂肪0g 碳水10g","package_serving_g":10.5,"package_serving_kj":170,"package_serving_kcal":0,"package_serving_protein_g":0,"package_serving_fat_g":0,"package_serving_carbs_g":10,"package_total_g":84,"package_servings_per_pack":8,"additional_dishes":[]}
 注：包装食品 OCR 优先路径——读营养成分表 170kJ/10.5g → 单份 40.6kcal × 8 份 = 325kcal（精确值，非估算）；per100g=387kcal；8×10.5=84g 与 package_total_g 自洽；package_nutrition_table_ocr 原文抄写；v1.10 新增 3 个宏量字段 package_serving_protein_g/fat_g/carbs_g，从营养成分表读取，estimated_carbs_g=package_serving_carbs_g×8=80 自洽
 
-示例8（麻婆豆腐-隐藏热量显式估算 v1.9）：
-{"reasoning":"麻婆豆腐一份约 300g，组分：嫩豆腐 200g + 牛肉末 50g + 蒜苗 20g；表面有 2-3mm 厚红油层，目测用油约 20g（180kcal 已计入），红油是隐藏热量必须显式估算！豆腐 200g≈100kcal，牛肉末 50g≈125kcal，蒜苗 20g≈5kcal，红油 20g≈180kcal，合计约 410kcal；蛋白质：豆腐 12g + 牛肉 10g = 22g；脂肪：豆腐 5g + 牛肉 5g + 红油 20g = 30g；碳水：豆腐 4g + 牛肉 0g + 蒜苗 1g + 豆瓣酱糖 5g = 10g；4*22+9*30+4*10=88+270+40=398≈410 自洽。","dish_name":"麻婆豆腐","brand":"","quantity":1,"unit":"份","per_unit_g":300,"estimated_weight_g_low":280,"estimated_weight_g_mid":300,"estimated_weight_g_high":320,"weight_source":"ai_estimate","food_category":"solid","is_single_item":false,"food_components":[{"name":"嫩豆腐","estimated_g":200},{"name":"牛肉末","estimated_g":50},{"name":"蒜苗","estimated_g":20}],"cooking_method":"braise","confidence":0.85,"estimated_calories":410,"estimated_protein_g":22,"estimated_fat_g":30,"estimated_carbs_g":10,"package_nutrition_table_ocr":"","package_serving_g":0,"package_serving_kj":0,"package_serving_kcal":0,"package_serving_protein_g":0,"package_serving_fat_g":0,"package_serving_carbs_g":0,"package_total_g":0,"package_servings_per_pack":0,"additional_dishes":[]}
-注：隐藏热量显式估算——红油层 2-3mm 厚约 20g 油（180kcal）必须计入；reasoning 说明"目测用油约 20g，已计入 estimated_calories"；4*22+9*30+4*10=398≈410 自洽
+示例8（麻婆豆腐-隐藏热量显式估算 v1.9，v1.11 组分营养）：
+{"reasoning":"麻婆豆腐一份约 300g，组分：嫩豆腐 200g + 牛肉末 50g + 蒜苗 20g；表面有 2-3mm 厚红油层，目测用油约 20g（180kcal 已计入嫩豆腐组分的 fat_g，不单独列红油组分），红油是隐藏热量必须显式估算！豆腐 200g≈100kcal+红油 180kcal=280kcal，牛肉末 50g≈125kcal，蒜苗 20g≈5kcal，合计约 410kcal；蛋白质：豆腐 12g + 牛肉 10g = 22g；脂肪：豆腐 5g + 牛肉 5g + 红油 20g = 30g（红油计入豆腐组分 fat_g）；碳水：豆腐 4g + 牛肉 0g + 蒜苗 1g + 豆瓣酱糖 5g = 10g；4*22+9*30+4*10=88+270+40=398≈410 自洽。","dish_name":"麻婆豆腐","brand":"","quantity":1,"unit":"份","per_unit_g":300,"estimated_weight_g_low":280,"estimated_weight_g_mid":300,"estimated_weight_g_high":320,"weight_source":"ai_estimate","food_category":"solid","is_single_item":false,"food_components":[{"name":"嫩豆腐","estimated_g":200,"calories":280,"protein_g":12,"fat_g":25,"carbs_g":4},{"name":"牛肉末","estimated_g":50,"calories":125,"protein_g":10,"fat_g":5,"carbs_g":0},{"name":"蒜苗","estimated_g":20,"calories":5,"protein_g":0,"fat_g":0,"carbs_g":1}],"cooking_method":"braise","confidence":0.85,"estimated_calories":410,"estimated_protein_g":22,"estimated_fat_g":30,"estimated_carbs_g":10,"package_nutrition_table_ocr":"","package_serving_g":0,"package_serving_kj":0,"package_serving_kcal":0,"package_serving_protein_g":0,"package_serving_fat_g":0,"package_serving_carbs_g":0,"package_total_g":0,"package_servings_per_pack":0,"additional_dishes":[]}
+注：隐藏热量显式估算——红油层 2-3mm 厚约 20g 油（180kcal）计入嫩豆腐组分的 fat_g（不另列"红油"组分）；reasoning 说明"目测用油约 20g，已计入嫩豆腐组分 fat_g"；4*22+9*30+4*10=398≈410 自洽；v1.11 组分营养——嫩豆腐组分 4*12+9*25+4*4=253≈280 自洽（含红油 fat_g=25），牛肉末 4*10+9*5+4*0=85≈125 自洽，蒜苗 4*0+9*0+4*1=4≈5 自洽；组分 calories 之和 410 = estimated_calories 410 ✓ 一致
 
 示例8b（盒装菊花茶 250ml-含糖茶饮碳水必标 v1.10）：
 {"reasoning":"盒装菊花茶饮料（外卖常见利乐包），读包装正面'菊花茶'，净含量 250ml；翻看营养成分表：每份 250ml，能量 272kJ，蛋白质 0g，脂肪 0g，碳水 16g。含糖茶饮碳水必标（GB 28050 强制）！按 OCR 精确换算：单份 kcal=272÷4.184≈65，250ml 饮料按密度≈水 250g，per100g=65×100÷250=26；碳水 per100g=16×100÷250=6.4；4*0+9*0+4*16=64≈65 自洽（kJ 转 kcal 四舍五入误差）。","dish_name":"菊花茶","brand":"","quantity":1,"unit":"盒","per_unit_g":250,"estimated_weight_g_low":245,"estimated_weight_g_mid":250,"estimated_weight_g_high":255,"weight_source":"package_label","food_category":"tea","is_single_item":true,"food_components":[],"cooking_method":"raw","confidence":0.9,"estimated_calories":65,"estimated_protein_g":0,"estimated_fat_g":0,"estimated_carbs_g":16,"package_nutrition_table_ocr":"每份250ml 能量272kJ 蛋白质0g 脂肪0g 碳水16g","package_serving_g":250,"package_serving_kj":272,"package_serving_kcal":0,"package_serving_protein_g":0,"package_serving_fat_g":0,"package_serving_carbs_g":16,"package_total_g":250,"package_servings_per_pack":1,"additional_dishes":[]}

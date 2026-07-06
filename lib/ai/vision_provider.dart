@@ -353,15 +353,56 @@ class VisionRecognitionResult {
 class FoodComponent {
   final String name;
   final double estimatedG;
+  // v1.11：该组分的营养字段（AI 推理生成，用于组分滑块影响热量计算）
+  // calories/proteinG/fatG/carbsG 对应 estimatedG 份量的总营养值（非 per100g）
+  // per100g 通过 getter 反算（caloriesPer100g = calories * 100 / estimatedG）
+  // 旧 prompt(v1.0-v1.10) 无此字段 → 默认 0，calibration_page 走单品路径（AI 总值固定）
+  final double calories;
+  final double proteinG;
+  final double fatG;
+  final double carbsG;
 
-  const FoodComponent({required this.name, required this.estimatedG});
+  const FoodComponent({
+    required this.name,
+    required this.estimatedG,
+    this.calories = 0,
+    this.proteinG = 0,
+    this.fatG = 0,
+    this.carbsG = 0,
+  });
 
   factory FoodComponent.fromJson(Map<String, dynamic> json) {
     return FoodComponent(
       name: json['name'] as String,
       estimatedG: (json['estimated_g'] as num).toDouble(),
+      // v1.11 新增 4 个营养字段，旧响应缺失时默认 0（向后兼容）
+      calories: (json['calories'] as num?)?.toDouble() ?? 0,
+      proteinG: (json['protein_g'] as num?)?.toDouble() ?? 0,
+      fatG: (json['fat_g'] as num?)?.toDouble() ?? 0,
+      carbsG: (json['carbs_g'] as num?)?.toDouble() ?? 0,
     );
   }
+
+  // v1.11：反算 per100g（基于 estimatedG，不是 servingG）
+  // 硬约束 #4 精神：per100g 反算基于 AI 估算重量，不随用户调整反向偏差
+  // estimatedG <= 0 时返回 0（防除零）
+  double get caloriesPer100g =>
+      estimatedG > 0 ? calories * 100 / estimatedG : 0;
+  double get proteinPer100g =>
+      estimatedG > 0 ? proteinG * 100 / estimatedG : 0;
+  double get fatPer100g => estimatedG > 0 ? fatG * 100 / estimatedG : 0;
+  double get carbsPer100g => estimatedG > 0 ? carbsG * 100 / estimatedG : 0;
+
+  /// v1.11：复制并按比例缩放营养字段（recognition_validator 组分份量交叉验证用）
+  /// estimatedG/calories/proteinG/fatG/carbsG 同比缩放，per100g 保持不变
+  FoodComponent scaled(double ratio) => FoodComponent(
+        name: name,
+        estimatedG: estimatedG * ratio,
+        calories: calories * ratio,
+        proteinG: proteinG * ratio,
+        fatG: fatG * ratio,
+        carbsG: carbsG * ratio,
+      );
 }
 
 /// 视觉大模型抽象接口

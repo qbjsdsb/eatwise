@@ -7,12 +7,13 @@ import 'package:eatwise/features/recognize/calibration_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// P1 修复 1 测试：复合菜预览 / 记录 / 编辑对话框初始值三处统一走 AI 优先路径。
+/// v0.28.0 测试：复合菜组分滑块影响热量，预览/记录/编辑对话框三处统一。
 ///
-/// 场景：包装有数据但宏量全 0（packageMacrosAllZero=true）+ aiFallback 非空 + 组分命中。
-/// 期望：_buildNutritionPreview / _confirmWithServing / _currentDisplayedValues 三处
-///      都走 AI 优先路径（cal = calibrated.actualCalories + oilCaloriesPer100g*_oilG/100），
-///      而非组分累加 fallback。
+/// 架构：完全抛弃库参与热量计算，AI 推理组分组分滑块影响热量。
+/// - 复合菜路径：总热量 = sum(各组分 per100g × 用户拖动 g / 100)
+/// - 自洽缩放：AI 返回的组分热量之和 ≠ estimatedCalories 时按比例缩放各组分
+/// - 三处统一：_buildNutritionPreview / _confirmWithServing / _currentDisplayedValues
+///   都走 _computeCurrentNutrition，保证显示值与写库值一致
 void main() {
   late EatWiseDatabase db;
   late FoodItemRepository foodRepo;
@@ -20,96 +21,73 @@ void main() {
   setUp(() async {
     db = EatWiseDatabase(NativeDatabase.memory());
     foodRepo = FoodItemRepository(db);
-    // 种子：鸡肉 + 花生（组分命中）
-    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
-          name: '鸡肉',
-          defaultServingG: 100,
-          caloriesPer100g: 167,
-          proteinPer100g: 19,
-          fatPer100g: 9,
-          carbsPer100g: 0,
-          source: 'manual',
-          sourceVersion: 'test',
-          createdAt: 1000,
-        ));
-    await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
-          name: '花生',
-          defaultServingG: 100,
-          caloriesPer100g: 567,
-          proteinPer100g: 25,
-          fatPer100g: 49,
-          carbsPer100g: 16,
-          source: 'manual',
-          sourceVersion: 'test',
-          createdAt: 1001,
-        ));
   });
   tearDown(() async => db.close());
 
-  // 包装有数据（hasPackageNutrition=true）但宏量全 0（packageMacrosAllZero=true）
-  // → 跳过包装优先路径，落到 AI 优先路径（aiFallbackNutrition 非空）
+  // v1.11 组分带营养字段（calories/proteinG/fatG/carbsG）
+  // 鸡肉 150g: cal=250, protein=20, fat=10, carbs=0
+  // 花生 30g:  cal=170, protein=8,  fat=14, carbs=5
+  // sumCal = 420 = aiFallback.calories → 无需自洽缩放
   VisionRecognitionResult buildRecognition() => VisionRecognitionResult(
         dishName: '宫保鸡丁',
         estimatedWeightGLow: 200,
         estimatedWeightGMid: 250,
         estimatedWeightGHigh: 300,
         foodComponents: const [
-          FoodComponent(name: '鸡肉', estimatedG: 150),
-          FoodComponent(name: '花生', estimatedG: 30),
+          FoodComponent(
+            name: '鸡肉',
+            estimatedG: 150,
+            calories: 250,
+            proteinG: 20,
+            fatG: 10,
+            carbsG: 0,
+          ),
+          FoodComponent(
+            name: '花生',
+            estimatedG: 30,
+            calories: 170,
+            proteinG: 8,
+            fatG: 14,
+            carbsG: 5,
+          ),
         ],
         cookingMethod: 'stir-fry',
         isSingleItem: false,
         confidence: 0.75,
-        promptVersion: 'v1.0',
-        packageServingG: 100,
-        packageServingKcal: 200,
-        packageServingProteinG: 0,
-        packageServingFatG: 0,
-        packageServingCarbsG: 0,
+        promptVersion: 'v1.11',
       );
 
   const aiFallback = NutritionResult(
     foodItemId: 0,
-    calories: 300,
-    proteinG: 20,
-    fatG: 10,
-    carbsG: 30,
+    calories: 420,
+    proteinG: 28,
+    fatG: 24,
+    carbsG: 5,
     oilG: 0,
     source: NutritionSource.aiEstimate,
   );
 
-  // AI 优先路径期望值（v2.1 修复后 servingG=mid=250，actualCalories=aiFallback.calories=AI 推理值）：
-  //   actualCalories = 300 * 250/250 = 300；+ 889*12/100 = 106.68 → 406.68
-  //   actualProtein  = 20  * 250/250 = 20
-  //   actualFat      = 10  * 250/250 = 10；+ 99.9*12/100 = 11.988 → 21.988
-  //   actualCarbs    = 30  * 250/250 = 30
-  // 组分累加 fallback 期望值（不应出现）：
-  //   鸡肉 250.5 + 花生 170.1 + 油 106.68 = 527.28 cal
-  const expectedCal = 406.68;
-  const expectedProtein = 20.0;
-  const expectedFat = 21.988;
-  const expectedCarbs = 30.0;
-  const fallbackCal = 527.28;
+  // 组分累加期望值（sumCal=aiFallback.calories，无缩放，per100g × g / 100）：
+  //   鸡肉 per100g: cal=166.67, protein=13.33, fat=6.67, carbs=0
+  //   花生 per100g: cal=566.67, protein=26.67, fat=46.67, carbs=16.67
+  //   默认份量（estimatedG）：cal=250+170=420, protein=20+8=28, fat=10+14=24, carbs=0+5=5
+  const expectedCal = 420.0;
+  const expectedProtein = 28.0;
+  const expectedFat = 24.0;
+  const expectedCarbs = 5.0;
 
   double readDisplayed(WidgetTester tester, Key key) {
     final w = tester.widget<Text>(find.byKey(key));
-    // 热量文本为 "407"，宏量列文本为 "20 g"（带单位后缀），取首段数字解析
     return double.parse(w.data!.split(' ').first);
   }
 
-  testWidgets('预览显示 AI 优先值（非组分累加 fallback）+ onConfirm 一致', (tester) async {
+  testWidgets('预览 = 组分累加值 + onConfirm 一致（三处统一）', (tester) async {
     final recognition = buildRecognition();
-    final lookup = NutritionLookup(foodRepo);
-    final composite = await lookup.lookupCompositeDish(
-      components: recognition.foodComponents,
-      cookingMethod: recognition.cookingMethod,
-    );
 
     double? capturedCal, capturedProtein, capturedFat, capturedCarbs;
     await tester.pumpWidget(MaterialApp(
       home: CalibrationPage(
         recognitionResult: recognition,
-        compositeNutrition: composite,
         foodItemRepo: foodRepo,
         aiFallbackNutrition: aiFallback,
         onConfirm: (servingG, cal, protein, fat, carbs,
@@ -123,35 +101,33 @@ void main() {
     ));
     await tester.pumpAndSettle();
 
-    // 预览值 = AI 优先路径（含油累加），toStringAsFixed(0) → "323"
-    final previewCal = readDisplayed(tester, const ValueKey('cal_value'));
-    expect(previewCal, closeTo(expectedCal, 1.0));
-    // 反向断言：绝不能是组分累加 fallback 的 "527"
-    expect((previewCal - fallbackCal).abs(), greaterThan(10));
+    // 预览值 = 组分累加（库不参与热量计算）
+    expect(readDisplayed(tester, const ValueKey('cal_value')),
+        closeTo(expectedCal, 1.0));
+    expect(readDisplayed(tester, const ValueKey('protein_value')),
+        closeTo(expectedProtein, 1.0));
+    expect(readDisplayed(tester, const ValueKey('fat_value')),
+        closeTo(expectedFat, 1.0));
+    expect(readDisplayed(tester, const ValueKey('carbs_value')),
+        closeTo(expectedCarbs, 1.0));
 
-    // onConfirm 捕获值应与预览值一致（同一 AI 优先路径，未拖滑块所以 oil=12）
     await tester.tap(find.text('确认记录'));
     await tester.pumpAndSettle();
 
-    expect(capturedCal, isNotNull);
+    // onConfirm 捕获值应与预览一致（同一 _computeCurrentNutrition 路径）
     expect(capturedCal, closeTo(expectedCal, 0.5));
     expect(capturedProtein, closeTo(expectedProtein, 0.5));
     expect(capturedFat, closeTo(expectedFat, 0.5));
     expect(capturedCarbs, closeTo(expectedCarbs, 0.5));
   });
 
-  testWidgets('编辑对话框初始值 = 预览值（_currentDisplayedValues 同源）', (tester) async {
+  testWidgets('编辑对话框初始值 = 预览值（_currentDisplayedValues 同源）',
+      (tester) async {
     final recognition = buildRecognition();
-    final lookup = NutritionLookup(foodRepo);
-    final composite = await lookup.lookupCompositeDish(
-      components: recognition.foodComponents,
-      cookingMethod: recognition.cookingMethod,
-    );
 
     await tester.pumpWidget(MaterialApp(
       home: CalibrationPage(
         recognitionResult: recognition,
-        compositeNutrition: composite,
         foodItemRepo: foodRepo,
         aiFallbackNutrition: aiFallback,
         onConfirm: (servingG, cal, protein, fat, carbs,
@@ -161,15 +137,15 @@ void main() {
     await tester.pumpAndSettle();
 
     final previewCal = readDisplayed(tester, const ValueKey('cal_value'));
-    final previewProtein = readDisplayed(tester, const ValueKey('protein_value'));
+    final previewProtein =
+        readDisplayed(tester, const ValueKey('protein_value'));
     final previewFat = readDisplayed(tester, const ValueKey('fat_value'));
     final previewCarbs = readDisplayed(tester, const ValueKey('carbs_value'));
 
-    // 点热量数值打开编辑对话框（_nutritionCard 中 InkWell 包裹数值）
+    // 点热量数值打开编辑对话框
     await tester.tap(find.byKey(const ValueKey('cal_value')));
     await tester.pumpAndSettle();
 
-    // 对话框 4 个 TextField 初始值应等于预览值（_currentDisplayedValues 同源）
     final calField =
         tester.widget<TextField>(find.byKey(const ValueKey('edit_cal_field')));
     final proteinField = tester.widget<TextField>(
@@ -179,14 +155,15 @@ void main() {
     final carbsField = tester.widget<TextField>(
         find.byKey(const ValueKey('edit_carbs_field')));
 
+    // 对话框初始值 = 预览值（_currentDisplayedValues 同源）
     expect(double.parse(calField.controller!.text), closeTo(previewCal, 1.0));
-    expect(
-        double.parse(proteinField.controller!.text), closeTo(previewProtein, 1.0));
+    expect(double.parse(proteinField.controller!.text),
+        closeTo(previewProtein, 1.0));
     expect(double.parse(fatField.controller!.text), closeTo(previewFat, 1.0));
     expect(
         double.parse(carbsField.controller!.text), closeTo(previewCarbs, 1.0));
 
-    // 进一步锁定 AI 优先路径具体值（非 fallback 的 527/36/40/5）
+    // 锁定组分累加具体值
     expect(double.parse(calField.controller!.text), closeTo(expectedCal, 1.0));
     expect(double.parse(proteinField.controller!.text),
         closeTo(expectedProtein, 1.0));
@@ -194,5 +171,41 @@ void main() {
         double.parse(fatField.controller!.text), closeTo(expectedFat, 1.0));
     expect(double.parse(carbsField.controller!.text),
         closeTo(expectedCarbs, 1.0));
+  });
+
+  testWidgets('拖动组分滑块 → 热量重算（核心逻辑：组分滑块影响热量）',
+      (tester) async {
+    final recognition = buildRecognition();
+
+    await tester.pumpWidget(MaterialApp(
+      home: CalibrationPage(
+        recognitionResult: recognition,
+        foodItemRepo: foodRepo,
+        aiFallbackNutrition: aiFallback,
+        onConfirm: (servingG, cal, protein, fat, carbs,
+            {componentsSnapshot}) async {},
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    // 默认预览 = 420 kcal（鸡肉 150g + 花生 30g）
+    expect(readDisplayed(tester, const ValueKey('cal_value')),
+        closeTo(expectedCal, 1.0));
+
+    // 拖动鸡肉滑块到 300g（翻倍）：鸡肉 cal=166.67*300/100=500，花生 cal=170
+    // 总热量 = 500 + 170 = 670 kcal
+    final chickenSliderFinder = find.byType(Slider).first;
+    await tester.ensureVisible(chickenSliderFinder);
+    await tester.pumpAndSettle();
+    // 拖动足够距离使滑块到 max（estimatedG*2=300g）：
+    // 初值 150g 在轨道 50% 处，drag rect.width → 移到 150% → clamp 到 100%=300g
+    final rect = tester.getRect(chickenSliderFinder);
+    await tester.drag(chickenSliderFinder, Offset(rect.width, 0));
+    await tester.pumpAndSettle();
+
+    // 拖动后热量应重算：500(鸡肉@300g) + 170(花生@30g) = 670 kcal
+    expect(readDisplayed(tester, const ValueKey('cal_value')),
+        closeTo(670, 1.0),
+        reason: '鸡肉 300g → 500kcal + 花生 30g → 170kcal = 670kcal');
   });
 }

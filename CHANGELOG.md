@@ -4,6 +4,31 @@
 
 ## [Unreleased]
 
+## [v0.28.0] - 2026-07-07
+
+### v0.28.0 架构改造：AI 组分滑块影响热量（完全抛弃库参与热量计算）
+
+用户报告"AI 推理热量与显示不一致"根因是库 per100g 与 AI 估算双重计算 + 用油量累加重复。v0.28.0 彻底重构：**库仅作 food_item_id 解析兜底，不参与热量计算；AI 推理组分组分滑块影响热量**。
+
+#### 核心改造
+- **AI prompt v1.11**：food_components 每个组分加 calories/protein_g/fat_g/carbs_g 字段 + 自洽约束（4*p+9*f+4*c≈cal，组分和≈estimated_calories）
+- **FoodComponent 数据类**：加 4 个营养字段 + per100g getter + scaled() 同比缩放方法
+- **calibration_page**：
+  - 删除用油量滑块（AI reasoning 已含用油）
+  - 删除份量滑块（组分滑块代替，servingG = sum(组分 g) 自动算）
+  - 组分滑块影响热量：拖动 → per100g × newG / 100 重算 → 总热量 = sum(各组分)
+  - 热量计算统一走 `_computeCurrentNutrition()`（删除包装/AI 优先/组分累加三分支）
+  - 删除 CalibratedNutritionCalculator 调用（库不参与热量计算）
+- **自洽缩放**：initState 时若 sum(组分 calories) ≠ estimatedCalories，按比例缩放各组分使之和 = AI 值
+
+#### 单品路径
+- is_single_item=true 时热量固定 = AI estimatedCalories，无组分滑块，用户只能点击营养值手动编辑
+
+#### 验证
+- `flutter analyze`：No issues found
+- `flutter test`：1134 passed / 3 skipped / 0 failed（删 oil 测试 -3 + consistency 新增 +1，0 回归）
+- 6+1 硬约束满足 / per100g 反算基于 component.estimatedG（非 servingG）
+
 ## [v0.27.0] - 2026-07-07
 
 ### P0 修复：AI 推理热量与显示值不一致（5 处根因，2 个 commit）
