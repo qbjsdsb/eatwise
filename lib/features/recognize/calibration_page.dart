@@ -677,39 +677,13 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
   }
 
   Widget _buildCompositeControls() {
-    final composite = widget.compositeNutrition!;
+    // v2.1 修复：隐藏组分份量滑块 + 未命中列表
+    // 原因：复合菜总热量固定用 AI 值（computeCompositeLookupHit 用 mid），
+    // 组分滑块调整不影响总热量，是多余 UI。未命中列表文案让用户误以为出错。
+    // 只保留用油量滑块（影响热量+脂肪）。
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('组分份量调整', style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: 8),
-        for (var i = 0; i < composite.componentHits.length; i++)
-          _buildComponentSlider(i, composite.componentHits[i]),
-        if (composite.componentMisses.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              ExcludeSemantics(
-                child: Icon(Icons.warning_amber_rounded,
-                    size: 16, color: Theme.of(context).colorScheme.error),
-              ),
-              const SizedBox(width: 6),
-              Text('待确认组分（未在食物库找到）：',
-                  style: TextStyle(
-                      color: Theme.of(context).colorScheme.error)),
-            ],
-          ),
-          for (final miss in composite.componentMisses)
-            Padding(
-              padding: const EdgeInsets.only(left: 16),
-              child: Text('• $miss（请转手动录入或补充食物库）',
-                  style: TextStyle(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurfaceVariant)),
-            ),
-        ],
-        const SizedBox(height: 16),
         Text('用油量：${_oilG.toStringAsFixed(0)} g',
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
                 fontFeatures: const [FontFeature.tabularFigures()])),
@@ -728,6 +702,9 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
     );
   }
 
+  // v2.1：_buildCompositeControls 不再调用此方法（组分滑块隐藏），
+  // 保留方法体以备未来恢复；_componentServings 字段仍用于热量计算/snapshot。
+  // ignore: unused_element
   Widget _buildComponentSlider(int index, ComponentHit hit) {
     final serving = _componentServings[index] ?? hit.estimatedG;
     return Column(
@@ -1290,7 +1267,7 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
         ),
       ),
       child: Text(
-        isDb ? '库匹配' : 'AI 估算（库未命中）',
+        isDb ? '库匹配' : 'AI 估算',
         style: TextStyle(fontSize: 11, color: isDb ? cs.primary : cs.tertiary),
       ),
     );

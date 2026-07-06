@@ -534,28 +534,12 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
     double actualProtein = r.estimatedProteinG ?? 0;
     double actualFat = r.estimatedFatG ?? 0;
     double actualCarbs = r.estimatedCarbsG ?? 0;
-    if (r.hasPackageNutrition) {
-      final per100 = r.computePackageNutritionPer100g(
-        estimatedProteinG: r.estimatedProteinG,
-        estimatedFatG: r.estimatedFatG,
-        estimatedCarbsG: r.estimatedCarbsG,
-      );
-      // v1.9 修复：mid>0 守卫，防 mid=0 时 actualCal 被误清零（丢失 AI 估算）
-      if (per100 != null && r.estimatedWeightGMid > 0) {
-        // v1.10：判断包装换算宏量是否全 0（含糖饮料 AI 漏填宏量特征）
-        final packageMacrosAllZero =
-            per100.$2 == 0 && per100.$3 == 0 && per100.$4 == 0;
-        final mid = r.estimatedWeightGMid;
-        // calories 始终用包装换算值（包装能量是精确值，即使宏量漏填能量仍可信）
-        actualCal = per100.$1 * mid / 100;
-        // 宏量：仅当包装换算非全 0 时用包装值，否则保留 AI 估算（PostProcessor 已反推填充）
-        if (!packageMacrosAllZero) {
-          actualProtein = per100.$2 * mid / 100;
-          actualFat = per100.$3 * mid / 100;
-          actualCarbs = per100.$4 * mid / 100;
-        }
-      }
-    }
+    // v2.1 修复：actualCal 始终用 AI 原始估算值，不用包装换算覆盖
+    // 原因：包装换算覆盖导致 reasoning 文本热量 ≠ aiFallback.calories ≠ 显示值，
+    // 用户感知"AI 推理值被静默修改"。包装营养表数据仍通过
+    // computePackageNutritionPer100g 在 CalibratedNutritionCalculator 包装优先分支使用，
+    // 不影响包装食品路径的 per100g 反算。
+    // 宏量也保留 AI 原始估算（与 calories 一致）
     return NutritionResult(
       foodItemId: 0,
       calories: actualCal,

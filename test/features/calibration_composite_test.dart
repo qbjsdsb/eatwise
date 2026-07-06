@@ -8,7 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// 复合菜校准页测试
-/// 验证：组分滑块渲染 + 用油滑块渲染 + 未命中展示 + 重算后 onConfirm 传调整值
+/// v2.1：组分滑块 + 未命中列表已隐藏，只保留用油滑块
+/// 验证：用油滑块渲染 + 组分滑块/未命中列表不显示 + 重算后 onConfirm 传调整值
 void main() {
   late EatWiseDatabase db;
   late FoodItemRepository foodRepo;
@@ -42,7 +43,7 @@ void main() {
   });
   tearDown(() async => db.close());
 
-  testWidgets('复合菜显示组分滑块 + 用油滑块 + 未命中展示', (tester) async {
+  testWidgets('v2.1：复合菜只显示用油滑块（组分滑块+未命中列表已隐藏）', (tester) async {
     final recognition = VisionRecognitionResult(
       dishName: '宫保鸡丁',
       estimatedWeightGLow: 200,
@@ -74,13 +75,17 @@ void main() {
       ),
     ));
 
-    // 验证组分滑块标签
-    expect(find.textContaining('鸡肉'), findsWidgets);
-    expect(find.textContaining('花生'), findsWidgets);
-    // 验证未命中展示
-    expect(find.textContaining('待确认组分'), findsOneWidget);
-    expect(find.textContaining('黄瓜'), findsWidgets);
-    // 验证用油量标签（stir-fry 默认 12g）
+    // v2.1：组分滑块已隐藏，不显示组分名（dishName=宫保鸡丁 不含"鸡肉"/"花生"）
+    expect(find.textContaining('鸡肉'), findsNothing,
+        reason: 'v2.1：组分滑块隐藏，不显示"鸡肉"');
+    expect(find.textContaining('花生'), findsNothing,
+        reason: 'v2.1：组分滑块隐藏，不显示"花生"');
+    // v2.1：未命中列表已隐藏
+    expect(find.textContaining('待确认组分'), findsNothing,
+        reason: 'v2.1：未命中列表隐藏');
+    expect(find.textContaining('黄瓜'), findsNothing,
+        reason: 'v2.1：未命中列表隐藏，不显示"黄瓜"');
+    // 验证用油量标签仍存在（stir-fry 默认 12g）
     expect(find.textContaining('用油量'), findsOneWidget);
   });
 
