@@ -49,6 +49,7 @@ void main() {
     when(() => mockStore.getSentryEnabled()).thenAnswer((_) async => false);
     when(() => mockStore.getTdeeAutoCalib()).thenAnswer((_) async => true);
     when(() => mockStore.getThemeSeed()).thenAnswer((_) async => 0xFF5B8C7B);
+    when(() => mockStore.getUseDynamicColor()).thenAnswer((_) async => false);
     when(() => mockStore.getCurrentMonthCount()).thenAnswer((_) async => 0);
     when(() => mockStore.getImageRetentionDays()).thenAnswer((_) async => 30);
   });
