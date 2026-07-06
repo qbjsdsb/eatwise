@@ -149,7 +149,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       enableSuggestions: false,
                       validator: (v) {
                         if (v == null || v.isEmpty) return '必填';
-                        if (double.tryParse(v) == null) return '请输入有效数字';
+                        final h = double.tryParse(v);
+                        if (h == null) return '请输入有效数字';
+                        if (h < 50 || h > 250) return '身高需在 50-250 cm 之间';
                         return null;
                       },
                     ),
@@ -162,7 +164,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       enableSuggestions: false,
                       validator: (v) {
                         if (v == null || v.isEmpty) return '必填';
-                        if (double.tryParse(v) == null) return '请输入有效数字';
+                        final w = double.tryParse(v);
+                        if (w == null) return '请输入有效数字';
+                        if (w < 20 || w > 300) return '体重需在 20-300 kg 之间';
                         return null;
                       },
                     ),
@@ -173,7 +177,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       keyboardType: TextInputType.number,
                       validator: (v) {
                         if (v == null || v.isEmpty) return '必填';
-                        if (int.tryParse(v) == null) return '请输入有效整数';
+                        final a = int.tryParse(v);
+                        if (a == null) return '请输入有效整数';
+                        if (a < 10 || a > 120) return '年龄需在 10-120 岁之间';
                         return null;
                       },
                     ),
@@ -201,7 +207,9 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                       enableSuggestions: false,
                       validator: (v) {
                         if (v == null || v.isEmpty) return null; // 可选字段
-                        if (double.tryParse(v) == null) return '请输入有效数字';
+                        final bf = double.tryParse(v);
+                        if (bf == null) return '请输入有效数字';
+                        if (bf < 0 || bf > 60) return '体脂率需在 0-60 % 之间';
                         return null;
                       },
                     ),
@@ -276,7 +284,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                     ),
                     if (_goal == 'cut' || _goal == 'bulk') ...[
                       const SizedBox(height: 12),
-                      TextField(
+                      TextFormField(
                         controller: _goalRateCtrl,
                         keyboardType:
                             const TextInputType.numberWithOptions(decimal: true),
@@ -284,6 +292,14 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                           labelText: '目标速率（kg/周）',
                           hintText: '减脂建议 0.3-0.7，增肌建议 0.18-0.45',
                         ),
+                        validator: (v) {
+                          // maintain goal 时不渲染此字段，无需校验
+                          if (v == null || v.isEmpty) return '必填';
+                          final r = double.tryParse(v);
+                          if (r == null) return '请输入有效数字';
+                          if (r < 0.1 || r > 2.0) return '目标速率需在 0.1-2.0 kg/周之间';
+                          return null;
+                        },
                       ),
                     ],
                   ],
@@ -403,7 +419,11 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       final age = int.parse(_ageCtrl.text);
       final bodyFat =
           _bodyFatCtrl.text.isEmpty ? null : double.parse(_bodyFatCtrl.text);
-      final goalRate = double.tryParse(_goalRateCtrl.text) ?? 0;
+      // goalRate：maintain goal 时不渲染字段（_goalRateCtrl.text 可能为旧值），
+      // 直接置 0；cut/bulk 时 Form 已 validate 通过（0.1-2.0），安全 parse
+      final goalRate = (_goal == 'cut' || _goal == 'bulk')
+          ? double.parse(_goalRateCtrl.text)
+          : 0.0;
       // 枚举转换：String → Gender/Goal
       final genderEnum =
           _gender == 'male' ? Gender.male : Gender.female;

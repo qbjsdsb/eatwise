@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../core/config/app_config.dart';
+import '../../core/util/refresh_bus.dart';
 import '../../core/widgets/m3_widgets.dart';
 import '../../data/backup/json_exporter.dart';
 import '../../data/backup/json_importer.dart';
@@ -182,6 +184,18 @@ class _BackupPageState extends ConsumerState<BackupPage> {
       final importer = JsonImporter(db);
       final stats = await importer.importFromString(jsonStr);
       if (!mounted) return;
+      // 导入成功后失效 provider 缓存：dashboard / today_meals / insight / weight
+      // 等页面用 ref.read(...future) 拿到的还是旧 db 实例对应的 repo，不 invalidate
+      // 的话用户返回其它页面会看到旧数据以为导入失败。
+      // appConfigProvider 不带 recognize. 前缀（来自 core/config），其余三个在
+      // recognize.providers 中。
+      ref.invalidate(appConfigProvider);
+      ref.invalidate(recognize.mealLogRepoProvider);
+      ref.invalidate(recognize.weightLogRepoProvider);
+      ref.invalidate(recognize.profileRepoProvider);
+      // 部分 tab 页用 RefreshBus（ChangeNotifier）而非 Riverpod 监听刷新，
+      // invalidate 触发不到它们，需额外 notify 一次。
+      RefreshBus.instance.notify();
       showAppToast(
           context,
           '导入成功：${stats.profiles}档案 + ${stats.foodItems}食物 + ${stats.mealLogs}餐次 + ${stats.weightLogs}体重 + ${stats.insights}汇总 + ${stats.feedbacks}反馈${stats.imageCheckResult.totalMissing > 0 ? '\n注意：${stats.imageCheckResult.totalMissing} 张图片未迁移（原图未保留）' : ''}',

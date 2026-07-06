@@ -485,66 +485,81 @@ class WeightPageState extends ConsumerState<WeightPage> {
     try {
       final result = await showDialog<_WeightEditResult>(
         context: context,
-        builder: (ctx) => StatefulBuilder(
-          builder: (ctx, setDialogState) => AlertDialog(
-            title: const Text('编辑体重'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: weightCtrl,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(labelText: '体重 (kg)'),
+        builder: (ctx) {
+          // dialog 内部局部创建 formKey，避免 state 持久化问题
+          final formKey = GlobalKey<FormState>();
+          return StatefulBuilder(
+            builder: (ctx, setDialogState) => AlertDialog(
+              title: const Text('编辑体重'),
+              content: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: weightCtrl,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(labelText: '体重 (kg)'),
+                      validator: (value) {
+                        final v = double.tryParse(value?.trim() ?? '');
+                        if (v == null || v <= 0 || v > 500) {
+                          return '请输入 0-500 之间的数字';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    // 日期选择器：点击行触发 DatePicker
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading:
+                          const ExcludeSemantics(
+                              child: Icon(Icons.calendar_today_outlined)),
+                      title: Text(formatYmd(selectedDate)),
+                      trailing:
+                          const ExcludeSemantics(child: Icon(Icons.chevron_right)),
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: ctx,
+                          initialDate: selectedDate,
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime.now(),
+                        );
+                        if (picked != null) {
+                          setDialogState(() => selectedDate = picked);
+                        }
+                      },
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                // 日期选择器：点击行触发 DatePicker
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading:
-                      const ExcludeSemantics(
-                          child: Icon(Icons.calendar_today_outlined)),
-                  title: Text(formatYmd(selectedDate)),
-                  trailing:
-                      const ExcludeSemantics(child: Icon(Icons.chevron_right)),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: ctx,
-                      initialDate: selectedDate,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime.now(),
+              ),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text('取消')),
+                FilledButton(
+                  onPressed: () {
+                    // 校验失败不关闭 dialog，TextFormField 显示 errorText
+                    if (!(formKey.currentState?.validate() ?? false)) return;
+                    final w = double.tryParse(weightCtrl.text.trim());
+                    Navigator.pop(
+                      ctx,
+                      _WeightEditResult(
+                        weightKg: w,
+                        date: formatYmd(selectedDate),
+                      ),
                     );
-                    if (picked != null) {
-                      setDialogState(() => selectedDate = picked);
-                    }
                   },
+                  child: const Text('保存'),
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('取消')),
-              FilledButton(
-                onPressed: () {
-                  final w = double.tryParse(weightCtrl.text.trim());
-                  Navigator.pop(
-                    ctx,
-                    _WeightEditResult(
-                      weightKg: w,
-                      date: formatYmd(selectedDate),
-                    ),
-                  );
-                },
-                child: const Text('保存'),
-              ),
-            ],
-          ),
-        ),
+          );
+        },
       );
-      if (result == null || result.weightKg == null || result.weightKg! <= 0) {
-        return;
-      }
+      // dialog 内已校验，调用方信任返回值；仅处理用户点取消（result == null）
+      if (result == null) return;
       if (!mounted) return;
       // 仅在值或日期变化时写库（避免无意义 IO）
       if (result.weightKg == log.weightKg && result.date == log.date) return;
