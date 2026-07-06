@@ -4,6 +4,32 @@
 
 ## [Unreleased]
 
+## [v0.27.0] - 2026-07-07
+
+### P0 修复：AI 推理热量与显示值不一致（5 处根因，2 个 commit）
+
+用户报告"AI 推理出来的热量和最后显示的不一样"+ 复合菜显示组分明细繁琐 + "库里面没有"文案误导。OCR 数据反推 + API 实测（GLM-4V + Qwen-VL）定位 5 处根因。
+
+#### Commit e6d1478：单品 + 复合菜热量计算修复
+- **单品路径历史中位数预填**：calibration_page initState 用 `mid` 不用历史中位数 → 初始 actualCalories = AI 推理值（480×350/350=480，不再 480×278/350=381）
+- **复合菜 totalG 缩放**：AI 优先分支 servingG 用 `mid` 不用 `totalG` → actualCalories = AI 推理值（不再按组分之和缩放）
+
+#### Commit 16c5910：包装覆盖 + UI + 文案修复
+- **_aiFallbackNutrition 包装食品路径覆盖 AI 原始估算**：recognize_controller.dart 删除 `actualCal = per100.$1 * mid / 100` 覆盖 → actualCal 始终用 `r.estimatedCalories`（AI 原值），保证 reasoning 文本热量 = aiFallback.calories = 显示值 = 写库值
+- **复合菜组分滑块繁琐**：calibration_page._buildCompositeControls 隐藏组分份量滑块 + "待确认组分（未在食物库找到）"列表，只保留用油量滑块（总热量固定用 AI 值，组分滑块不影响总热量）
+- **"AI 估算（库未命中）"文案误导**：_sourceBadge 改为"AI 估算"
+
+### API 实测验证
+- 两个 token（GLM 智谱 + Qwen 阿里通义）均有效（HTTP 200）
+- GLM-4V 倾向返回 `is_single_item=false`（触发复合菜路径，修复后隐藏组分滑块）
+- Qwen-VL 倾向返回 `is_single_item=true`（单品路径）
+- 两个 provider 都返回 estimated_calories + reasoning，格式正常
+
+### 验证
+- `flutter analyze`：No issues found
+- `flutter test`：1136 passed / 3 skipped / 0 failed（0 回归）
+- 6+1 硬约束满足 / v2 契约 4 断言满足
+
 ## [v0.26.0] - 2026-07-07
 
 ### M26 第二轮 Web Interface Guidelines 深度审查 P1 修复（45 条，5 个 commit）
