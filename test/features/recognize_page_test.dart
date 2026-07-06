@@ -100,12 +100,17 @@ void main() {
   // M16.8 Task 4：查库命中分支接入差异检测——AI 与库 per100g 偏差 > 50% 时
   // 用 AI 反算 per100g 写库 + 用 AI 估算值记 meal_log；偏差 ≤ 50% 用库值不更新库。
   // 修复根因 A：查库命中分支原完全忽略 AI 估算致与 reasoning 脱节。
+  // v2 改动 E：writeCalibratedMealLog 不再重算 actualXxx，用 onConfirm 传入值
+  // （CalibrationPage 已用 _applyUserOverrides 算好——AI 值或用户编辑值）。
+  // 库 per100g 仍由 CalibratedNutritionCalculator 算（保持库一致性）。
   test(
-      'M16.8: 查库命中 + AI 偏差大时 actualCalories 用 AI 估算 + 更新库 per100g',
+      'v2: 查库命中 + AI 偏差大时 actualCalories 用 onConfirm 传入值 + 更新库 per100g',
       () async {
     // 库有"番茄炒蛋" per100g=80（脏数据）
     // AI 估 200g/250kcal（库值 160 vs AI 250，偏差 56% > 50%）
-    // 期望：meal_log.actualCalories=250，food_item.caloriesPer100g 更新为 125
+    // v2 改动 E：CalibrationPage 传 AI 值 250（_applyUserOverrides 后），
+    // writeCalibratedMealLog 不重算，actualCalories=250（onConfirm 传入值）
+    // 库 per100g 仍由 CalibratedNutritionCalculator 算 → 更新为 125
     await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
           name: '番茄炒蛋',
           defaultServingG: 100,
@@ -161,17 +166,18 @@ void main() {
       compositeNutrition: null,
       mealType: 'lunch',
       servingG: 200,
-      // onConfirm 传入值（CalibrationPage 按库值 × ratio 算），偏差大时应被覆盖
-      calories: 160,
-      protein: 6,
-      fat: 10,
-      carbs: 12,
+      // v2 改动 E：CalibrationPage 传 AI 值 250（_applyUserOverrides 后），
+      // writeCalibratedMealLog 不重算，直接用此值
+      calories: 250,
+      protein: 10,
+      fat: 15,
+      carbs: 20,
       componentsSnapshot: null,
       imagePath: null,
     );
 
     expect(actualCalories, closeTo(250, 0.5),
-        reason: '查库命中 + AI 偏差大时用 AI 估算值（250），不用 onConfirm 库值（160）');
+        reason: 'v2 改动 E：actualCalories 用 onConfirm 传入值（250）');
 
     // food_item.per100g 应被更新为 AI 反算值 125（= 250 * 100 / 200）
     final foods = await db.foodItems.select().get();
@@ -179,16 +185,17 @@ void main() {
     expect(foods.first.caloriesPer100g, closeTo(125, 0.5),
         reason: '库 per100g 应被 AI 反算值（125）更新纠正脏库');
 
-    // meal_log 应记 250（与 reasoning 一致）
+    // meal_log 应记 250（与 onConfirm 传入值一致）
     final meals = await db.mealLogs.select().get();
     expect(meals.length, 1);
     expect(meals.first.actualCalories, closeTo(250, 0.5),
-        reason: 'meal_log.actualCalories 应为 AI 估算值');
+        reason: 'meal_log.actualCalories 应为 onConfirm 传入值');
   });
 
-  test('M16.9: 查库命中 + AI 偏差小时 actualCalories 用 AI 估算（AI 绝对优先）', () async {
+  test('v2: 查库命中 + AI 偏差小时 actualCalories 用 onConfirm 传入值（AI 绝对优先）', () async {
     // 库 per100g=80, AI 估 200g/170kcal（库值 160 vs AI 170，偏差 6%）
-    // M16.9：AI 绝对优先，偏差小也用 AI 估算 + 更新库 per100g 为 AI 反算值（85）
+    // v2 改动 E：CalibrationPage 传 AI 值 170，writeCalibratedMealLog 不重算
+    // 库 per100g 仍由 CalibratedNutritionCalculator 算 → 更新为 85
     await db.into(db.foodItems).insert(FoodItemsCompanion.insert(
           name: '番茄炒蛋',
           defaultServingG: 100,
@@ -244,23 +251,24 @@ void main() {
       compositeNutrition: null,
       mealType: 'lunch',
       servingG: 200,
-      calories: 160, // onConfirm 传库值（M16.9 会被 AI 值覆盖）
-      protein: 6,
+      // v2 改动 E：CalibrationPage 传 AI 值 170（_applyUserOverrides 后）
+      calories: 170,
+      protein: 7,
       fat: 10,
-      carbs: 12,
+      carbs: 13,
       componentsSnapshot: null,
       imagePath: null,
     );
 
     expect(actualCalories, closeTo(170, 0.5),
-        reason: 'M16.9 AI 绝对优先：偏差小也用 AI 估算值（170）');
+        reason: 'v2 改动 E：actualCalories 用 onConfirm 传入值（170）');
 
     // food_item.per100g 应被更新为 AI 反算值 85（= 170 * 100 / 200）
     final foods = await db.foodItems.select().get();
     expect(foods.first.caloriesPer100g, closeTo(85, 0.5),
-        reason: 'M16.9 库 per100g 应被 AI 反算值（85）更新');
+        reason: '库 per100g 应被 AI 反算值（85）更新');
 
-    // meal_log 应记 170（与 reasoning 一致）
+    // meal_log 应记 170（与 onConfirm 传入值一致）
     final meals = await db.mealLogs.select().get();
     expect(meals.first.actualCalories, closeTo(170, 0.5));
   });

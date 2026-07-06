@@ -64,9 +64,12 @@ class RecognizePage extends ConsumerStatefulWidget {
     // 必须有有效 food_item_id（meal_log.food_item_id 是非空 FK，
     // Task 2 已启用 PRAGMA foreign_keys = ON，id=0 会触发外键约束违规）
     int foodItemId;
-    // M16.6：actualXxx 默认用 onConfirm 传入值（查库命中 / 复合菜路径已基于 DB per100g，无脱节）；
-    // AI 兜底哨兵路径（foodItemId=0）下用 CalibratedNutritionCalculator 重算，
-    // 保证 meal_log.actualCalories 与 food_item.caloriesPer100g 同源
+    // v2 改动 E：actualXxx 始终用 onConfirm 传入值（calibration_page 已用
+    // _applyUserOverrides 算好——用户手动编辑优先，否则 AI 估算值）。
+    // 不再重算覆盖，确保"显示值 = 记录值 + 用户手动兜底生效"。
+    // per100g 仍由 CalibratedNutritionCalculator 算（用于 upsertAiRecognized /
+    // updatePer100g 保持库数据一致性），但 actualXxx 是独立维度（用户编辑
+    // 是一次性校准，不反向污染库——下次识别同食物仍用 AI 估算）。
     double actualCalories = calories;
     double actualProteinG = protein;
     double actualFatG = fat;
@@ -75,10 +78,9 @@ class RecognizePage extends ConsumerStatefulWidget {
       final n = singleNutrition;
       if (n.foodItemId == 0) {
         // v1.4：单品库未命中，AI 估算兜底 → 创建 ai_recognized food_item
-        // M16.6 Task 3：用 CalibratedNutritionCalculator 统一计算 per100g + actualXxx，
-        // 保证 meal_log.actualCalories 与 food_item.caloriesPer100g 数据一致
-        // （之前 meal_log 直接用 onConfirm 传入的未校准 calories，与 food_item 脱节）
-        // per100g 基于 mid 反算（硬约束 #4），actualXxx = per100g * servingG / 100
+        // M16.6 Task 3：用 CalibratedNutritionCalculator 统一计算 per100g，
+        // 保证 food_item.caloriesPer100g 与 meal_log.actualCalories 数据一致
+        // per100g 基于 mid 反算（硬约束 #4）
         // CalibratedNutritionCalculator 内部已处理包装 OCR 优先级 + 品类校准，
         // 与 offline_queue_controller 三路径行为一致
         final calibrated = CalibratedNutritionCalculator.compute(
@@ -109,11 +111,8 @@ class RecognizePage extends ConsumerStatefulWidget {
           carbsPer100g: calibrated.carbsPer100g,
           confidence: result.confidence,
         );
-        // M16.6：actualXxx 用校准后 per100g * servingG / 100（与 food_item 同源）
-        actualCalories = calibrated.actualCalories;
-        actualProteinG = calibrated.actualProteinG;
-        actualFatG = calibrated.actualFatG;
-        actualCarbsG = calibrated.actualCarbsG;
+        // v2 改动 E：actualXxx 用 onConfirm 传入值（calibration_page 已算好，
+        // 含用户手动编辑覆盖），不再用 calibrated.actualXxx 重算覆盖
       } else {
         foodItemId = n.foodItemId;
         // M16.8 Task 4：查库命中 + 有 AI 兜底估算 → 差异检测决定信任 AI 还是库
@@ -121,6 +120,7 @@ class RecognizePage extends ConsumerStatefulWidget {
         // （修复 reasoning 显示 AI 估算但记录用库值致脱节）
         // 偏差 ≤ 50% 用库值（actualXxx 保持 onConfirm 传入值，已基于 DB per100g）
         // 未传 aiFallbackNutrition 时保持原行为（向后兼容）
+        // v2 改动 E：actualXxx 用 onConfirm 传入值（含用户编辑覆盖），不重算覆盖
         if (aiFallbackNutrition != null) {
           final calibrated = CalibratedNutritionCalculator.compute(
             recognitionResult: result,
@@ -128,11 +128,7 @@ class RecognizePage extends ConsumerStatefulWidget {
             servingG: servingG,
             lookupHitNutrition: n,
           );
-          actualCalories = calibrated.actualCalories;
-          actualProteinG = calibrated.actualProteinG;
-          actualFatG = calibrated.actualFatG;
-          actualCarbsG = calibrated.actualCarbsG;
-          // 偏差大时用 AI 反算 per100g 纠正脏库
+          // 偏差大时用 AI 反算 per100g 纠正脏库（actualXxx 仍用传入值）
           if (calibrated.shouldUpdateFoodItem) {
             await foodRepo.updatePer100g(
               foodItemId: calibrated.foodItemId,

@@ -36,6 +36,27 @@
 
 **最后更新**：2026-07-06
 
+**v2 重构拍照识别完成（2026-07-06，未发版）—— AI 绝对优先 + warnings 提示 + 用户手动兜底**：用户报告"AI 推理和最后显示的内容不一样"，要求"基本全部采用 AI 的判断，库作为最后最后的保底"+"兜底也用 AI，进行严谨的验证，但是最后用户可以手动修改"。重构 6 个改动（A-F）+ 端到端验证修复 3 个问题 + 全量回归（G）。
+
+核心架构（v2 后）：`Vision API → RecognitionPostProcessor.process（密度换算 + warnings 检测，不修改 AI 值）→ CalibratedNutritionCalculator.compute（AI 反算 per100g，库值不覆盖）→ calibration_page UI（warnings 横幅 + 4 个营养数值可点击弹编辑对话框，用户最终兜底）→ writeCalibratedMealLog（哨兵替换 + 写 meal_log，actualXxx 用 onConfirm 传入值不重算）`
+
+6 个改动：
+- **A** validator：删除 Atwater 修正 + 宏量反推；新增 5 项物理约束 `warnings`（检测不修改值）
+- **B** calculator：删除 AI 离谱兜底（库值不再覆盖 AI），AI 始终绝对优先
+- **C** PostProcessor + VisionRecognitionResult：删除 correctedXxx 回写；新增 `warnings` 字段（transient 不参与 JSON）+ copyWith 透传
+- **D** calibration_page：复合菜预览/记录走 `computeCompositeLookupHit` AI 优先（与 multi_dish_page 一致）
+- **E** calibration_page：新增 warnings 横幅 + 4 个营养数值可点击弹编辑对话框（cal/蛋白/脂肪/碳水 都可点击，_userOverrides 覆盖 AI 估算）
+- **F** food_category_defaults：删除 `defaults` 表 + 4 个 getter（lib 层无引用），保留 `calibrate` 物理 clamp
+
+端到端验证发现并修复 3 个问题：
+- **问题 1（严重）**：writeCalibratedMealLog 单品路径用 CalibratedNutritionCalculator 重算 actualXxx 覆盖用户编辑值 → 删除重算，actualXxx 用 onConfirm 传入值（calibration_page 已用 _applyUserOverrides 算好）。per100g 仍由 calculator 算（保持库一致性）
+- **问题 2（UI 缺失）**：multi_dish_page dish_card 不显示 warnings → 新增 _buildWarningsBanner（与 calibration_page 风格一致）
+- **问题 3（潜在 bug）**：calibration_page _handleRename 改菜名后未清空 _userOverrides → 命中后 `_userOverrides.clear()`
+
+最终验证：flutter analyze No issues / flutter test 1086 passed / 3 skipped / 0 failed（github_release_smoke 这次也过）/ 6+1 硬约束满足（未碰 build.gradle / meal_log 外键 / AI 三路径 / per100g 反算基于 mid / SecureConfigStore / initSentryAndRunApp / minSdk=31）/ 0 回归。**未打 tag 未发版**（用户明确指令"先 push，不要打 tag 发布"），spec 见 `/workspace/.trae/documents/重构拍照识别_AI绝对优先_用户手动兜底.md`。
+
+新增测试 21 个：`recognition_validator_v2_test.dart` (10) + `calibrated_nutrition_calculator_v2_test.dart` (5) + `calibration_page_manual_edit_test.dart` (6)。改写旧测试 8 个用例匹配 v2 行为。
+
 **v0.25.0+37 已发布（2026-07-06）—— 两个 UX 功能增强 + 两个 UX Bug 修复**：用户报告"首页摄入热量超过推荐值时'今日还可摄入'依旧显示剩余值（负数），用户误以为还没超过" + "周月总结维度不够全面"，决策"全面改"+"全面扩充"+"分问题双 commit"。Web Interface Guidelines 复审通过。bump 0.24.0+36 → 0.25.0+37，tag v0.25.0。同时改进 `.github/workflows/release.yml`：新增 `Extract changelog for this version` step（用 python 正则从 CHANGELOG.md 提取本版本段）+ `Force update release body` step（用 GITHUB_TOKEN + curl PATCH /releases/{id} 强制写入 changelog + 安装说明 body，解决 action-gh-release 在 release 已存在时不更新 body 的问题；用 python heredoc 避免反引号被 shell 吃）。GitHub Release v0.25.0 已发布含 app-release.apk（87.6 MB）+ app-debug.apk（180.9 MB），body 含完整 v0.25.0 changelog + 安装说明 + 闪退排查 + 签名说明 + 版本信息 + 完整 changelog 链接。
 
 **两个 UX 功能增强完成（2026-07-06，已发版 v0.25.0）—— 方案 A 双 commit**：用户报告两个问题：(1) 首页摄入热量超过推荐值时"今日还可摄入"依旧显示剩余值（负数），用户误以为还没超过；(2) 周月总结维度不够全面，只有热量折线图 + 体重折线图 + AI 文本，缺少餐次分布/三宏达成率/偏好食物/连续记录/体重变化等关键信息。用户决策"全面改（推荐）"+"全面扩充（推荐）"+"分问题双 commit（推荐）"。

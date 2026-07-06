@@ -829,9 +829,12 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
       if (result.newName == null) return;
       // 命中：替换菜名 + 营养，标记 dirty（PopScope 未保存确认）
       if (result.nutrition != null) {
+        // v2 改动 E：清空用户手动编辑覆盖——新菜营养与旧编辑值无关，
+        // 保留旧 _userOverrides 会导致显示旧编辑值（与新菜 per100g 不匹配）
         setState(() {
           _currentDishName = result.newName!;
           _currentNutrition = result.nutrition;
+          _userOverrides.clear();
           _dirty = true;
         });
         if (mounted) {

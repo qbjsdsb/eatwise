@@ -146,6 +146,12 @@ class DishCard extends StatelessWidget {
                       color: Theme.of(context)
                           .colorScheme
                           .onSurfaceVariant)),
+              // v2 改动 E：物理约束 warnings 提示（与 calibration_page 风格一致）
+              // validator 检测的异常不修改值，只提示用户核对
+              if (dish.warnings.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                _buildWarningsBanner(context),
+              ],
               // M18 Task2: AI 估算卡片（置信度 + 来源徽章 + AI vs 库值对比 + reasoning）
               // 与 calibration_page 风格一致，让用户验证 AI 精度
               const SizedBox(height: 8),
@@ -207,6 +213,49 @@ class DishCard extends StatelessWidget {
                   color: Theme.of(context)
                       .colorScheme
                       .onSurfaceVariant)),
+        ],
+      ),
+    );
+  }
+
+  /// v2 改动 E：物理约束警告横幅（与 calibration_page._buildWarningsBanner 风格一致）
+  /// validator 检测的物理约束（Atwater 偏差/密度异常/宏量缺失/宏量超限）不修改值，
+  /// 只提示用户核对。多菜路径无手动编辑入口，提示用户去校准页或其他路径处理。
+  Widget _buildWarningsBanner(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: cs.tertiaryContainer.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: cs.onTertiaryContainer.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ExcludeSemantics(
+            child: Icon(Icons.warning_amber_rounded,
+                size: 16, color: cs.onTertiaryContainer),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final w in dish.warnings)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 1),
+                    child: Text(w,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: cs.onTertiaryContainer,
+                        )),
+                  ),
+              ],
+            ),
+          ),
         ],
       ),
     );
