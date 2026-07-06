@@ -37,3 +37,19 @@ const kThemePresets = <(int, String)>[
   (0xFFF57C00, '琥珀'),
   (0xFF5D4037, '棕'),
 ];
+
+/// 是否跟随系统壁纸取色（Material You，Android 12+）。
+/// 开启时优先用系统动态色，关闭或不可用时 fallback 到 themeSeedProvider。
+/// 默认关闭（保守，不改变现有用户体验）。
+class UseDynamicColorNotifier extends Notifier<bool> {
+  @override
+  bool build() => false; // 默认关闭
+
+  void set(bool value) {
+    state = value;
+  }
+}
+
+final useDynamicColorProvider = NotifierProvider<UseDynamicColorNotifier, bool>(
+  UseDynamicColorNotifier.new,
+);
