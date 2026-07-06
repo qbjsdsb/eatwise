@@ -36,6 +36,8 @@
 
 **最后更新**：2026-07-06
 
+**v0.23.0+35 已发布（2026-07-06）—— M25 方案 D + GitHub 主页同步**：用户报告"AI 推理米粉汤 526 kcal 但页面显示 171 kcal"。根因：`FoodCategoryDefaults.calibrate` 用"品类均值（soup=30）"覆盖"AI 具体估算（per100g=92.3，比值 3.08>2 触发校准）"，且 calories 用默认值、宏量保留 AI 值，破坏 Atwater 自洽（4×16+9×13+4×75=481 ≠ 171）。方案 D 废弃品类校准，4 项全保留 AI 估算值，只做物理 clamp [0,900] + 宏量 [0,100]；酒精饮料（beer/wine/alcohol）豁免 Atwater 校验（酒精 7kcal/g 不在 4p+9f+4c 系数内）。同时清理历史啤酒补丁（雪花啤酒被识别成雪碧的 workaround，AI 识别精准后无意义）。bump 0.22.0+34 → 0.23.0+35，tag v0.23.0。
+
 **M25 方案 D 完成（2026-07-06）—— 废弃品类校准 + 酒精豁免 Atwater（米粉汤 bug 修复）**：用户报告"AI 推理米粉汤 526 kcal 但页面显示 171 kcal"。根因：`FoodCategoryDefaults.calibrate` 用"品类均值（soup=30）"覆盖"AI 具体估算（per100g=92.3，比值 3.08>2 触发校准）"，且 calories 用默认值、宏量保留 AI 值，破坏 Atwater 自洽（4×16+9×13+4×75=481 ≠ 171）。方案 D 废弃品类校准，4 项全保留 AI 估算值，只做物理 clamp [0,900] + 宏量 [0,100]；酒精饮料（beer/wine/alcohol）豁免 Atwater 校验（酒精 7kcal/g 不在 4p+9f+4c 系数内）。同时清理历史啤酒补丁（雪花啤酒被识别成雪碧的 workaround，AI 识别精准后无意义）。
 
 修复清单：
@@ -81,9 +83,9 @@ C1 验证（反复检查后发现并修复 1 处遗漏）：recognize_page L224 
 - 文件行数全部达标：multi_dish_page 542 < 600 / dashboard_page 304 < 600 / `_pickAndRecognize` 26 < 50 / `processPending` 29 < 80
 - 哨兵检查数零回归：`foodItemId == 0` 检查 M24 前后总数 3 = 3（recognize_page 1 + multi_dish_page 主文件 1 + multi_dish/ai_estimate_card 1，最后 1 处在 B4 拆分时移到子文件）
 
-**工作区状态**：v0.22.0+34 已发布（M24 全部 13 项 P1 清零完成 + commit + push + tag）。M22 已 push + tag v0.21.0（commit 13701c5）；M23 全面细致审查完成（4 维度报告 67 项发现）；**M24 P1 清零已 commit d5b7483 + push origin/trae/agent-wX1X6Q + tag v0.22.0（详见上方"M24 全部完成"段；用户指令"好的，按照建议来，严谨仔细，反复检查"；1032 全量测试通过 + 22 新测试 + analyze No issues + 6 硬约束全部满足 + 0 回归）**。远端 main 已 force push 覆盖旧 v0.8.0 线为 v0.20.x 主线（M20 期间执行）。v0.18.x 及之前版本历史见 git log + tag 列表。
+**工作区状态**：v0.23.0+35 已发布（M25 方案 D 米粉汤 bug 修复 + GitHub 主页同步完成 + commit + push + tag v0.23.0）。M22 已 push + tag v0.21.0（commit 13701c5）；M23 全面细致审查完成（4 维度报告 67 项发现）；M24 P1 清零已 commit d5b7483 + push + tag v0.22.0；**M25 方案 D 已 commit bf26aa4 + push origin/trae/agent-wX1X6Q + tag v0.23.0（详见上方"v0.23.0+35 已发布"段；1038 全量测试通过 + 13 新测试 + analyze No issues + 6 硬约束全部满足 + 0 回归）**。远端 main 已 force push 覆盖旧 v0.8.0 线为 v0.20.x 主线（M20 期间执行）。v0.18.x 及之前版本历史见 git log + tag 列表。
 
-**当前分支**：trae/agent-wX1X6Q（本地 HEAD = M25 docs commit；远端 origin/trae/agent-wX1X6Q HEAD = M25 docs commit；origin/main HEAD = e7effb4（已合并 M24 + M25 spec/plan，ff 合并）；tag v0.21.0 → 13701c5，tag v0.22.0 → d5b7483；**M24 已合并到 main + Release v0.22.0 notes 待 PATCH 补 M24 changelog；M25 GitHub 主页同步完善进行中**）
+**当前分支**：trae/agent-wX1X6Q（本地 HEAD = bf26aa4；远端 origin/trae/agent-wX1X6Q HEAD = bf26aa4；origin/main HEAD 待 ff 合并到 bf26aa4；tag v0.21.0 → 13701c5，tag v0.22.0 → d5b7483，tag v0.23.0 → bf26aa4）
 
 **待用户执行的收尾项**（沙箱无法完成）：
 1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）

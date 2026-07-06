@@ -5,7 +5,23 @@
 ## [Unreleased]
 
 - M25 图标设计精修（进行中）
-- M25 GitHub 仓库主页同步完善
+
+## [v0.23.0] - 2026-07-06
+
+### M25 方案 D：废弃品类校准 + 酒精豁免 Atwater（米粉汤 bug 修复）
+- **根因**：`FoodCategoryDefaults.calibrate` 用"品类均值（soup=30）"覆盖"AI 具体估算（per100g=92.3，比值 3.08>2 触发校准）"，calories 用默认值、宏量保留 AI 值，破坏 Atwater 自洽（4×16+9×13+4×75=481 ≠ 171）
+- **修复**：废弃品类校准，4 项全保留 AI 估算值，只做物理 clamp [0,900] + 宏量 [0,100]；酒精饮料（beer/wine/alcohol）豁免 Atwater 校验（酒精 7kcal/g 不在 4p+9f+4c 系数内）
+- **清理**：删除历史啤酒补丁（雪花啤酒被识别成雪碧的 workaround，AI 识别精准后无意义）
+- **影响场景**：米粉汤/奶油汤/八宝粥等高变异品类不再被误伤；啤酒/葡萄酒/烈酒保留酒精热量
+- **验证**：flutter analyze No issues / flutter test 1038 passed（基线 1032 → +6）/ 6 硬约束满足 / 0 回归
+- **修复效果**：米粉汤 AI 推理 526 kcal + 16/13/75 → 显示 526 kcal + 16/13/75（Atwater 自洽，偏差 9%）
+
+### M25：GitHub 仓库主页同步完善
+- README 重写（87 → 178 行产品级，14 章节 + 6 badges + 功能矩阵 + 技术栈 + 6 硬约束）
+- 创建 CHANGELOG.md（Keep a Changelog 格式，16 个版本段）
+- 验证 LICENSE（MIT）
+- PATCH Release v0.22.0 notes 补 M24 changelog 段
+- main 合并 + 同步
 
 ## [v0.22.0] - 2026-07-05
 
