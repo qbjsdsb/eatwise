@@ -52,8 +52,6 @@ class CalibrationPage extends StatefulWidget {
 class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<CalibrationPage> {
   late double _servingG;
   late bool _canSkipCalibration;
-  // 是否用了历史中位数作初值（UI 提示用）
-  late bool _usedHistoryServing;
   // 复合菜校准状态
   final Map<int, double> _componentServings = {}; // 组分索引 → 份量 g
   double _oilG = 0; // 用油量 g
@@ -113,25 +111,18 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
     super.initState();
     _quantity = widget.recognitionResult.quantity;
     _perUnitG = widget.recognitionResult.perUnitG;
-    final isMulti = widget.recognitionResult.isMultiQuantity;
-    // 智能份量校准：单品路径优先用历史中位数，无历史回退 AI 估算 mid
-    // 历史中位数需 >0（0 通常是数据质量问题）且 clamp 到滑块范围 [_sliderMax] 防崩溃
-    // 多份场景不用历史中位数（历史记录可能是单份的，会与 quantity 冲突），用 AI mid
-    final suggested = widget.suggestedServingG;
-    if (!isMulti &&
-        widget.singleNutrition != null &&
-        suggested != null &&
-        suggested > 0) {
-      _servingG = suggested.clamp(1.0, _sliderMax);
-      _usedHistoryServing = true;
-      // M1：历史中位数与步进器保持一致（perUnitG>0 时反推 quantity）
-      if (_perUnitG > 0) {
-        final q = (_servingG / _perUnitG).round();
-        if (q >= 1 && q <= 20) _quantity = q;
-      }
-    } else {
-      _servingG = widget.recognitionResult.estimatedWeightGMid.clamp(0.0, _sliderMax);
-      _usedHistoryServing = false;
+    // v2.1 修复：单品路径初始用 AI 估算 mid，不再用历史中位数预填
+    // 原因：历史中位数预填导致 initial servingG ≠ mid，actualCalories 按比例缩放后
+    // 偏离 AI 推理值（如 AI 推理 480 kcal/mid=350g，历史预填 278g → 显示 381 kcal），
+    // 用户感知"AI 推理值被静默修改"。改用 mid 后 initial actualCalories = AI 推理值，
+    // 用户拖滑块调整份量时才按比例缩放。
+    // 多份场景同样用 mid（与原逻辑一致）。
+    // suggestedServingG 参数保留（构造函数兼容），但 initState 不再读它。
+    _servingG = widget.recognitionResult.estimatedWeightGMid.clamp(0.0, _sliderMax);
+    // perUnitG>0 时反推 quantity（保持步进器与份量一致）
+    if (_perUnitG > 0) {
+      final q = (_servingG / _perUnitG).round();
+      if (q >= 1 && q <= 20) _quantity = q;
     }
     _canSkipCalibration =
         widget.recognitionResult.confidence >= 0.85 && widget.recognitionResult.isSingleItem;
@@ -366,18 +357,6 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
                               fontFeatures: [
                                 FontFeature.tabularFigures()
                               ])),
-                      if (_usedHistoryServing)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text(
-                            '📊 已按你历史记录的中位数预填份量',
-                            style: TextStyle(
-                                fontSize: 12,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .primary),
-                          ),
-                        ),
                       Slider(
                         value: _servingG,
                         min: 0,
@@ -387,7 +366,6 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
                         onChanged: (v) {
                           setState(() {
                             _servingG = v;
-                            _usedHistoryServing = false; // 用户手动调整后不再提示
                             // v1.3：拖滑块反推数量（perUnitG > 0 时，保持数量与份量一致）
                             if (_perUnitG > 0) {
                               final q = (v / _perUnitG).round();
@@ -558,28 +536,28 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
         );
         return _nutritionCard(cal, protein, fat, carbs);
       } else if (widget.aiFallbackNutrition != null) {
-        // AI 优先：与 multi_dish_page / _confirmWithServing 一致
-        // 避免"校准页用组分累加 + 多菜页用 AI 优先"导致数值不一致
+        // v2.1 修复：AI 优先分支 servingG 用 mid 而非 totalG
+        // 原因：totalG（组分之和）通常 ≠ mid（AI 整菜估算），按 totalG 缩放会偏离 AI 推理值
+        // 改用 mid 后 actualCalories = aiFallback.calories × mid / mid = aiFallback.calories
+        // 组分滑块只调整组分明细展示，不影响总热量（用户可点击营养值手动编辑）
         final calibrated =
             CalibratedNutritionCalculator.computeCompositeLookupHit(
           aiFallback: widget.aiFallbackNutrition!,
-          servingG: totalG,
+          servingG: widget.recognitionResult.estimatedWeightGMid,
           mid: widget.recognitionResult.estimatedWeightGMid,
         );
         if (calibrated != null) {
-          // v2 改动：AI 优先路径也需累加用油量（与组分累加 fallback 一致）
+          // 用油量仍累加（用户拖用油量滑块时热量+脂肪变化）
           final cal =
               calibrated.actualCalories + oilCaloriesPer100g * _oilG / 100;
+          final protein = calibrated.actualProteinG;
           final fat =
               calibrated.actualFatG + oilFatPer100g * _oilG / 100;
+          final carbs = calibrated.actualCarbsG;
           // v2 改动 E：用户手动编辑优先（最终兜底）
-          final (calO, proteinO, fatO, carbsO) = _applyUserOverrides(
-            cal,
-            calibrated.actualProteinG,
-            fat,
-            calibrated.actualCarbsG,
-          );
-          return _nutritionCard(calO, proteinO, fatO, carbsO);
+          final (cal2, protein2, fat2, carbs2) =
+              _applyUserOverrides(cal, protein, fat, carbs);
+          return _nutritionCard(cal2, protein2, fat2, carbs2);
         }
         // calibrated == null (mid<=0 防除零) → 落到组分累加 fallback
       }
@@ -821,14 +799,12 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
     setState(() {
       _quantity = newQ;
       _servingG = (_perUnitG * newQ).clamp(1.0, _sliderMax);
-      _usedHistoryServing = false;
     });
     _markDirty();
   }
 
   void _confirmOneClick() {
-    // 一键记录：用当前滑块值（无历史预填时 _servingG 默认就是 AI mid，行为不变；
-    // 有历史预填时用历史中位数更准，与 UI 显示一致，避免"显示历史值却记录 AI 值"的语义冲突）
+    // 一键记录：用当前滑块值（v2.1 后 _servingG 初值 = AI mid，与 _trustAi 行为一致）
     _confirmWithServing(_servingG);
   }
 
@@ -940,16 +916,15 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
             componentsSnapshot: _buildSnapshotJson(),
           );
         } else if (widget.aiFallbackNutrition != null) {
-          // v2 改动 D：无包装 + aiFallback 非空 → 走 AI 优先（与 multi_dish_page / _buildNutritionPreview 一致）
-          // 保证校准页预览值=记录值=多菜页记录值（用户感知"AI 推理值=记录值"）
+          // v2.1 修复：AI 优先分支 servingG 用 mid（与 _buildNutritionPreview 一致）
+          final mid = widget.recognitionResult.estimatedWeightGMid;
           final calibrated =
               CalibratedNutritionCalculator.computeCompositeLookupHit(
             aiFallback: widget.aiFallbackNutrition!,
-            servingG: totalG,
-            mid: widget.recognitionResult.estimatedWeightGMid,
+            servingG: mid,
+            mid: mid,
           );
           if (calibrated != null) {
-            // v2 改动：AI 优先路径也需累加用油量（与组分累加 fallback 一致）
             final cal =
                 calibrated.actualCalories + oilCaloriesPer100g * _oilG / 100;
             final fat =
@@ -962,7 +937,7 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
               calibrated.actualCarbsG,
             );
             await widget.onConfirm(
-              totalG,
+              mid,
               calO,
               proteinO,
               fatO,
@@ -1263,14 +1238,15 @@ class _CalibrationPageState extends State<CalibrationPage> with DishNameEditor<C
           packagePer100.$4 * totalG / 100,
         );
       } else if (widget.aiFallbackNutrition != null) {
+        // v2.1 修复：AI 优先分支 servingG 用 mid（与 _buildNutritionPreview 一致）
         final calibrated =
             CalibratedNutritionCalculator.computeCompositeLookupHit(
           aiFallback: widget.aiFallbackNutrition!,
-          servingG: totalG,
+          servingG: widget.recognitionResult.estimatedWeightGMid,
           mid: widget.recognitionResult.estimatedWeightGMid,
         );
         if (calibrated != null) {
-          // v2 改动：AI 优先路径也需累加用油量（与组分累加 fallback 一致）
+          // 用油量仍累加（与 _buildNutritionPreview 一致）
           final cal =
               calibrated.actualCalories + oilCaloriesPer100g * _oilG / 100;
           final fat =

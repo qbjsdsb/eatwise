@@ -74,6 +74,8 @@ void main() {
         recognitionResult: r,
         singleNutrition: lookupHit,
         foodItemRepo: foodRepo,
+        // v2.1 修复后 suggestedServingG 不再被 initState 读取（保留参数兼容构造函数），
+        // 滑块初值 = AI 估算 mid = 100，actualCalories = 18 * 100/100 = 18
         suggestedServingG: 200,
         onConfirm: (servingG, calories, protein, fat, carbs,
             {componentsSnapshot}) async {
@@ -87,9 +89,9 @@ void main() {
     await tester.pumpAndSettle();
 
     // 查库命中 + 无 aiFallback：走原 ratio 逻辑
-    // 18 * 200 / 100 = 36
-    expect(capturedCalories, closeTo(36, 0.5),
-        reason: '查库命中 + 无 aiFallback 走原 ratio：18 * 200 / 100 = 36');
+    // v2.1 修复：servingG 初值 = mid = 100 → ratio = 1 → 18 * 1 = 18
+    expect(capturedCalories, closeTo(18, 0.5),
+        reason: '查库命中 + 无 aiFallback 走原 ratio：18 * 100 / 100 = 18');
   });
 
   // M16.8 Task 5：查库命中分支预览与 onConfirm 同步用差异检测。

@@ -78,22 +78,22 @@ void main() {
     source: NutritionSource.aiEstimate,
   );
 
-  // AI 优先路径期望值（totalG=150+30=180, mid=250, oil=stir-fry 默认 12g）：
-  //   actualCalories = 300 * 180/250 = 216；+ 889*12/100 = 106.68 → 322.68
-  //   actualProtein  = 20  * 180/250 = 14.4
-  //   actualFat      = 10  * 180/250 = 7.2；+ 99.9*12/100 = 11.988 → 19.188
-  //   actualCarbs    = 30  * 180/250 = 21.6
+  // AI 优先路径期望值（v2.1 修复后 servingG=mid=250，actualCalories=aiFallback.calories=AI 推理值）：
+  //   actualCalories = 300 * 250/250 = 300；+ 889*12/100 = 106.68 → 406.68
+  //   actualProtein  = 20  * 250/250 = 20
+  //   actualFat      = 10  * 250/250 = 10；+ 99.9*12/100 = 11.988 → 21.988
+  //   actualCarbs    = 30  * 250/250 = 30
   // 组分累加 fallback 期望值（不应出现）：
   //   鸡肉 250.5 + 花生 170.1 + 油 106.68 = 527.28 cal
-  const expectedCal = 322.68;
-  const expectedProtein = 14.4;
-  const expectedFat = 19.188;
-  const expectedCarbs = 21.6;
+  const expectedCal = 406.68;
+  const expectedProtein = 20.0;
+  const expectedFat = 21.988;
+  const expectedCarbs = 30.0;
   const fallbackCal = 527.28;
 
   double readDisplayed(WidgetTester tester, Key key) {
     final w = tester.widget<Text>(find.byKey(key));
-    // 热量文本为 "323"，宏量列文本为 "14 g"（带单位后缀），取首段数字解析
+    // 热量文本为 "407"，宏量列文本为 "20 g"（带单位后缀），取首段数字解析
     return double.parse(w.data!.split(' ').first);
   }
 

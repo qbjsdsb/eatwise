@@ -74,15 +74,15 @@ void main() {
     source: NutritionSource.aiEstimate,
   );
 
-  // AI 优先路径基准值（totalG=180, mid=250, oil=0 时）：
-  //   actualCalories = 300 * 180/250 = 216
-  //   actualProtein  = 20  * 180/250 = 14.4
-  //   actualFat      = 10  * 180/250 = 7.2
-  //   actualCarbs    = 30  * 180/250 = 21.6
-  const calBase = 216.0;
-  const proteinBase = 14.4;
-  const fatBase = 7.2;
-  const carbsBase = 21.6;
+  // AI 优先路径基准值（v2.1 修复后 servingG=mid=250，actualXxx=aiFallback 对应值=AI 推理值）：
+  //   actualCalories = 300 * 250/250 = 300
+  //   actualProtein  = 20  * 250/250 = 20
+  //   actualFat      = 10  * 250/250 = 10
+  //   actualCarbs    = 30  * 250/250 = 30
+  const calBase = 300.0;
+  const proteinBase = 20.0;
+  const fatBase = 10.0;
+  const carbsBase = 30.0;
   // 油 12g：cal += 889*12/100=106.68；fat += 99.9*12/100=11.988
   // 油 30g：cal += 889*30/100=266.7；fat += 99.9*30/100=29.97
   final calAtOil12 = calBase + oilCaloriesPer100g * 12 / 100;
@@ -92,7 +92,7 @@ void main() {
 
   double readDisplayed(WidgetTester tester, Key key) {
     final w = tester.widget<Text>(find.byKey(key));
-    // 热量文本为 "323"，宏量列文本为 "14 g"（带单位后缀），取首段数字解析
+    // 热量文本为 "407"，宏量列文本为 "20 g"（带单位后缀），取首段数字解析
     return double.parse(w.data!.split(' ').first);
   }
 
