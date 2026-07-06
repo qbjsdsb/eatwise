@@ -81,6 +81,16 @@ class SecureConfigStore {
 
   Future<void> setThemeSeed(int argb) => writeRaw(_themeSeed, argb.toString());
 
+  // --- 是否跟随系统壁纸取色（'1'/'0'，默认 false）---
+  static const _useDynamicColor = 'use_dynamic_color';
+
+  /// 读取是否跟随系统壁纸取色（默认 false，与 UseDynamicColorNotifier.build() 一致）
+  Future<bool> getUseDynamicColor() async =>
+      (await readRaw(_useDynamicColor)) == '1';
+
+  Future<void> setUseDynamicColor(bool v) =>
+      writeRaw(_useDynamicColor, v ? '1' : '0');
+
   // --- T48 图片保留期（0=永久保留，默认 30）---
   static const _imageRetentionDays = 'image_retention_days';
 
