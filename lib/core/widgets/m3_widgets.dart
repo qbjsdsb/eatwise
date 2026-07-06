@@ -315,13 +315,19 @@ Future<bool> confirmAction(
 /// 用于成功/失败/提示消息，替代各页散落的
 /// `ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(...)))`。
 /// - [duration]：null 用默认 4s（与 SnackBar 默认一致）
+///
+/// 显示前先 clearSnackBars 清空队列：避免连续操作时旧横幅排队累积导致
+/// "横幅存在非常久"（用户连删多条时 N 个横幅依次显示 N×4s）。
 void showAppToast(BuildContext context, String msg, {Duration? duration}) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(msg),
-      duration: duration ?? const Duration(seconds: 4),
-    ),
-  );
+  final messenger = ScaffoldMessenger.of(context);
+  messenger
+    ..clearSnackBars()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        duration: duration ?? const Duration(seconds: 4),
+      ),
+    );
 }
 
 /// 图表空数据占位：固定高度 120 + Card + show_chart 图标 + 文案。

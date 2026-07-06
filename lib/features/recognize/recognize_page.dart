@@ -570,7 +570,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('识别失败：$msg'),
-          duration: const Duration(seconds: 6),
+          duration: const Duration(seconds: 4),
           action: canRetry
               ? SnackBarAction(
                   label: '重试',

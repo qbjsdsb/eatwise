@@ -322,10 +322,10 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
               child: Icon(Icons.delete, color: cs.onErrorContainer))),
       onDismissed: (_) async {
         // Undo 模式：先从 UI 移除（乐观），显示撤销 SnackBar；
-        // 若 4s 内未撤销则实际从 DB 删除。避免误删后无回头路。
+        // 若撤销窗口内未撤销则实际从 DB 删除。避免误删后无回头路。
         final index = _meals.indexOf(m);
         if (index < 0) return; // 已被移除（防重入）
-        // 提前获取 repo：await 4s 后 widget 可能已销毁，DB delete 不能依赖 mounted
+        // 提前获取 repo：await 后 widget 可能已销毁，DB delete 不能依赖 mounted
         // （否则用户离开页面后记录"复活"，与已显示的删除动画冲突）
         final MealLogRepository repo;
         try {
@@ -341,14 +341,17 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         setState(() => _meals.removeAt(index));
         final messenger = ScaffoldMessenger.of(context);
         var undone = false;
-        messenger.showSnackBar(
+        // clearSnackBars：连续删除时新横幅立即替换旧的，避免队列累积"非常久"
+        messenger.clearSnackBars();
+        final controller = messenger.showSnackBar(
           SnackBar(
             content: Text(
                 '已删除 ${_foodNames[m.foodItemId] ?? placeholderFoodName(m.foodItemId)}'),
-            duration: const Duration(seconds: 4),
+            duration: const Duration(seconds: 3),
             action: SnackBarAction(
               label: '撤销',
               onPressed: () {
+                // 标记已撤销，controller.closed 后据此跳过 DB 删除
                 undone = true;
                 if (!mounted) return;
                 setState(() {
@@ -359,8 +362,12 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
             ),
           ),
         );
-        // 等待 SnackBar 时长；若未撤销则实际删除（即使页面已销毁也要删，避免数据复活）
-        await Future.delayed(const Duration(seconds: 4));
+        // 用 controller.closed 替代 Future.delayed：
+        // - 正确感知 SnackBar 真正关闭时刻（排队/被新横幅挤掉/超时/点撤销 都能感知）
+        // - 避免 Future.delayed 与 SnackBar 实际显示时序不同步导致撤销按钮变无效
+        // - reason == action 表示用户点了撤销，跳过 DB 删除
+        final reason = await controller.closed;
+        if (reason == SnackBarClosedReason.action) return;
         if (undone) return;
         try {
           await repo.deleteMealLog(m.id);
