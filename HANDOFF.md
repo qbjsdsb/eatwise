@@ -23,8 +23,8 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.26.0+38（pubspec.yaml）—— 已发布 v0.26.0 GitHub Release（M26 第二轮 UI 审查 P1 修复）；v0.25.0 为两个 UX 功能增强 + 两个 UX Bug 修复（HANDOFF 同步 + 测试缺口补全）
-- **当前分支**：trae/agent-wX1X6Q（HEAD = c8809c3 已 push；tag v0.26.0 指向 c8809c3；v0.25.0 指向 4e2202e；v0.24.0 指向 a27b347；v0.23.0 tag 指向 d37cd4e；v0.18.5 tag 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
+- **当前版本**：0.27.0+39（pubspec.yaml）—— 已发布 v0.27.0 GitHub Release（AI 推理热量与显示值不一致 P0 修复）；v0.26.0 为 M26 第二轮 UI 审查 P1 修复（45 条）；v0.25.0 为两个 UX 功能增强 + 两个 UX Bug 修复（HANDOFF 同步 + 测试缺口补全）
+- **当前分支**：trae/agent-wX1X6Q（HEAD = b5d0019 已 push；tag v0.27.0 指向 b5d0019；v0.26.0 指向 c8809c3；v0.25.0 指向 4e2202e；v0.24.0 指向 a27b347；v0.23.0 tag 指向 d37cd4e；v0.18.5 tag 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
   - `android/app/build.gradle.kts` 必须保持 `isMinifyEnabled=false` + `isShrinkResources=false`（否则 R8 剥掉 sentry/workmanager 反射类致启动崩溃）
@@ -35,6 +35,12 @@
 ## 2. 当前状态（每次会话结束更新）
 
 **最后更新**：2026-07-07
+
+**v0.27.0 P0 修复：AI 推理热量与显示值不一致（2026-07-07，已发版 v0.27.0）—— 5 处根因，2 个 commit**：用户报告"AI 推理出来的热量和最后显示的不一样"+ 复合菜显示组分明细繁琐 + "库里面没有"文案误导。OCR 数据反推（米粉汤 480 kcal reasoning vs 381 kcal 显示）+ API 实测（GLM-4V + Qwen-VL 两个 token 均有效）定位 5 处根因：
+- **Commit e6d1478**：单品路径 initState 用 mid 不用历史中位数预填（480×350/350=480，不再 480×278/350=381）；复合菜 AI 优先分支 servingG 用 mid 不用 totalG（actualCalories = AI 推理值，不按组分之和缩放）
+- **Commit 16c5910**：_aiFallbackNutrition 删除包装换算覆盖（actualCal 始终用 r.estimatedCalories）；calibration_page._buildCompositeControls 隐藏组分份量滑块 + 待确认组分列表，只保留用油量滑块；_sourceBadge "AI 估算（库未命中）"→"AI 估算"
+
+API 实测发现：GLM-4V 倾向返回 is_single_item=false（触发复合菜路径，修复后隐藏组分滑块），Qwen-VL 倾向返回 is_single_item=true（单品路径）。验证：flutter analyze No issues / flutter test 1136 passed 0 回归 / 6+1 硬约束满足 / v2 契约 4 断言满足。**已打 tag v0.27.0 + push + GitHub release**。
 
 **M26 第二轮 Web Interface Guidelines 深度审查 P1 修复完成（2026-07-07，已发版 v0.26.0）—— 5 个 commit 修 45 条 P1**：第二轮深度审查发现 45 条 P1，分 5 类串行 commit。spec 见 `/workspace/.trae/specs/fix-ui-audit-p1-round2-m26/`（spec.md / tasks.md / checklist.md 三件套，38 个 Task 全部勾选完成）。bump 0.25.0+37 → 0.26.0+38，tag v0.26.0，GitHub Release v0.26.0 已发布含 app-release.apk + app-debug.apk，body 含完整 v0.26.0 changelog + 安装说明 + 闪退排查 + 签名说明 + 版本信息 + 完整 changelog 链接。
 
