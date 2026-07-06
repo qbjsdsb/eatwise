@@ -6,7 +6,8 @@
 .packages
 .pub-cache/
 .pub/
-pubspec.lock
+# v0.27.0: pubspec.lock 改为入库，锁定 drift_dev 2.34.0 + sqlparser 0.44.5 兼容版本
+# 避免 CI 重新解析拿到 sqlparser 0.44.6（与 drift_dev 2.34.0 不兼容，build_runner AOT 编译失败）
 
 # Android / iOS
 **/android/.gradle/
