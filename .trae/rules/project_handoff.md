@@ -22,6 +22,7 @@
 4. **per100g 反算必须基于 `estimatedWeightGMid`**，不能用 `servingG`（用户校准份量），否则密度随用户调整反向偏差
 5. **`SecureConfigStore` 没有 `instance` 静态属性**，用 `SecureConfigStore()` 构造函数或 `container.read(secureConfigStoreProvider)`
 6. **`initSentryAndRunApp` 参数是命名参数** `container:` + `app:`，不是位置参数
+7. **`minSdk = 31`**（动态取色 Material You 需 Android 12+，dynamic_color 包硬性要求；提升前 minSdk=24，提升后丢失 Android 7-11 用户，项目个人自用可接受）
 
 ## 沙箱环境注意
 
