@@ -1,36 +1,40 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  自适应图标前景：精修取景框 + 中心碗剪影（M22 重设计）。
+  自适应图标前景：圆环描边盘 + 中心实心碗剪影（M25 重设计）。
 
-  设计理念（M22 用户决策：白底+紫前景反转，精修取景框+食物）：
-  - 四角 L 形角标 = 取景框（拍照识别核心功能），2.5dp round 描边精致不粗糙
-  - 中心碗剪影 = 食物（半圆盘 flat top + curve bottom，比 M20 苹果圆更可读为「食物/餐具」）
-  - 移除扫描线（静态线不传达动态，增加视觉杂乱）
-  - 紫前景 #6750A4 在白底上高对比，呼应 App 主题种子色
+  设计理念（M25 用户决策：对标 MyFitnessPal，自然绿 #2E7D32，盘+碗混合）：
+  - 圆环描边盘 = 容器（MFP 核心结构语言，2.5dp round 描边精致克制）
+  - 中心实心碗剪影 = 食物（保留 EatWise 碗语义，flat top + curve bottom）
+  - 移除四角 L 形角标（M22 反馈"粗糙"，9 元素减为 2 元素更克制）
+  - 自然绿 #2E7D32 替代紫色 #6750A4（紫色抑制食欲，绿色健康/平衡）
 
-  设计哲学 "Google Camera × Mindful Eating"：
-  - 借鉴 Google Camera/Lens 的白底+深前景配色（最 Google 风）
-  - 取景框语言传达「AI 扫描识别」
-  - 碗剪影传达「食物/慢慢吃」
+  设计哲学 "MyFitnessPal × Mindful Eating"：
+  - 借鉴 MFP 圆盘容器语言（食物追踪 App 主流结构）
+  - 描边盘而非实心盘——克制留白，契合"慢慢吃"
+  - 实心碗作为焦点——视觉重量 1.5 vs 盘 1.0，焦点在食物
 
   画布 108×108dp，安全区 66×66（中心 54,54，半径 33）。
-  M22 几何范围（前景 36dp span = 33% 画布，M20 是 50dp = 46%，M22 更小更精致留白足）：
-  - 四角 L 形角标：每角 8×8dp，描边 2.5dp round cap，位于 (36,36)-(72,72) 取景框四角
-  - 中心碗剪影：半圆盘 24dp wide × 12dp tall，flat top y=48，curve bottom y=60，中心 (54,54)
+  M25 几何范围（前景 56dp span = 52% 画布，M22 是 36dp = 33%）：
+  - 圆环描边盘：外径 56dp，描边 2.5dp round cap，中心 (54,54)
+  - 中心实心碗：22dp wide × 11dp tall，flat top y=48.5，curve bottom y=59.5
 
   path 几何说明：
-  - 四角 L path：8 条线段（每角 2 条），strokeColor 紫 2.5dp round cap
-    左上：M36,36→L44,36 + M36,36→L36,44
-    右上：M64,36→L72,36 + M72,36→L72,44
-    右下：M72,72→L64,72 + M72,72→L72,64
-    左下：M36,72→L44,72 + M36,72→L36,64
-  - 碗剪影 path：从 (42,48) 画半圆顺时针到 (66,48)（A12,12 sweep=1 = 下方半圆），Z 闭合
-    flat top = 碗口，curve bottom = 碗底，reads as 碗/食物容器
+  - 圆环 path：M26,54 A28,28 0 1 1 82,54 A28,28 0 1 1 26,54
+    起点 (26,54) 大弧到 (82,54) 上半圆，再大弧回 (26,54) 下半圆，闭合
+  - 碗 path：M43,48.5 A11,11 0 0 1 65,48.5 Z
+    左点 (43,48.5) 短弧顺时针到右点 (65,48.5)（sweep=1 = 下方半圆，碗底）
+    Z 闭合（flat top = 碗口）
+
+  比例依据（黄金分割）：
+  - 碗宽/盘外径 = 22/56 = 0.393 ≈ 0.382
+  - 碗高/碗宽 = 11/22 = 0.5（稳定比例）
+  - 外留白/内留白 = 26/17 = 1.53 ≈ 1.618
 
   monochrome 兼容（Android 13+ 主题图标）：
-  - 前景纯紫 alpha 通道，系统染色时白底被忽略，前景独立可识别（四角 L + 碗的剪影）
+  - 前景纯绿 alpha 通道，系统染色时白底被忽略
+  - 圆环 + 实心碗剪影在染色后仍可识别（实心碗重量高于描边盘）
 
-  M15 餐叉+餐刀 → M17 同心圆环 → M20 苹果圆+扫描线 → M22 碗剪影（用户反馈「还是丑、粗糙、太大、不像谷歌」重设计）
+  M15 餐叉+餐刀 → M17 同心圆环 → M20 苹果圆+扫描线 → M22 碗剪影+四角L → M25 圆环描边盘+实心碗（用户反馈"紫色影响食欲、要对标 MFP"重设计）
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -38,20 +42,21 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- 四角 L 形角标（取景框，每角 8×8dp，紫色描边 2.5dp，round 线帽）：
-         M36,36 起点（左上角虚拟直角点）
-         8 条线段分别画 4 个角的 L 形 -->
+    <!-- 圆环描边盘（容器，外径 56dp，描边 2.5dp round cap，自然绿）：
+         M26,54 起点（盘左点）
+         A28,28 0 1 1 82,54 顺时针大弧到右点（上半圆）
+         A28,28 0 1 1 26,54 顺时针大弧回左点（下半圆） -->
     <path
         android:strokeColor="@color/ic_launcher_foreground"
         android:strokeWidth="2.5"
         android:strokeLineCap="round"
-        android:pathData="M36,36 L44,36 M36,36 L36,44 M64,36 L72,36 M72,36 L72,44 M72,72 L64,72 M72,72 L72,64 M36,72 L44,72 M36,72 L36,64" />
+        android:pathData="M26,54 A28,28 0 1 1 82,54 A28,28 0 1 1 26,54" />
 
-    <!-- 中心碗剪影（半圆盘 24×12dp，flat top y=48，curve bottom y=60，紫色填充）：
-         M42,48 左点（碗口左端）
-         A12,12 0 0 1 66,48 顺时针画下半圆到右点（sweep=1 = 下方弧，碗底）
+    <!-- 中心实心碗剪影（22×11dp，flat top y=48.5，curve bottom y=59.5，自然绿填充）：
+         M43,48.5 左点（碗口左端）
+         A11,11 0 0 1 65,48.5 顺时针短弧到右点（sweep=1 = 下方半圆，碗底）
          Z 闭合（flat top = 碗口） -->
     <path
         android:fillColor="@color/ic_launcher_foreground"
-        android:pathData="M42,48 A12,12 0 0 1 66,48 Z" />
+        android:pathData="M43,48.5 A11,11 0 0 1 65,48.5 Z" />
 </vector>
