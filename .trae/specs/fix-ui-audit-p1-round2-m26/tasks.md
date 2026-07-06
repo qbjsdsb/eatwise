@@ -139,7 +139,7 @@
   - [x] SubTask 37.3: 6+1 硬约束核查
   - [x] SubTask 37.4: v2 重构 4 断言核查
   - [x] SubTask 37.5: 更新 HANDOFF.md 第 2 节"当前状态"加 M26 修复记录
-- [ ] Task 38: 全部 push 到 origin（不打 tag 不发版，等用户明确指令）
+- [x] Task 38: 全部 push 到 origin（不打 tag 不发版，等用户明确指令）→ 已发版 v0.26.0
 
 # Task Dependencies
 

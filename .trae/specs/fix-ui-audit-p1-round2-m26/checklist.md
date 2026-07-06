@@ -83,4 +83,4 @@
 - [x] 6+1 硬约束核查（build.gradle 未碰 / meal_log 外键未碰 / AI 三路径 / per100g 反算基于 mid / SecureConfigStore / initSentryAndRunApp / minSdk=31）
 - [x] v2 重构 4 断言核查（AI 估算值不被静默修改 / 预览值=onConfirm 写库值 / warnings 透传 / 用户手动编辑覆盖 AI 值）
 - [x] HANDOFF.md 第 2 节"当前状态"加 M26 修复记录（5 个 commit hash + 修复清单 + 验证结果）
-- [ ] 全部 push 到 origin/trae/agent-wX1X6Q，不打 tag 不发版
+- [x] 全部 push 到 origin/trae/agent-wX1X6Q，已打 tag v0.26.0 发版
