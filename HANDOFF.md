@@ -40,6 +40,8 @@
 
 **M25 方案 D 完成（2026-07-06）—— 废弃品类校准 + 酒精豁免 Atwater（米粉汤 bug 修复）**：用户报告"AI 推理米粉汤 526 kcal 但页面显示 171 kcal"。根因：`FoodCategoryDefaults.calibrate` 用"品类均值（soup=30）"覆盖"AI 具体估算（per100g=92.3，比值 3.08>2 触发校准）"，且 calories 用默认值、宏量保留 AI 值，破坏 Atwater 自洽（4×16+9×13+4×75=481 ≠ 171）。方案 D 废弃品类校准，4 项全保留 AI 估算值，只做物理 clamp [0,900] + 宏量 [0,100]；酒精饮料（beer/wine/alcohol）豁免 Atwater 校验（酒精 7kcal/g 不在 4p+9f+4c 系数内）。同时清理历史啤酒补丁（雪花啤酒被识别成雪碧的 workaround，AI 识别精准后无意义）。
 
+**M25 图标精修重设计完成（2026-07-06，未发版）—— 对标 MyFitnessPal + 自然绿配色**：用户指令"现在更加严格进行图标的修改"，brainstorming 流程后用户决策对标 MyFitnessPal、紫色抑制食欲改自然绿、盘+碗混合结构。方案 B+：圆环描边盘（外径 56dp，描边 2.5dp round cap）+ 中心实心碗剪影（22×11dp，黄金分割 22/56=0.393≈0.382），9 元素（8 L 角标 + 1 碗）减为 2 元素（1 圆环 + 1 碗），0.5dp 网格对齐，48dp 缩放描边 1.11dp ≥1dp 阈值。改动 3 资源文件（ic_launcher_foreground.xml 重写 path / ic_launcher_background.xml 注释更新 / values/colors.xml #6750A4→#2E7D32）+ 1 测试文件（test/icon_assets_test.dart 断言 M22→M25）。flutter analyze No issues / flutter test 1040 passed / 6 硬约束满足 / 0 回归。**未打 tag 未发版**（用户明确指令"完了提交push不要打tag发布"），spec 见 `docs/superpowers/specs/2026-07-06-icon-redesign-design.md`，plan 见 `docs/superpowers/plans/2026-07-06-icon-redesign.md`。
+
 修复清单：
 - `lib/data/seed/food_category_defaults.dart` calibrate 方法重写：删除比值判断 + 默认值替换，保留 [0,900] clamp + 宏量 [0,100] clamp；defaults 表保留（PostProcessor 宏量反推仍用）
 - `lib/core/util/recognition_validator.dart` Atwater 校验加酒精豁免：beer/wine/alcohol 品类 cal>0 且 expected>0 时跳过修正（保留 AI cal）
