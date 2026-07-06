@@ -36,7 +36,7 @@
 
 **最后更新**：2026-07-06
 
-**v0.25.0+37 已发布（2026-07-06）—— 两个 UX 功能增强 + 两个 UX Bug 修复**：用户报告"首页摄入热量超过推荐值时'今日还可摄入'依旧显示剩余值（负数），用户误以为还没超过" + "周月总结维度不够全面"，决策"全面改"+"全面扩充"+"分问题双 commit"。Web Interface Guidelines 复审通过。bump 0.24.0+36 → 0.25.0+37，tag v0.25.0。
+**v0.25.0+37 已发布（2026-07-06）—— 两个 UX 功能增强 + 两个 UX Bug 修复**：用户报告"首页摄入热量超过推荐值时'今日还可摄入'依旧显示剩余值（负数），用户误以为还没超过" + "周月总结维度不够全面"，决策"全面改"+"全面扩充"+"分问题双 commit"。Web Interface Guidelines 复审通过。bump 0.24.0+36 → 0.25.0+37，tag v0.25.0。同时改进 `.github/workflows/release.yml`：新增 `Extract changelog for this version` step（用 python 正则从 CHANGELOG.md 提取本版本段）+ `Force update release body` step（用 GITHUB_TOKEN + curl PATCH /releases/{id} 强制写入 changelog + 安装说明 body，解决 action-gh-release 在 release 已存在时不更新 body 的问题；用 python heredoc 避免反引号被 shell 吃）。GitHub Release v0.25.0 已发布含 app-release.apk（87.6 MB）+ app-debug.apk（180.9 MB），body 含完整 v0.25.0 changelog + 安装说明 + 闪退排查 + 签名说明 + 版本信息 + 完整 changelog 链接。
 
 **两个 UX 功能增强完成（2026-07-06，已发版 v0.25.0）—— 方案 A 双 commit**：用户报告两个问题：(1) 首页摄入热量超过推荐值时"今日还可摄入"依旧显示剩余值（负数），用户误以为还没超过；(2) 周月总结维度不够全面，只有热量折线图 + 体重折线图 + AI 文本，缺少餐次分布/三宏达成率/偏好食物/连续记录/体重变化等关键信息。用户决策"全面改（推荐）"+"全面扩充（推荐）"+"分问题双 commit（推荐）"。
 
