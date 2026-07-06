@@ -4,6 +4,58 @@
 
 ## [Unreleased]
 
+## [v0.26.0] - 2026-07-07
+
+### M26 第二轮 Web Interface Guidelines 深度审查 P1 修复（45 条，5 个 commit）
+
+第二轮深度审查发现 45 条 P1，分 5 类（A 数据一致性 / B 核心流程 / C 系统性根因 / D 编辑流程 / E 错误反馈）串行 commit 修复。spec 见 `.trae/specs/fix-ui-audit-p1-round2-m26/`。
+
+#### A 类数据一致性（commit 37d2b17，5 条）
+- **复合菜路径优先级不一致**（calibration_page.dart）：`_buildNutritionPreview` / `_confirmWithServing` / `_currentDisplayedValues` 三处统一为"包装优先（宏量非全0）→ AI 优先（aiFallback 非空）→ 组分累加 fallback"链路，避免预览与写库走不同分支
+- **复合菜 AI 优先路径未含用油量**：AI 优先分支累加 `oilCaloriesPer100g * _oilG / 100` 到 calories + `oilFatPer100g * _oilG / 100` 到 fat，用户拖动用油量滑块时预览实时变化
+- **profile goalRate 游离 Form + 全页数值无范围校验**：goalRate 改 TextFormField + validator（0.1-2.0 kg/周，空值放行回退默认 -500 deficit）+ 4 字段范围校验（身高 50-250 / 体重 20-300 / 年龄 10-120 / 体脂率 0-60），_save 用 `tryParse ?? 0.0` 保留回退特性
+- **weight 编辑 dialog 完全无校验静默 return**：改 Form + TextFormField + validator（>0 且 ≤500），失败显示 errorText 不关闭 dialog，删除调用方静默 return
+- **backup_page 导入后未 invalidate provider**：导入成功后 invalidate 4 个 provider（appConfig / mealLogRepo / weightLogRepo / profileRepo）+ RefreshBus.instance.notify()
+
+#### B 类核心流程（commit e3a5775，3 条）
+- **confirmAction 长内容溢出 AlertDialog 不可达**：content 包 `ConstrainedBox(maxHeight: 屏幕40%) + SingleChildScrollView + Text`，超长内容可滚动且确认按钮始终可达
+- **update_page error 态"重试"行为错误**：新增 `_FailedStage` enum（none/check/download/install）+ `_lastFailedStage` 字段，error 态按钮按失败阶段调对应方法（check→_check / download→_download / install→_install），install 失败重试复用 `_downloadedPath` 不重新下载
+- **dish_name_editor 文案错误**：`'食物库未命中「改菜名」'` → `'食物库未命中此菜名'`
+
+#### C 类系统性根因（commit 3ec25bf，4 类批量整改）
+- **showAppToast 缺 liveRegion**：SnackBar content 包 `Semantics(liveRegion: true, child: Text(msg))`，读屏可感知 toast
+- **EmptyState 硬编码 camera 图标**：新增 `actionIcon` 参数（默认 `Icons.camera_alt_rounded` 兼容现有调用）
+- **18 处错误文案含原始异常**：改为"<操作>失败：<原因推测>。<修复步骤>"格式 + `debugPrint` 原始异常（insight_page / today_meals_page×3 / calibration_page×2 / multi_dish_page / settings_page / backup_page×2 / update_page×3 / profile_page×2 / weight_page×3 / manual_entry_page×2 / food_edit_page×2）
+- **7 个文件数值 TextField 无 inputFormatters**：28 处 TextField 加 `FilteringTextInputFormatter.allow(RegExp(r'^-?\d*\.?\d*$'))` 防物理键盘输入字母/多小数点（calibration_page×4 / meal_edit_dialog×5 / food_edit_page×5 / manual_entry_page×6 / weight_page×2 / profile_page×5 / today_meals_page×1）
+
+#### D 类编辑流程一致性（commit f25bf82，4 条）
+- **meal_edit_dialog 无 dirty 拦截**：加 `_dirty` 状态 + `_markDirty()` + `PopScope(canPop: !_dirty, onPopInvokedWithResult: ...)` + `confirmDiscardChanges(context)`，所有编辑控件挂 `_markDirty`，_save 前清 dirty 让 PopScope 放行
+- **backup_page _import 重入窗口**：`_import()` 入口加 `if (_busy) return;` 防重入
+- **settings_page TextField focus ring**：5 处 TextField 加 `focusedBorder: UnderlineInputBorder()` 提供 focus ring
+- **update_page AnimatedSize reduced-motion**：duration 改读 `MediaQuery.accessibleNavigation ? Duration.zero : Duration(milliseconds: 300)`
+
+#### E 类错误反馈与状态覆盖（commit 808ea10，5 条）
+- **recognize_page SnackBar 缺 liveRegion**：内联 SnackBar content 包 `Semantics(liveRegion: true, child: Text('识别失败：$msg'))`
+- **today_meals_page Undo SnackBar 缺 liveRegion**：Undo SnackBar content 包 `Semantics(liveRegion: true, child: Text('已删除 <菜名>'))`
+- **today_meals_page Image.file 无 semanticLabel**：加 `semanticLabel: '食物图片'`
+- **today_meals_page 反馈纠正 dialog barrierDismissible**：showDialog 加 `barrierDismissible: false`
+- **4 文件校验错误走 toast 改 errorText 内联**：meal_edit_dialog / food_edit_page / manual_entry_page / weight_page 校验失败改轻量 `_xxxError` 状态字段 + `InputDecoration.errorText` 内联显示（避免完整 Form 改造）
+
+### 测试
+- 新增 13 个测试文件，覆盖 5 类修复：
+  - A 类：calibration_composite_consistency_test (2) + calibration_composite_oil_test (3) + profile_page_test 扩展 (7) + weight_edit_dialog_validation_test (4) + backup_import_invalidate_test (1)
+  - B 类：confirm_action_overflow_test (4) + update_retry_context_test (3) + dish_name_editor_test (5)
+  - C 类：snackbar_clear_test 扩展 liveRegion + empty_state_icon_test (3) + error_message_friendly_test (3)
+  - D 类：meal_edit_dialog_dirty_test (4) + backup_page_test 扩展 (2)
+  - E 类：today_meals_page_e_test (3) + inline_error_text_test (5)
+- 测试总数：基线 1107 → 1136 passed（+29 新测试，0 回归）
+
+### 验证
+- `flutter analyze`：No issues found
+- `flutter test`：1136 passed / 3 skipped / 0 failed
+- 6+1 硬约束满足（minify=false / shrink=false / minSdk=31 / meal_log 外键 / AI 三路径 / per100g 反算基于 mid / SecureConfigStore / initSentryAndRunApp）
+- v2 重构 4 断言满足（AI 估算值不被静默修改 / 预览值=onConfirm 写库值 / warnings 透传 / 用户手动编辑覆盖 AI 值）
+
 ## [v0.25.0] - 2026-07-06
 
 ### 功能增强：周月总结全面扩充（问题2）
