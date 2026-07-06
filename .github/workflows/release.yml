@@ -168,6 +168,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
+        id: create_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.release_tag }}
@@ -207,3 +208,73 @@ jobs:
             build/app/outputs/flutter-apk/app-release.apk
             build/app/outputs/flutter-apk/app-debug.apk
           make_latest: true
+
+      - name: Force update release body (changelog)
+        # action-gh-release 在 release 已存在时可能不更新 body，用 API 强制 PATCH
+        # 将 changelog + 安装说明组合 body 写入 release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.tag.outputs.release_tag }}
+        run: |
+          set -e
+          # 查 release id
+          RELEASE_ID=$(curl -s -H "Authorization: token ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/${RELEASE_TAG}" \
+            | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])")
+          echo "release_id=$RELEASE_ID"
+
+          # 组装 body：changelog + 分隔线 + 安装说明
+          cat > /tmp/release_body.md <<BODY_EOF
+          ${{ steps.changelog.outputs.body }}
+
+          ---
+
+          ## 📦 安装说明
+
+          1. 下载下方 apk（优先下 app-release.apk）
+          2. 手机用数据线传过去（或扫码下载）
+          3. 手机设置开启"允许安装未知来源应用"
+          4. **直接覆盖安装即可**（v0.18.0 起用固定 keystore 签名，无需卸载旧版；v0.17.0 及之前需先卸载一次以切换签名）
+          5. 首次启动在「设置」页填入你的 Qwen API Key（视觉识别用）
+          6. 在「设置 → 检查更新」可一键升级到下一版
+
+          ## ⚠️ 闪退排查：请先装 app-debug.apk
+
+          如果 app-release.apk 闪退，请改装 **app-debug.apk**：
+          - debug 版崩溃时会显示**红色错误页+完整堆栈**
+          - 截图发给开发者即可定位根因
+
+          ## 签名说明
+
+          本包使用固定 release 签名（v0.18.0 起），可正常覆盖安装，
+          但**不能上架应用商店**。
+
+          ## 版本信息
+
+          - 应用版本: ${{ steps.version.outputs.pubspec_version }}
+          - 构建时间: ${{ github.run_id }}
+          - 提交: ${{ github.sha }}
+          - 完整 changelog: [CHANGELOG.md](https://github.com/qbjsdsb/eatwise/blob/main/CHANGELOG.md)
+          BODY_EOF
+
+          # 用 python 构造 JSON body（避免 shell 转义问题）
+          python3 -c "
+          import json
+          with open('/tmp/release_body.md','r',encoding='utf-8') as f:
+              body = f.read().lstrip()  # 去掉前导空格（heredoc 缩进）
+          # 去掉每行前导 10 空格（heredoc 缩进）
+          lines = [line[10:] if line.startswith('          ') else line for line in body.split('\n')]
+          body = '\n'.join(lines)
+          print(json.dumps({'body': body}))
+          " > /tmp/patch_payload.json
+          echo "=== patch payload size ==="
+          wc -c /tmp/patch_payload.json
+
+          # PATCH 更新 release body
+          curl -s -X PATCH \
+            -H "Authorization: token ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -d @/tmp/patch_payload.json \
+            "https://api.github.com/repos/${{ github.repository }}/releases/${RELEASE_ID}" \
+            | python3 -c "import json,sys; d=json.load(sys.stdin); print('updated release:', d.get('html_url'), 'body_len:', len(d.get('body','')))"
