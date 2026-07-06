@@ -1,3 +1,4 @@
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -22,29 +23,46 @@ class EatWiseApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // 主题种子色来自 Riverpod（设置页点选色板时实时换肤）
+    // ref.watch 必须在 build 顶层（Riverpod 规则：watch 不能在非 build 闭包内调用）
+    // 依赖变化触发整个 build 重建，DynamicColorBuilder 重新构造用新值
     final seed = Color(ref.watch(themeSeedProvider));
-    return MaterialApp.router(
-      title: '慢慢吃',
-      theme: _theme(ColorScheme.fromSeed(
-        seedColor: seed,
-        // tonalSpot：secondary/tertiary 紧跟 primary 色相，切色后整体跟随
-        // （expressive 会对 secondary 做色相旋转致大面积绿色，与"切色"预期不符）
-        dynamicSchemeVariant: DynamicSchemeVariant.tonalSpot,
-      )),
-      darkTheme: _theme(ColorScheme.fromSeed(
-        seedColor: seed,
-        brightness: Brightness.dark,
-        dynamicSchemeVariant: DynamicSchemeVariant.tonalSpot,
-      )),
-      themeMode: ThemeMode.system,
-      routerConfig: _router,
-      // 启用 edge-to-edge（Android 15+ 强制，14- 推荐）：
-      // 状态栏/导航栏透明，内容延伸到系统栏后方，避免 NavigationBar 被手势条遮挡。
-      // 配合 AppBarTheme.systemOverlayStyle 控制状态栏图标颜色随主题变化。
-      builder: (context, child) {
-        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-        return child!;
+    final useDynamic = ref.watch(useDynamicColorProvider);
+    return DynamicColorBuilder(
+      builder: (ColorScheme? lightDynamic, ColorScheme? darkDynamic) {
+        // 开关优先：开启且系统动态色可用 → harmonized 动态色
+        // 否则 → fromSeed fallback（保留用户选色）
+        // lightDynamic == null 场景：Android < 12 / dynamic_color 检测失败 / 无壁纸
+        // 注意：dynamic_color 1.8+ builder 回调直接给 ColorScheme?（内部已 toColorScheme），
+        // harmonized() 把 error 系列颜色向 primary 色相调和，避免动态色下突兀红
+        final lightScheme = (useDynamic && lightDynamic != null)
+            ? lightDynamic.harmonized()
+            : ColorScheme.fromSeed(
+                seedColor: seed,
+                // tonalSpot：secondary/tertiary 紧跟 primary 色相，切色后整体跟随
+                // （expressive 会对 secondary 做色相旋转致大面积绿色，与"切色"预期不符）
+                dynamicSchemeVariant: DynamicSchemeVariant.tonalSpot,
+              );
+        final darkScheme = (useDynamic && darkDynamic != null)
+            ? darkDynamic.harmonized()
+            : ColorScheme.fromSeed(
+                seedColor: seed,
+                brightness: Brightness.dark,
+                dynamicSchemeVariant: DynamicSchemeVariant.tonalSpot,
+              );
+        return MaterialApp.router(
+          title: '慢慢吃',
+          theme: _theme(lightScheme),
+          darkTheme: _theme(darkScheme),
+          themeMode: ThemeMode.system,
+          routerConfig: _router,
+          // 启用 edge-to-edge（Android 15+ 强制，14- 推荐）：
+          // 状态栏/导航栏透明，内容延伸到系统栏后方，避免 NavigationBar 被手势条遮挡。
+          // 配合 AppBarTheme.systemOverlayStyle 控制状态栏图标颜色随主题变化。
+          builder: (context, child) {
+            SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+            return child!;
+          },
+        );
       },
     );
   }
