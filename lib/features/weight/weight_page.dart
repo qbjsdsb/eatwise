@@ -1,12 +1,18 @@
+import 'dart:async';
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../../core/config/app_config.dart';
 import '../../core/util/date_format.dart';
 import '../../core/util/refresh_bus.dart';
 import '../../core/widgets/m3_widgets.dart';
+import '../../data/bluetooth/mi_scale_parser.dart';
+import '../../data/bluetooth/mi_scale_scanner.dart';
 import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/weight_log_repository.dart';
 import '../../nutrition/tdee_calibrator.dart';
@@ -21,7 +27,8 @@ class WeightPage extends ConsumerStatefulWidget {
 }
 
 /// 公开 State：RecordsTabPage 通过 `GlobalKey<WeightPageState>` 调用 refresh()
-class WeightPageState extends ConsumerState<WeightPage> {
+class WeightPageState extends ConsumerState<WeightPage>
+    with WidgetsBindingObserver {
   final _weightCtrl = TextEditingController();
   List<WeightLog> _logs = [];
   List<MealLog> _meals = []; // 30 天 meal_log（双轴图热量用）
@@ -34,9 +41,22 @@ class WeightPageState extends ConsumerState<WeightPage> {
   // 体重校验错误（内联显示在主表单 TextField 下方，替代 toast）
   String? _weightError;
 
+  // M27 蓝牙体重秤同步状态
+  // _bleState：idle（未扫描）/ scanning（扫描中）/ captured（已捕获）/ error（错误）
+  // _bleScanner：BLE 扫描 Service，懒初始化（首次开启蓝牙同步时创建）
+  // _bleEnabled：用户是否已开启蓝牙同步（首次点击横幅后置 true，后续进入自动扫描）
+  // _scanSub：measurementStream 订阅，dispose 时 cancel
+  _BleState _bleState = _BleState.idle;
+  MiScaleScanner? _bleScanner;
+  bool _bleEnabled = false;
+  StreamSubscription<MiScaleMeasurement>? _scanSub;
+  // 扫描冷却：5 分钟内 ≤3 次 startScan（MIUI 熔断阈值）
+  final List<DateTime> _scanTimestamps = [];
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this); // M27 生命周期监听
     // M14：监听输入变化标记 dirty（防初始赋值误标）
     _weightCtrl.addListener(_markDirty);
     _load();
@@ -59,9 +79,144 @@ class WeightPageState extends ConsumerState<WeightPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _scanSub?.cancel();
+    _bleScanner?.dispose();
     _weightCtrl.removeListener(_markDirty);
     _weightCtrl.dispose();
     super.dispose();
+  }
+
+  /// M27：App 生命周期切换时管理 BLE 扫描
+  /// paused → stopScan（国产 ROM 后台扫描必被冻结）
+  /// resumed → startScan（如已开启蓝牙同步）
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _stopBleScan();
+    } else if (state == AppLifecycleState.resumed && _bleEnabled) {
+      _startBleScan();
+    }
+  }
+
+  /// M27：用户点击"开启蓝牙同步"横幅 → 请求权限 + 启动扫描
+  Future<void> _enableBleSync() async {
+    // 1. 批量请求权限（国产 ROM 需要 location）
+    final statuses = await [
+      Permission.bluetoothScan,
+      Permission.bluetoothConnect,
+      Permission.location,
+    ].request();
+
+    // 2. 永久拒绝 → 引导去设置
+    final anyPermanentlyDenied =
+        statuses.values.any((s) => s.isPermanentlyDenied);
+    if (anyPermanentlyDenied) {
+      if (!mounted) return;
+      setState(() => _bleState = _BleState.error);
+      showAppToast(context, '蓝牙权限被永久拒绝，请在设置中开启');
+      await openAppSettings();
+      return;
+    }
+
+    // 3. 普通拒绝 → 显示错误
+    final allGranted = statuses.values.every((s) => s.isGranted);
+    if (!allGranted) {
+      if (!mounted) return;
+      setState(() => _bleState = _BleState.error);
+      showAppToast(context, '蓝牙权限不足，无法自动同步');
+      return;
+    }
+
+    // 4. 权限 OK → 标记已开启 + 启动扫描
+    setState(() => _bleEnabled = true);
+    await _startBleScan();
+  }
+
+  /// M27：启动 BLE 扫描
+  Future<void> _startBleScan() async {
+    // 扫描冷却：5 分钟内 ≤3 次（MIUI 熔断阈值）
+    final now = DateTime.now();
+    _scanTimestamps.removeWhere((t) => now.difference(t).inMinutes >= 5);
+    if (_scanTimestamps.length >= 3) {
+      if (!mounted) return;
+      showAppToast(context, '扫描过于频繁，请稍后再试');
+      return;
+    }
+    _scanTimestamps.add(now);
+
+    // 检查蓝牙适配器状态
+    if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) {
+      // 蓝牙关闭 → Android 主动弹系统对话框
+      try {
+        await FlutterBluePlus.turnOn();
+      } catch (_) {
+        // 用户拒绝开启蓝牙
+        if (!mounted) return;
+        setState(() => _bleState = _BleState.error);
+        return;
+      }
+      // 等待适配器开启（最多 30 秒）
+      try {
+        await FlutterBluePlus.adapterState
+            .where((s) => s == BluetoothAdapterState.on)
+            .timeout(const Duration(seconds: 30))
+            .first;
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _bleState = _BleState.error);
+        showAppToast(context, '蓝牙未开启，无法扫描');
+        return;
+      }
+    }
+
+    // 懒初始化扫描器
+    _bleScanner ??= MiScaleScanner();
+
+    // 订阅测量值流（取消旧订阅防重复）
+    await _scanSub?.cancel();
+    _scanSub = _bleScanner!.measurementStream.listen(_onMeasurement);
+
+    if (!mounted) return;
+    setState(() => _bleState = _BleState.scanning);
+
+    try {
+      await _bleScanner!.startScan(
+        timeout: const Duration(seconds: 15),
+      );
+    } catch (e) {
+      debugPrint('BLE 扫描启动失败: $e');
+      if (mounted) {
+        setState(() => _bleState = _BleState.error);
+      }
+    }
+
+    // 扫描超时后如未捕获，回到 idle
+    if (mounted && _bleState == _BleState.scanning) {
+      setState(() => _bleState = _BleState.idle);
+      if (!mounted) return;
+      showAppToast(context, '未找到体重秤，请确认秤已开机');
+    }
+  }
+
+  /// M27：停止 BLE 扫描
+  Future<void> _stopBleScan() async {
+    await _bleScanner?.stopScan();
+  }
+
+  /// M27：收到有效测量值 → 预填输入框
+  void _onMeasurement(MiScaleMeasurement m) {
+    if (!mounted) return;
+    setState(() {
+      _weightCtrl.text = m.weightKg.toStringAsFixed(1);
+      _weightError = null;
+      _bleState = _BleState.captured;
+      // 预填视为用户输入，标记 dirty（PopScope 未保存确认）
+      _dirty = true;
+    });
+    // 停止扫描（已捕获，省电）
+    _stopBleScan();
+    showAppToast(context, '已捕获 ${m.weightKg.toStringAsFixed(1)} kg，请确认');
   }
 
   Future<void> _load() async {
@@ -113,6 +268,64 @@ class WeightPageState extends ConsumerState<WeightPage> {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            // M27 蓝牙同步横幅 / 状态指示器
+            if (_bleState == _BleState.idle && !_bleEnabled)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Card(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  child: ListTile(
+                    leading: const Icon(Icons.bluetooth),
+                    title: const Text('开启蓝牙同步'),
+                    subtitle: const Text('自动捕获小米体重秤数据'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _enableBleSync,
+                  ),
+                ),
+              )
+            else if (_bleState == _BleState.scanning)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  leading: const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  title: const Text('搜索体重秤…'),
+                  subtitle: const Text('请上秤站立保持静止'),
+                  trailing: TextButton(
+                    onPressed: _stopBleScan,
+                    child: const Text('停止'),
+                  ),
+                ),
+              )
+            else if (_bleState == _BleState.captured)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  leading: const Icon(Icons.bluetooth_connected,
+                      color: Colors.green),
+                  title: const Text('已捕获体重'),
+                  trailing: TextButton(
+                    onPressed: _startBleScan,
+                    child: const Text('重新扫描'),
+                  ),
+                ),
+              )
+            else if (_bleState == _BleState.error)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: ListTile(
+                  leading: Icon(Icons.error_outline,
+                      color: Theme.of(context).colorScheme.error),
+                  title: const Text('蓝牙同步不可用'),
+                  trailing: TextButton(
+                    onPressed: _enableBleSync,
+                    child: const Text('重试'),
+                  ),
+                ),
+              ),
             Row(
               children: [
                 Expanded(
@@ -643,4 +856,12 @@ class _WeightEditResult {
   final double? weightKg;
   final String date;
   const _WeightEditResult({this.weightKg, required this.date});
+}
+
+/// M27 蓝牙扫描状态
+enum _BleState {
+  idle, // 未扫描（未授权 / 蓝牙关闭 / 首次进入未点击横幅）
+  scanning, // 扫描中
+  captured, // 已捕获稳定值
+  error, // 错误（权限拒绝 / 蓝牙关闭）
 }
