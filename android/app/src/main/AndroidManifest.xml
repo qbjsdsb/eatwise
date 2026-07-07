@@ -10,6 +10,18 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- M16 应用内更新：安装下载的 APK 必需（Android 8+） -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!-- M27 蓝牙体重秤同步：BLE 被动扫描权限 -->
+    <!-- BLUETOOTH_SCAN：Android 12+ 扫描 BLE 广播必需 -->
+    <!-- 不加 neverForLocation：国产 ROM（MIUI/HarmonyOS/ColorOS）需要 ACCESS_FINE_LOCATION 才能扫描 -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <!-- BLUETOOTH_CONNECT：跟随 flutter_blue_plus 官方 example，未来扩展 GATT 不用改 -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- ACCESS_FINE_LOCATION：MIUI/HarmonyOS 强依赖，minSdk=31 也不可省 -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- 声明需要 BLE 硬件，required=false 不阻止无蓝牙设备安装 -->
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+
     <application
         android:label="慢慢吃"
         android:name="${applicationName}"
