@@ -23,7 +23,7 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.27.0+39（pubspec.yaml）—— 已发布 v0.27.0 GitHub Release（AI 推理热量与显示值不一致 P0 修复）；v0.26.0 为 M26 第二轮 UI 审查 P1 修复（45 条）；v0.25.0 为两个 UX 功能增强 + 两个 UX Bug 修复（HANDOFF 同步 + 测试缺口补全）
+- **当前版本**：0.29.0+41（pubspec.yaml）—— 已 push v0.29.0（M26 图标精修，未打 tag 未发 release）；v0.28.0 为 AI 组分滑块影响热量（完全抛弃库参与热量计算）；v0.27.0 为 AI 推理热量与显示值不一致 P0 修复；v0.26.0 为 M26 第二轮 UI 审查 P1 修复（45 条）；v0.25.0 为两个 UX 功能增强 + 两个 UX Bug 修复（HANDOFF 同步 + 测试缺口补全）
 - **当前分支**：trae/agent-wX1X6Q（HEAD = b5d0019 已 push；tag v0.27.0 指向 b5d0019；v0.26.0 指向 c8809c3；v0.25.0 指向 4e2202e；v0.24.0 指向 a27b347；v0.23.0 tag 指向 d37cd4e；v0.18.5 tag 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
@@ -35,6 +35,20 @@
 ## 2. 当前状态（每次会话结束更新）
 
 **最后更新**：2026-07-07
+
+**v0.29.0 M26 图标精修（2026-07-07，已 push 未打 tag）—— 径向渐变背景+描边碗+米粒+叶子**：用户反馈"想把图标做得更精致美丽一点"。brainstorming 流程后用户决策：方案 B 碗+叶子（自然×食物）/ 右上侧飘出叶子 / 径向渐变背景 / 三粒米粒 / 描边碗+内部填充 / 删除圆环盘。从 M25 圆环盘+实心碗（2 元素纯色）升级为 M26 描边碗+米粒+叶子（4 path + 径向渐变背景，4 色 vs M25 的 2 色）。
+
+6 个 commit：
+- `9e604b9` colors.xml 新增 6 色配色定义（ic_launcher_background_center/edge + bowl_stroke/fill + leaf + rice）
+- `213a521` ic_launcher_background.xml 改径向渐变（`<aapt:attr>` 嵌套 `<gradient type="radial">`，中心白 #FFFFFF → 边缘 Light Green 50 #F1F8E9）
+- `7f131ce` ic_launcher_foreground.xml 重写 4 path：碗填充（淡绿 #E8F5E9）+ 碗描边（深绿 #1B5E20，2.5dp round cap）+ 三粒米粒（淡黄 #FFF59D，r=1.2dp，碗内三角排列）+ 右上飘出叶子（主绿 #2E7D32，水滴形 45° 上扬）
+- `8a46586` icon_assets_test.dart 断言更新为 M26 几何与配色（6 个 test 全 PASS）
+- `5ffd43b` 5 个密度 PNG fallback 用 Python+cairosvg+pillow 重新渲染（mdpi 48 / hdpi 72 / xhdpi 96 / xxhdpi 144 / xxxhdpi 192，方+圆共 10 个 PNG）
+- `32d80b0` bump v0.28.0+40 → v0.29.0+41 + CHANGELOG 追加 M26 条目
+
+设计文档：`docs/superpowers/specs/2026-07-07-icon-refinement-design.md`；实施计划：`docs/superpowers/plans/2026-07-07-icon-refinement.md`。
+
+最终验证：flutter analyze No issues / flutter test 1134 passed / 3 skipped / 0 failed（0 回归，与 v0.28.0 基线一致）/ 6+1 硬约束满足（未触碰 build.gradle.kts / meal_log / AI 三路径 / per100g 反算 / SecureConfigStore / initSentryAndRunApp / minSdk=31）。**已 push 未打 tag 未发 release**（用户明确指令"做完后不要打 tag 发布，就 push 了就行"）。
 
 **v0.27.0 P0 修复：AI 推理热量与显示值不一致（2026-07-07，已发版 v0.27.0）—— 5 处根因，2 个 commit**：用户报告"AI 推理出来的热量和最后显示的不一样"+ 复合菜显示组分明细繁琐 + "库里面没有"文案误导。OCR 数据反推（米粉汤 480 kcal reasoning vs 381 kcal 显示）+ API 实测（GLM-4V + Qwen-VL 两个 token 均有效）定位 5 处根因：
 - **Commit e6d1478**：单品路径 initState 用 mid 不用历史中位数预填（480×350/350=480，不再 480×278/350=381）；复合菜 AI 优先分支 servingG 用 mid 不用 totalG（actualCalories = AI 推理值，不按组分之和缩放）
@@ -144,9 +158,9 @@ C1 验证（反复检查后发现并修复 1 处遗漏）：recognize_page L224 
 - 文件行数全部达标：multi_dish_page 542 < 600 / dashboard_page 304 < 600 / `_pickAndRecognize` 26 < 50 / `processPending` 29 < 80
 - 哨兵检查数零回归：`foodItemId == 0` 检查 M24 前后总数 3 = 3（recognize_page 1 + multi_dish_page 主文件 1 + multi_dish/ai_estimate_card 1，最后 1 处在 B4 拆分时移到子文件）
 
-**工作区状态**：v0.25.0+37 已发布（两个 UX 功能增强 + 两个 UX Bug 修复 + Web Interface Guidelines 复审通过 + commit + push + tag v0.25.0 + GitHub release）。M22 已 push + tag v0.21.0（commit 13701c5）；M23 全面细致审查完成（4 维度报告 67 项发现）；M24 P1 清零已 commit d5b7483 + push + tag v0.22.0；M25 方案 D 已 commit bf26aa4 + push + tag v0.23.0；M25 主题动态取色 + 图标精修 + push + tag v0.24.0；**v0.25.0 已 commit + push + tag v0.25.0 + GitHub release（详见上方"v0.25.0+37 已发布"段；1107 全量测试通过 + 42 新测试 + analyze No issues + 6+1 硬约束全部满足 + 0 回归 + Web Interface Guidelines 复审通过）**。远端 main 已 force push 覆盖旧 v0.8.0 线为 v0.20.x 主线（M20 期间执行）。v0.18.x 及之前版本历史见 git log + tag 列表。
+**工作区状态**：v0.29.0+41 已 push（M26 图标精修，未打 tag 未发 release，用户指令"做完后不要打 tag 发布，就 push 了就行"）。M26 P1 UI 审查已发版 v0.26.0；v0.27.0 已发版 P0 热量不一致修复；v0.28.0 已发版 AI 组分滑块影响热量架构改造；v0.25.0+37 已发布（两个 UX 功能增强 + 两个 UX Bug 修复 + Web Interface Guidelines 复审通过 + commit + push + tag v0.25.0 + GitHub release）。M22 已 push + tag v0.21.0（commit 13701c5）；M23 全面细致审查完成（4 维度报告 67 项发现）；M24 P1 清零已 commit d5b7483 + push + tag v0.22.0；M25 方案 D 已 commit bf26aa4 + push + tag v0.23.0；M25 主题动态取色 + 图标精修 + push + tag v0.24.0；**v0.25.0 已 commit + push + tag v0.25.0 + GitHub release（详见上方"v0.25.0+37 已发布"段；1107 全量测试通过 + 42 新测试 + analyze No issues + 6+1 硬约束全部满足 + 0 回归 + Web Interface Guidelines 复审通过）**。远端 main 已 force push 覆盖旧 v0.8.0 线为 v0.20.x 主线（M20 期间执行）。v0.18.x 及之前版本历史见 git log + tag 列表。
 
-**当前分支**：trae/agent-wX1X6Q（本地 HEAD 即将 bump 到 v0.25.0 commit；远端 origin/trae/agent-wX1X6Q HEAD 同步；tag v0.21.0 → 13701c5，tag v0.22.0 → d5b7483，tag v0.23.0 → bf26aa4，tag v0.24.0 → 上个 commit，tag v0.25.0 → 本次 release commit）
+**当前分支**：trae/agent-wX1X6Q（本地 HEAD = v0.29.0+41 commit 32d80b0；远端 origin/trae/agent-wX1X6Q HEAD 同步；tag v0.28.0 指向 v0.28.0 release commit，tag v0.27.0 → b5d0019，tag v0.26.0 → c8809c3，tag v0.25.0 → 4e2202e；v0.29.0 待用户明确指令后打 tag + 发 release）
 
 **待用户执行的收尾项**（沙箱无法完成）：
 1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）
