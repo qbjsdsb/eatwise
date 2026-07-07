@@ -34,7 +34,30 @@
 
 ## 2. 当前状态（每次会话结束更新）
 
-**最后更新**：2026-07-07
+**最后更新**：2026-07-08
+
+**v0.31.0 M27 蓝牙体重秤同步（2026-07-08，已 push 未打 tag）—— 接入小米体重秤 2（XMTZC04HM）BLE 被动扫描**：用户要求"接入蓝牙，每次量体重软件上面就会同步信息"。4 轮深度调研后确定 v4 设计：纯被动 BLE 扫描（不建 GATT 连接）→ Dart 层软过滤 serviceData UUID 0x181D → bitmask 解析 v1 协议（学 ble_monitor）→ 预填 weight_page 输入框 → 复用现有 _save() 写库。零改动数据层。
+
+协议解析关键决策（调研修正 ESPHome 4 个 bug）：
+- bitmask 判定单位（不用枚举匹配，否则漏 0x62 等包）
+- 斤系数 0.5（ESPHome 0.6 是 bug，1 斤 = 0.5 kg）
+- isEffective 双重保护：stabilized && !weightRemoved（ESPHome v1 不检查 stabilized 会误存抖动值）
+- packet_id（payload hex）去重
+
+5 个 commit：
+- `d0bae0b` pubspec.yaml 添加 flutter_blue_plus 2.3.10 + permission_handler 12.0.3
+- `d2abd33` AndroidManifest 声明 BLE 权限（BLUETOOTH_SCAN + BLUETOOTH_CONNECT + ACCESS_FINE_LOCATION，不加 neverForLocation 适配国产 ROM）
+- `89703cb` MiScaleParser 协议解析器 + 9 个 TDD 测试（7 hex 样本 + 长度错误 + 去重）
+- `cfb9198` MiScaleScanner BLE 扫描 Service（无过滤扫描 + Dart 软过滤 + lowLatency + packet_id 去重）
+- `582a43c` weight_page 接入蓝牙（WidgetsBindingObserver 生命周期 + 权限请求 + 4 态 UI + 捕获预填 + 5 分钟 ≤3 次扫描冷却）
+
+新增文件：`lib/data/bluetooth/mi_scale_parser.dart` + `mi_scale_scanner.dart` + `test/mi_scale_parser_test.dart`。
+
+设计文档：`docs/superpowers/specs/2026-07-07-bluetooth-scale-sync-design.md`；实施计划：`docs/superpowers/plans/2026-07-07-bluetooth-scale-sync.md`。
+
+最终验证：flutter analyze No issues / flutter test 1143 passed / 3 skipped / 0 failed（基线 1134 + 新增 9 parser 测试 = 1143，0 回归）/ 6+1 硬约束满足（minify=false / shrink=false / minSdk=31 / meal_log 外键 / AI 三路径 / per100g 反算基于 mid / SecureConfigStore / initSentryAndRunApp / abiFilters=arm64-v8a）。
+
+**v0.30.1 APK 瘦身（2026-07-07，已发版 v0.30.1）—— 87MB → 42.3MB 减 51%**：用户问"为什么软件体积这么大"。调研后实施 A 方案：abiFilters=arm64-v8a + release.yml 加 `--target-platform android-arm64`。6+1 硬约束新增 abiFilters=arm64-v8a。
 
 **v0.29.0 M26 图标精修（2026-07-07，已 push 未打 tag）—— 径向渐变背景+描边碗+米粒+叶子**：用户反馈"想把图标做得更精致美丽一点"。brainstorming 流程后用户决策：方案 B 碗+叶子（自然×食物）/ 右上侧飘出叶子 / 径向渐变背景 / 三粒米粒 / 描边碗+内部填充 / 删除圆环盘。从 M25 圆环盘+实心碗（2 元素纯色）升级为 M26 描边碗+米粒+叶子（4 path + 径向渐变背景，4 色 vs M25 的 2 色）。
 

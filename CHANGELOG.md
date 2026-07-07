@@ -4,6 +4,31 @@
 
 ## [Unreleased]
 
+## [v0.31.0] - 2026-07-08
+
+### 新增：M27 蓝牙体重秤同步
+
+接入小米体重秤 2（XMTZC04HM）BLE 被动扫描，量体重后自动捕获稳定值预填体重输入框。
+
+#### 改动
+- `pubspec.yaml`：新增 `flutter_blue_plus ^2.3.10` + `permission_handler ^12.0.3`
+- `android/app/src/main/AndroidManifest.xml`：声明 BLUETOOTH_SCAN + BLUETOOTH_CONNECT + ACCESS_FINE_LOCATION 权限（不加 neverForLocation 适配国产 ROM）
+- 新增 `lib/data/bluetooth/mi_scale_parser.dart`：Mi Scale v1 协议解析器（bitmask 判定单位 + isEffective 双重保护 + packet_id 去重）
+- 新增 `lib/data/bluetooth/mi_scale_scanner.dart`：BLE 扫描 Service（无过滤扫描 + Dart 软过滤 + lowLatency）
+- 新增 `test/mi_scale_parser_test.dart`：9 个 TDD 测试（7 hex 样本 + 长度错误 + 去重）
+- `lib/features/weight/weight_page.dart`：接入蓝牙扫描（WidgetsBindingObserver 生命周期 + 权限请求 + 4 态 UI + 捕获预填 + 5 分钟 ≤3 次扫描冷却）
+
+#### 协议解析关键决策
+- bitmask 判定单位（不用枚举匹配，否则漏 0x62 等包）
+- 斤系数 0.5（ESPHome 0.6 是 bug，1 斤 = 0.5 kg）
+- isEffective 双重保护：stabilized && !weightRemoved
+- packet_id（payload hex）去重
+
+#### 验证
+- flutter analyze No issues
+- flutter test 1143 passed / 3 skipped / 0 failed（0 回归）
+- 6+1 硬约束全部满足
+
 ## [v0.30.1] - 2026-07-07
 
 ### 修复：APK 体积优化实际生效
