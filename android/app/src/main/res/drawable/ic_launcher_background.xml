@@ -1,21 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  自适应图标背景：纯白 #FFFFFF（M22 决策，M25 保留不变）。
+  自适应图标背景：径向渐变（中心白 → 边缘 Light Green 50）。
 
-  选色理由：
-  - 纯白背景最衬托自然绿前景（MFP 同策略：白底深前景）
-  - 白底高对比，缩放到 48dp 仍清晰
-  - 用户切 App 主题色不影响图标（图标独立配色，不跟主题变）
+  M26 决策：从 M22/M25 的纯白背景升级为径向渐变，增加层次感。
+  - 中心 #FFFFFF 白色，前景焦点（碗+叶子）下方最亮
+  - 边缘 #F1F8E9 极淡绿，与碗填充 #E8F5E9 同色系，衬托前景
+  - 渐变半径 54dp（画布对角线一半稍短，覆盖到四角）
 
-  M15 暖橙纯色 → M17 紫橙渐变 → M20 紫橙渐变+Lens 风 → M22 白底纯色 → M25 白底纯色（不变，前景改自然绿）
+  Android vector 渐变用 <aapt:attr> 嵌套 <gradient> 实现内联：
+  - android:type="radial" 径向
+  - centerX/centerY 54,54 画布中心
+  - gradientRadius 54 渐变半径
+  - startColor 中心白 / endColor 边缘淡绿
+
+  monochrome 兼容：Android 13+ 主题图标染色时渐变被忽略，系统用单色染色，可接受。
+
+  M22/M25 纯白 → M26 径向渐变（精致层次）
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <path
-        android:pathData="M0,0 h108 v108 h-108 z"
-        android:fillColor="@color/ic_launcher_background" />
+    <path android:pathData="M0,0 h108 v108 h-108 z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="54"
+                android:centerY="54"
+                android:gradientRadius="54"
+                android:startColor="@color/ic_launcher_background_center"
+                android:endColor="@color/ic_launcher_background_edge" />
+        </aapt:attr>
+    </path>
 </vector>
