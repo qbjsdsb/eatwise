@@ -375,6 +375,13 @@ class TodayMealsPageState extends ConsumerState<TodayMealsPage> {
         if (undone) return;
         try {
           await repo.deleteMealLog(m.id);
+          // 并发 _load（RefreshBus 通知/tab 切换）可能在 await controller.closed
+          // 期间把 m 重新加载到 _meals（此时 DB 还没删）。DB 已删，UI 必须保持
+          // 移除状态——否则用户看到食物"复活"，反复删除会触发新横幅，
+          // 表现为"删不掉 + 横幅一直悬浮"。
+          if (mounted && _meals.any((x) => x.id == m.id)) {
+            setState(() => _meals.removeWhere((x) => x.id == m.id));
+          }
         } catch (e) {
       // 删除失败：页面已销毁则无法回滚 UI/提示（best-effort，下次加载会显示原记录）
       debugPrint('删除失败: $e');

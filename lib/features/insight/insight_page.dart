@@ -1202,7 +1202,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
       ('breakfast', '早餐', cs.primary),
       ('lunch', '午餐', cs.tertiary),
       ('dinner', '晚餐', cs.secondary),
-      ('snack', '加餐', cs.outline),
+      ('snack', '加餐', cs.onSurfaceVariant), // snack 用 onSurfaceVariant（深灰）替代 outline（浅灰），避免 section 白文字对比度不足
     ];
     for (final (key, label, color) in mealConfig) {
       final cal = _mealTypeCalories[key] ?? 0;
@@ -1212,7 +1212,7 @@ class _InsightPageState extends ConsumerState<InsightPage> {
         value: cal,
         color: color,
         radius: 36,
-        title: '$pct%',
+        title: '${pct.toStringAsFixed(1)}%', // 保留 1 位小数（如 33.3%），避免 33.333333% 长字符串
         titleStyle: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
@@ -1272,15 +1272,18 @@ class _InsightPageState extends ConsumerState<InsightPage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        // alpha 0.12 → 0.28：提高背景不透明度，避免半透明看不清
+        color: color.withValues(alpha: 0.28),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         '$label $kcal',
         style: TextStyle(
           fontSize: 10,
-          color: color,
-          fontWeight: FontWeight.w500,
+          // 文字色用 onSurface（深色）替代 color 本身（如 outline 灰），
+          // 深色文字 + 淡色背景对比度更高，可读性更好；餐次区分靠背景色调
+          color: cs.onSurface,
+          fontWeight: FontWeight.w700, // w500 → w700 加粗提高可读性
         ),
       ),
     );
