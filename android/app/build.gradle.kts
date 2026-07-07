@@ -26,6 +26,14 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // M27 APK 体积优化：仅打包 arm64-v8a（64 位 ARM，2019 年后手机主流架构）
+        // 默认打 3 ABI（arm64-v8a + armeabi-v7a + x86_64）致 release APK 87MB，
+        // 仅 arm64-v8a 后降至 ~30MB（减 65%）。
+        // minSdk=31（Android 12+）已排除老手机，arm64 普及率 >99%，覆盖充分。
+        // 模拟器（x86_64）无法安装此 release 包，开发用 --target-platform android-x64 单独打。
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     // M16 应用内更新：固定签名 keystore（保证 CI 与本地 build 签名一致，支持覆盖安装）

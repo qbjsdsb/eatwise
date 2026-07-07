@@ -4,6 +4,29 @@
 
 ## [Unreleased]
 
+## [v0.30.0] - 2026-07-07
+
+### APK 体积优化：abiFilters 仅打包 arm64-v8a
+
+用户反馈 release APK 87MB 体积过大。调研发现主因是默认打包 3 个 CPU 架构（arm64-v8a + armeabi-v7a + x86_64），每架构 Flutter engine .so ~20MB，共 ~60MB。
+
+#### 改动
+- `android/app/build.gradle.kts`：`defaultConfig` 内加 `ndk { abiFilters += "arm64-v8a" }`，仅打包 64 位 ARM
+
+#### 预期收益
+- release APK：87MB → ~30MB（减 65%）
+- debug APK：180MB → ~60MB（减 67%）
+
+#### 风险评估
+- minSdk=31（Android 12+）已排除老手机，arm64 普及率 >99%，覆盖充分
+- 模拟器（x86_64）无法安装此 release 包，开发用 `--target-platform android-x64` 单独打
+- 不碰硬约束 #1：R8 minify/shrink 仍禁用，仅过滤 ABI
+
+#### 验证
+- `flutter analyze`：No issues found
+- `flutter test`：1133 passed / 3 skipped / 1 failed（github_release_smoke_test 沙箱网络限流，与本次改动无关，0 回归）
+- 6+1 硬约束满足（minify=false / shrink=false / minSdk=31 / abiFilters=arm64-v8a）
+
 ## [v0.29.0] - 2026-07-07
 
 ### M26 图标精修
