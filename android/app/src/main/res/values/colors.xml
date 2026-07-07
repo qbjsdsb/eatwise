@@ -9,4 +9,19 @@
          白底最衬托食物 App 语义，自然绿健康/平衡不抑制食欲，用户切主题色不影响图标识别 -->
     <color name="ic_launcher_background">#FFFFFF</color>
     <color name="ic_launcher_foreground">#2E7D32</color>
+
+    <!-- M26：图标精修配色——径向渐变背景 + 描边碗+米粒+叶子
+         M25 白底+自然绿前景 → M26 径向渐变+4 色层次
+         - 背景中心 #FFFFFF（White）：径向渐变中心
+         - 背景边缘 #F1F8E9（Light Green 50）：极淡绿衬托前景
+         - 碗描边 #1B5E20（Green 900）：比主色深一阶
+         - 碗填充 #E8F5E9（Green 50）：淡绿与背景同色系
+         - 叶子 #2E7D32（Green 800）：主绿，保留 M25 主色
+         - 米粒 #FFF59D（Amber 200）：淡黄食物语义 -->
+    <color name="ic_launcher_background_center">#FFFFFF</color>
+    <color name="ic_launcher_background_edge">#F1F8E9</color>
+    <color name="ic_launcher_bowl_stroke">#1B5E20</color>
+    <color name="ic_launcher_bowl_fill">#E8F5E9</color>
+    <color name="ic_launcher_leaf">#2E7D32</color>
+    <color name="ic_launcher_rice">#FFF59D</color>
 </resources>
