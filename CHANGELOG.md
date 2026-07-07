@@ -4,6 +4,33 @@
 
 ## [Unreleased]
 
+## [v0.29.0] - 2026-07-07
+
+### M26 图标精修
+
+用户反馈"想把图标做得更精致美丽一点"。从 M25 圆环盘+实心碗（2 元素纯色）升级为 M26 描边碗+米粒+叶子（4 path + 径向渐变背景）。
+
+#### 视觉改动
+- **背景**：径向渐变（中心白 #FFFFFF → 边缘 Light Green 50 #F1F8E9），替代 M25 纯白
+- **前景 4 path**：
+  - 碗填充（淡绿 #E8F5E9）+ 碗描边（深绿 #1B5E20，2.5dp round cap）
+  - 三粒米粒（淡黄 #FFF59D，r=1.2dp，碗内三角排列，食物语义）
+  - 右上飘出叶子（主绿 #2E7D32，水滴形 45° 上扬，自然×食物双重语义）
+- **删除**：M25 圆环描边盘（碗成为唯一主体，几何更聚焦）
+- **配色层次**：4 色 + 渐变（vs M25 的 2 色纯绿）
+
+#### 资源改动
+- `colors.xml`：新增 6 色定义（ic_launcher_background_center/edge + bowl_stroke/fill + leaf + rice）
+- `ic_launcher_background.xml`：改径向渐变（`<aapt:attr>` 嵌套 `<gradient type="radial">`）
+- `ic_launcher_foreground.xml`：重写 4 path
+- 5 个密度 PNG fallback（mdpi 48 / hdpi 72 / xhdpi 96 / xxhdpi 144 / xxxhdpi 192）用 Python+cairosvg+pillow 重新渲染
+- `icon_assets_test.dart`：断言更新为 M26 几何与配色
+
+#### 验证
+- `flutter analyze`：No issues found
+- `flutter test`：1134 passed / 3 skipped / 0 failed（0 回归）
+- 6+1 硬约束满足（未触碰 build.gradle.kts / meal_log / AI 三路径）
+
 ## [v0.28.0] - 2026-07-07
 
 ### v0.28.0 架构改造：AI 组分滑块影响热量（完全抛弃库参与热量计算）
