@@ -31,6 +31,25 @@
 - `flutter test`：1134 passed / 3 skipped / 0 failed（0 回归）
 - 6+1 硬约束满足（未触碰 build.gradle.kts / meal_log / AI 三路径）
 
+### Bug 修复：餐次分布可读性 + 删最后一个食物复活
+
+用户报告 3 个问题：(1) 餐次分布数字小数点后位数太多；(2) 早餐/午餐/晚餐/加餐半透明看不清，数字也看不清；(3) 今日明细删最后一个食物删不掉，删除后一直悬浮撤回横幅。
+
+#### 修复
+- **餐次分布数字精度**（`insight_page.dart`）：`'$pct%'` → `'${pct.toStringAsFixed(1)}%'`（33.3% 而非 33.333333%）
+- **餐次分布可读性**（`insight_page.dart`）：
+  - badge 背景 alpha 0.12 → 0.28，避免半透明看不清
+  - badge 文字色 `color` → `cs.onSurface`（深色）+ w700 加粗，对比度提高
+  - snack section 色 `cs.outline`（浅灰）→ `cs.onSurfaceVariant`（深灰），白文字对比度足
+- **删最后一个食物复活**（`today_meals_page.dart`）：
+  - 根因：onDismissed 中 `await controller.closed` 期间（3 秒），RefreshBus/tab 切换触发 `_load()` 把 m 重新加载到 `_meals`（DB 还没删），`controller.closed` 返回后 `deleteMealLog` 成功但没刷新 UI，食物"复活"→ 用户反复删除 → 横幅反复出现 → "删不掉 + 横幅一直悬浮"
+  - 修复：`deleteMealLog` 成功后检查 `_meals` 是否含 m.id，有则 `setState` 移除，确保 UI 与 DB 一致
+
+#### 验证
+- `flutter analyze`：No issues found
+- `flutter test`：1134 passed / 3 skipped / 0 failed（0 回归）
+- 6+1 硬约束满足
+
 ## [v0.28.0] - 2026-07-07
 
 ### v0.28.0 架构改造：AI 组分滑块影响热量（完全抛弃库参与热量计算）

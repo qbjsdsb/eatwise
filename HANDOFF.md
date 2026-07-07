@@ -23,7 +23,7 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.29.0+41（pubspec.yaml）—— 已 push v0.29.0（M26 图标精修，未打 tag 未发 release）；v0.28.0 为 AI 组分滑块影响热量（完全抛弃库参与热量计算）；v0.27.0 为 AI 推理热量与显示值不一致 P0 修复；v0.26.0 为 M26 第二轮 UI 审查 P1 修复（45 条）；v0.25.0 为两个 UX 功能增强 + 两个 UX Bug 修复（HANDOFF 同步 + 测试缺口补全）
+- **当前版本**：0.29.0+41（pubspec.yaml）—— 已发版 v0.29.0 GitHub Release（M26 图标精修 + 餐次分布可读性 + 删最后一个食物复活 bug 修复）；v0.28.0 为 AI 组分滑块影响热量（完全抛弃库参与热量计算）；v0.27.0 为 AI 推理热量与显示值不一致 P0 修复；v0.26.0 为 M26 第二轮 UI 审查 P1 修复（45 条）；v0.25.0 为两个 UX 功能增强 + 两个 UX Bug 修复（HANDOFF 同步 + 测试缺口补全）
 - **当前分支**：trae/agent-wX1X6Q（HEAD = b5d0019 已 push；tag v0.27.0 指向 b5d0019；v0.26.0 指向 c8809c3；v0.25.0 指向 4e2202e；v0.24.0 指向 a27b347；v0.23.0 tag 指向 d37cd4e；v0.18.5 tag 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
@@ -48,7 +48,13 @@
 
 设计文档：`docs/superpowers/specs/2026-07-07-icon-refinement-design.md`；实施计划：`docs/superpowers/plans/2026-07-07-icon-refinement.md`。
 
-最终验证：flutter analyze No issues / flutter test 1134 passed / 3 skipped / 0 failed（0 回归，与 v0.28.0 基线一致）/ 6+1 硬约束满足（未触碰 build.gradle.kts / meal_log / AI 三路径 / per100g 反算 / SecureConfigStore / initSentryAndRunApp / minSdk=31）。**已 push 未打 tag 未发 release**（用户明确指令"做完后不要打 tag 发布，就 push 了就行"）。
+最终验证：flutter analyze No issues / flutter test 1134 passed / 3 skipped / 0 failed（0 回归，与 v0.28.0 基线一致）/ 6+1 硬约束满足（未触碰 build.gradle.kts / meal_log / AI 三路径 / per100g 反算 / SecureConfigStore / initSentryAndRunApp / minSdk=31）。
+
+**Bug 修复：餐次分布可读性 + 删最后一个食物复活（2026-07-07，已发版 v0.29.0）—— commit 29b2afa**：用户报告 3 个问题：(1) 餐次分布数字小数点后位数太多；(2) 早餐/午餐/晚餐/加餐半透明看不清，数字也看不清；(3) 今日明细删最后一个食物删不掉，删除后一直悬浮撤回横幅。修复：
+- **餐次分布**（`insight_page.dart`）：pct `toStringAsFixed(1)` 保留 1 位小数；badge 背景 alpha 0.12→0.28；badge 文字色 `color`→`cs.onSurface`（深色）+ w700 加粗；snack section 色 `cs.outline`（浅灰）→`cs.onSurfaceVariant`（深灰）
+- **删最后一个食物复活**（`today_meals_page.dart`）：根因 onDismissed 中 `await controller.closed` 期间 RefreshBus/tab 切换触发 `_load()` 把 m 重新加载（DB 还没删），`deleteMealLog` 成功但没刷新 UI，食物"复活"→ 反复删除 → 横幅反复。修复：`deleteMealLog` 成功后检查 `_meals` 是否含 m.id，有则 `setState` 移除
+
+最终验证：flutter analyze No issues / flutter test 1134 passed / 3 skipped / 0 failed（0 回归）/ 6+1 硬约束满足。**已打 tag v0.29.0 + push + GitHub Actions 自动构建发版**（release.yml 由 tag push 触发，自动 build APK + 创建 Release + 上传 app-release.apk + app-debug.apk）。
 
 **v0.27.0 P0 修复：AI 推理热量与显示值不一致（2026-07-07，已发版 v0.27.0）—— 5 处根因，2 个 commit**：用户报告"AI 推理出来的热量和最后显示的不一样"+ 复合菜显示组分明细繁琐 + "库里面没有"文案误导。OCR 数据反推（米粉汤 480 kcal reasoning vs 381 kcal 显示）+ API 实测（GLM-4V + Qwen-VL 两个 token 均有效）定位 5 处根因：
 - **Commit e6d1478**：单品路径 initState 用 mid 不用历史中位数预填（480×350/350=480，不再 480×278/350=381）；复合菜 AI 优先分支 servingG 用 mid 不用 totalG（actualCalories = AI 推理值，不按组分之和缩放）
@@ -158,9 +164,9 @@ C1 验证（反复检查后发现并修复 1 处遗漏）：recognize_page L224 
 - 文件行数全部达标：multi_dish_page 542 < 600 / dashboard_page 304 < 600 / `_pickAndRecognize` 26 < 50 / `processPending` 29 < 80
 - 哨兵检查数零回归：`foodItemId == 0` 检查 M24 前后总数 3 = 3（recognize_page 1 + multi_dish_page 主文件 1 + multi_dish/ai_estimate_card 1，最后 1 处在 B4 拆分时移到子文件）
 
-**工作区状态**：v0.29.0+41 已 push（M26 图标精修，未打 tag 未发 release，用户指令"做完后不要打 tag 发布，就 push 了就行"）。M26 P1 UI 审查已发版 v0.26.0；v0.27.0 已发版 P0 热量不一致修复；v0.28.0 已发版 AI 组分滑块影响热量架构改造；v0.25.0+37 已发布（两个 UX 功能增强 + 两个 UX Bug 修复 + Web Interface Guidelines 复审通过 + commit + push + tag v0.25.0 + GitHub release）。M22 已 push + tag v0.21.0（commit 13701c5）；M23 全面细致审查完成（4 维度报告 67 项发现）；M24 P1 清零已 commit d5b7483 + push + tag v0.22.0；M25 方案 D 已 commit bf26aa4 + push + tag v0.23.0；M25 主题动态取色 + 图标精修 + push + tag v0.24.0；**v0.25.0 已 commit + push + tag v0.25.0 + GitHub release（详见上方"v0.25.0+37 已发布"段；1107 全量测试通过 + 42 新测试 + analyze No issues + 6+1 硬约束全部满足 + 0 回归 + Web Interface Guidelines 复审通过）**。远端 main 已 force push 覆盖旧 v0.8.0 线为 v0.20.x 主线（M20 期间执行）。v0.18.x 及之前版本历史见 git log + tag 列表。
+**工作区状态**：v0.29.0+41 已发版（M26 图标精修 + 餐次分布可读性 + 删最后一个食物复活 bug 修复，已打 tag v0.29.0 + push + GitHub Actions 自动构建发版）。M26 P1 UI 审查已发版 v0.26.0；v0.27.0 已发版 P0 热量不一致修复；v0.28.0 已发版 AI 组分滑块影响热量架构改造；v0.25.0+37 已发布（两个 UX 功能增强 + 两个 UX Bug 修复 + Web Interface Guidelines 复审通过 + commit + push + tag v0.25.0 + GitHub release）。M22 已 push + tag v0.21.0（commit 13701c5）；M23 全面细致审查完成（4 维度报告 67 项发现）；M24 P1 清零已 commit d5b7483 + push + tag v0.22.0；M25 方案 D 已 commit bf26aa4 + push + tag v0.23.0；M25 主题动态取色 + 图标精修 + push + tag v0.24.0；**v0.25.0 已 commit + push + tag v0.25.0 + GitHub release（详见上方"v0.25.0+37 已发布"段；1107 全量测试通过 + 42 新测试 + analyze No issues + 6+1 硬约束全部满足 + 0 回归 + Web Interface Guidelines 复审通过）**。远端 main 已 force push 覆盖旧 v0.8.0 线为 v0.20.x 主线（M20 期间执行）。v0.18.x 及之前版本历史见 git log + tag 列表。
 
-**当前分支**：trae/agent-wX1X6Q（本地 HEAD = v0.29.0+41 commit 32d80b0；远端 origin/trae/agent-wX1X6Q HEAD 同步；tag v0.28.0 指向 v0.28.0 release commit，tag v0.27.0 → b5d0019，tag v0.26.0 → c8809c3，tag v0.25.0 → 4e2202e；v0.29.0 待用户明确指令后打 tag + 发 release）
+**当前分支**：trae/agent-wX1X6Q（本地 HEAD = v0.29.0+41 commit 29b2afa；远端 origin/trae/agent-wX1X6Q HEAD 同步；tag v0.29.0 → 29b2afa，tag v0.28.0 指向 v0.28.0 release commit，tag v0.27.0 → b5d0019，tag v0.26.0 → c8809c3，tag v0.25.0 → 4e2202e）
 
 **待用户执行的收尾项**（沙箱无法完成）：
 1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）
