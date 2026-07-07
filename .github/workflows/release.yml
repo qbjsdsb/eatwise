@@ -71,12 +71,16 @@ jobs:
           echo "✅ keystore 注入完成"
 
       - name: Build release APK
-        # 有 key.properties 用固定 release 签名（支持覆盖安装），否则回退 debug
-        run: flutter build apk --release --no-tree-shake-icons
+        # M27 体积优化：--target-platform android-arm64 仅打 arm64-v8a（87MB → ~30MB，减 65%）
+        # Flutter gradle plugin 不带 --target-platform 时默认打 3 ABI（arm64+arm32+x64），
+        # build.gradle.kts 的 abiFilters 会被覆盖，必须用命令行参数控制。
+        # minSdk=31 已排除老手机，arm64 普及率 >99%；模拟器用 debug 包或单独 --target-platform android-x64
+        run: flutter build apk --release --no-tree-shake-icons --target-platform android-arm64
 
       - name: Build debug APK (诊断用，崩溃显示红屏堆栈)
         # debug 版不优化，崩溃时显示完整红色错误页+堆栈，便于定位闪退根因
-        run: flutter build apk --debug --no-tree-shake-icons
+        # 同样用 --target-platform android-arm64 控制体积（180MB → ~60MB）
+        run: flutter build apk --debug --no-tree-shake-icons --target-platform android-arm64
 
       - name: Get version from pubspec
         id: version

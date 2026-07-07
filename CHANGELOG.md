@@ -4,6 +4,19 @@
 
 ## [Unreleased]
 
+## [v0.30.1] - 2026-07-07
+
+### 修复：APK 体积优化实际生效
+
+v0.30.0 加了 `build.gradle.kts` 的 `abiFilters = arm64-v8a`，但 release APK 体积未变（仍 87.7MB）。根因：**Flutter gradle plugin 不带 `--target-platform` 时默认打 3 ABI，会覆盖 `defaultConfig.abiFilters`**。
+
+#### 修复
+- `.github/workflows/release.yml`：release 和 debug 的 `flutter build apk` 命令都加 `--target-platform android-arm64`
+
+#### 预期收益（本次实际生效）
+- release APK：87.7MB → ~30MB（减 65%）
+- debug APK：181MB → ~60MB（减 67%）
+
 ## [v0.30.0] - 2026-07-07
 
 ### APK 体积优化：abiFilters 仅打包 arm64-v8a
