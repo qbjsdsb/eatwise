@@ -129,6 +129,7 @@ class WeightPageState extends ConsumerState<WeightPage>
     }
 
     // 4. 权限 OK → 标记已开启 + 启动扫描
+    if (!mounted) return;
     setState(() => _bleEnabled = true);
     await _startBleScan();
   }
@@ -200,7 +201,12 @@ class WeightPageState extends ConsumerState<WeightPage>
   }
 
   /// M27：停止 BLE 扫描
+  ///
+  /// 设 _bleState=idle，避免 startScan await 返回后 _bleState==scanning
+  /// 误显示"未找到体重秤"toast（用户主动停止 / app 进后台 / 生命周期 paused）。
+  /// _onMeasurement 捕获后不调此方法（避免覆盖 captured），直接调 _bleScanner.stopScan()。
   Future<void> _stopBleScan() async {
+    if (mounted) setState(() => _bleState = _BleState.idle);
     await _bleScanner?.stopScan();
   }
 
@@ -215,7 +221,8 @@ class WeightPageState extends ConsumerState<WeightPage>
       _dirty = true;
     });
     // 停止扫描（已捕获，省电）
-    _stopBleScan();
+    // 不调 _stopBleScan（它会设 idle 覆盖 captured），直接调 scanner.stopScan
+    _bleScanner?.stopScan();
     showAppToast(context, '已捕获 ${m.weightKg.toStringAsFixed(1)} kg，请确认');
   }
 
