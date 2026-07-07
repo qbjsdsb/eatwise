@@ -23,7 +23,7 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.29.0+41（pubspec.yaml）—— 已发版 v0.29.0 GitHub Release（M26 图标精修 + 餐次分布可读性 + 删最后一个食物复活 bug 修复）；v0.28.0 为 AI 组分滑块影响热量（完全抛弃库参与热量计算）；v0.27.0 为 AI 推理热量与显示值不一致 P0 修复；v0.26.0 为 M26 第二轮 UI 审查 P1 修复（45 条）；v0.25.0 为两个 UX 功能增强 + 两个 UX Bug 修复（HANDOFF 同步 + 测试缺口补全）
+- **当前版本**：0.30.1+43（pubspec.yaml）—— 已发版 v0.30.1 GitHub Release（APK 体积优化：abiFilters arm64-v8a + release.yml --target-platform android-arm64，release 87→42.3MB 减 51%，debug 180→110.2MB 减 39%）；v0.30.0 为 abiFilters 初版（build.gradle.kts 改动但被 Flutter plugin 覆盖未生效）；v0.29.0 为 M26 图标精修 + 餐次分布可读性 + 删最后一个食物复活 bug 修复；v0.28.0 为 AI 组分滑块影响热量（完全抛弃库参与热量计算）；v0.27.0 为 AI 推理热量与显示值不一致 P0 修复；v0.26.0 为 M26 第二轮 UI 审查 P1 修复（45 条）
 - **当前分支**：trae/agent-wX1X6Q（HEAD = b5d0019 已 push；tag v0.27.0 指向 b5d0019；v0.26.0 指向 c8809c3；v0.25.0 指向 4e2202e；v0.24.0 指向 a27b347；v0.23.0 tag 指向 d37cd4e；v0.18.5 tag 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
@@ -164,9 +164,9 @@ C1 验证（反复检查后发现并修复 1 处遗漏）：recognize_page L224 
 - 文件行数全部达标：multi_dish_page 542 < 600 / dashboard_page 304 < 600 / `_pickAndRecognize` 26 < 50 / `processPending` 29 < 80
 - 哨兵检查数零回归：`foodItemId == 0` 检查 M24 前后总数 3 = 3（recognize_page 1 + multi_dish_page 主文件 1 + multi_dish/ai_estimate_card 1，最后 1 处在 B4 拆分时移到子文件）
 
-**工作区状态**：v0.29.0+41 已发版（M26 图标精修 + 餐次分布可读性 + 删最后一个食物复活 bug 修复，已打 tag v0.29.0 + push + GitHub Actions 自动构建发版）。M26 P1 UI 审查已发版 v0.26.0；v0.27.0 已发版 P0 热量不一致修复；v0.28.0 已发版 AI 组分滑块影响热量架构改造；v0.25.0+37 已发布（两个 UX 功能增强 + 两个 UX Bug 修复 + Web Interface Guidelines 复审通过 + commit + push + tag v0.25.0 + GitHub release）。M22 已 push + tag v0.21.0（commit 13701c5）；M23 全面细致审查完成（4 维度报告 67 项发现）；M24 P1 清零已 commit d5b7483 + push + tag v0.22.0；M25 方案 D 已 commit bf26aa4 + push + tag v0.23.0；M25 主题动态取色 + 图标精修 + push + tag v0.24.0；**v0.25.0 已 commit + push + tag v0.25.0 + GitHub release（详见上方"v0.25.0+37 已发布"段；1107 全量测试通过 + 42 新测试 + analyze No issues + 6+1 硬约束全部满足 + 0 回归 + Web Interface Guidelines 复审通过）**。远端 main 已 force push 覆盖旧 v0.8.0 线为 v0.20.x 主线（M20 期间执行）。v0.18.x 及之前版本历史见 git log + tag 列表。
+**工作区状态**：v0.30.1+43 已发版（APK 体积优化：release 87→42.3MB 减 51%，debug 180→110.2MB 减 39%，已打 tag v0.30.1 + push + GitHub Actions 自动构建发版）。v0.30.0 为 abiFilters 初版（build.gradle.kts 改动但被 Flutter plugin 覆盖未生效，已由 v0.30.1 修复）；v0.29.0 已发版（M26 图标精修 + 餐次分布可读性 + 删最后一个食物复活 bug 修复）；M26 P1 UI 审查已发版 v0.26.0；v0.27.0 已发版 P0 热量不一致修复；v0.28.0 已发版 AI 组分滑块影响热量架构改造；v0.25.0+37 已发布（两个 UX 功能增强 + 两个 UX Bug 修复 + Web Interface Guidelines 复审通过）。远端 main 已 force push 覆盖旧 v0.8.0 线为 v0.20.x 主线（M20 期间执行）。v0.18.x 及之前版本历史见 git log + tag 列表。
 
-**当前分支**：trae/agent-wX1X6Q（本地 HEAD = v0.29.0+41 commit 29b2afa；远端 origin/trae/agent-wX1X6Q HEAD 同步；tag v0.29.0 → 29b2afa，tag v0.28.0 指向 v0.28.0 release commit，tag v0.27.0 → b5d0019，tag v0.26.0 → c8809c3，tag v0.25.0 → 4e2202e）
+**当前分支**：trae/agent-wX1X6Q（本地 HEAD = v0.30.1+43 commit 4fcf57b；远端 origin/trae/agent-wX1X6Q HEAD 同步；tag v0.30.1 → 4fcf57b，tag v0.30.0 → 0ce3228，tag v0.29.0 → f187b46，tag v0.28.0 指向 v0.28.0 release commit，tag v0.27.0 → b5d0019，tag v0.26.0 → c8809c3，tag v0.25.0 → 4e2202e）
 
 **待用户执行的收尾项**（沙箱无法完成）：
 1. ✅ ~~把仓库改成 public~~（已完成，匿名访问 GitHub API 200 OK，smoke test 2/2 通过）
