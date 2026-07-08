@@ -108,4 +108,98 @@ void main() {
       expect(m1.packetId, '22b04ee80707080a1e00');
     });
   });
+
+  group('MiScaleParser.parseV2', () {
+    test('样本 A（真实抓包）：0xA6 kg stabilized removed complete（下秤包，isEffective=false）', () {
+      // c0=0x02(kg) c1=0xA6=10100110 → bit1=1(complete) bit5=1(stabilized) bit7=1(removed)
+      final payload = [0x02, 0xA6, 0xE6, 0x07, 0x02, 0x0B, 0x11, 0x22, 0x07, 0xBA, 0x01, 0x3C, 0x37];
+      final m = MiScaleParser.parseV2(payload);
+      expect(m, isNotNull);
+      expect(m!.weightKg, closeTo(70.70, 0.01));
+      expect(m.unit, 'kg');
+      expect(m.isStabilized, true);
+      expect(m.weightRemoved, true);
+      expect(m.measurementComplete, true);
+      expect(m.impedance, 442); // 0x01BA = 442
+      expect(m.isEffective, false); // removed=true
+    });
+
+    test('样本 B：0x20 kg stabilized 未下秤 阻抗未完成（isEffective=true，impedance=null）', () {
+      // c1=0x20=00100000 → bit5=1(stabilized)，bit1=0(无阻抗)
+      final payload = [0x02, 0x20, 0xE8, 0x07, 0x03, 0x0F, 0x08, 0x1E, 0x00, 0x00, 0x00, 0xA4, 0x38];
+      final m = MiScaleParser.parseV2(payload);
+      expect(m, isNotNull);
+      expect(m!.weightKg, closeTo(72.50, 0.01));
+      expect(m.unit, 'kg');
+      expect(m.isStabilized, true);
+      expect(m.weightRemoved, false);
+      expect(m.measurementComplete, false);
+      expect(m.impedance, isNull);
+      expect(m.isEffective, true);
+    });
+
+    test('样本 C：0x22 kg stabilized+complete 未下秤（理想帧，isEffective=true，impedance=480）', () {
+      // c1=0x22=00100010 → bit1=1(complete) bit5=1(stabilized)
+      final payload = [0x02, 0x22, 0xE8, 0x07, 0x03, 0x0F, 0x08, 0x1F, 0x05, 0xE0, 0x01, 0x5C, 0x35];
+      final m = MiScaleParser.parseV2(payload);
+      expect(m, isNotNull);
+      expect(m!.weightKg, closeTo(68.30, 0.01));
+      expect(m.unit, 'kg');
+      expect(m.isStabilized, true);
+      expect(m.weightRemoved, false);
+      expect(m.measurementComplete, true);
+      expect(m.impedance, 480); // 0x01E0 = 480
+      expect(m.isEffective, true);
+    });
+
+    test('样本 D：0x20 lbs stabilized（验单位换算）', () {
+      // c0=0x03(lbs) c1=0x20(stabilized)
+      final payload = [0x03, 0x20, 0xE8, 0x07, 0x03, 0x0F, 0x08, 0x1E, 0x00, 0x00, 0x00, 0x80, 0x3E];
+      final m = MiScaleParser.parseV2(payload);
+      expect(m, isNotNull);
+      expect(m!.weightKg, closeTo(72.5747, 0.01));
+      expect(m.unit, 'lbs');
+      expect(m.isStabilized, true);
+      expect(m.isEffective, true);
+    });
+
+    test('样本 E：0x00 kg 未稳定（抖动，isEffective=false）', () {
+      // c1=0x00 → stabilized=0
+      final payload = [0x02, 0x00, 0xE8, 0x07, 0x03, 0x0F, 0x08, 0x1E, 0x00, 0x00, 0x00, 0xB0, 0x36];
+      final m = MiScaleParser.parseV2(payload);
+      expect(m, isNotNull);
+      expect(m!.weightKg, closeTo(70.0, 0.01));
+      expect(m.unit, 'kg');
+      expect(m.isStabilized, false);
+      expect(m.isEffective, false);
+    });
+
+    test('样本 F：0x60 jin stabilized（验 byte1 bit6 catty）', () {
+      // c1=0x60=01100000 → bit5=1(stabilized) bit6=1(catty)
+      final payload = [0x02, 0x60, 0xE8, 0x07, 0x03, 0x0F, 0x08, 0x1E, 0x00, 0x00, 0x00, 0xA4, 0x38];
+      final m = MiScaleParser.parseV2(payload);
+      expect(m, isNotNull);
+      expect(m!.weightKg, closeTo(72.50, 0.01));
+      expect(m.unit, 'jin');
+      expect(m.isStabilized, true);
+      expect(m.isEffective, true);
+    });
+
+    test('v2 长度错误返回 null', () {
+      expect(MiScaleParser.parseV2([0x02, 0x20, 0xE8]), isNull);
+      expect(MiScaleParser.parseV2([]), isNull);
+    });
+
+    test('v2 packetId 去重：剔除时间戳字节，相同控制+阻抗+体重产生相同 packetId', () {
+      // 同一测量值，不同时间戳（bytes 2-8 不同）
+      final p1 = [0x02, 0x22, 0xE8, 0x07, 0x03, 0x0F, 0x08, 0x1F, 0x05, 0xE0, 0x01, 0x5C, 0x35];
+      final p2 = [0x02, 0x22, 0xE8, 0x07, 0x04, 0x10, 0x09, 0x20, 0x06, 0xE0, 0x01, 0x5C, 0x35];
+      final m1 = MiScaleParser.parseV2(p1);
+      final m2 = MiScaleParser.parseV2(p2);
+      expect(m1, isNotNull);
+      expect(m2, isNotNull);
+      // packetId 取 bytes[0-1]+bytes[9-12]，时间戳 bytes[2-8] 不影响
+      expect(m1!.packetId, m2!.packetId);
+    });
+  });
 }
