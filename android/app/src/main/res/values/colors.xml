@@ -17,11 +17,13 @@
          - 碗描边 #1B5E20（Green 900）：比主色深一阶
          - 碗填充 #E8F5E9（Green 50）：淡绿与背景同色系
          - 叶子 #2E7D32（Green 800）：主绿，保留 M25 主色
-         - 米粒 #FFF59D（Amber 200）：淡黄食物语义 -->
+         - 米粒 #FFF59D（Amber 200）：淡黄食物语义
+         - 侧叶 #388E3C（Green 600）：M27 新增，比顶叶浅一阶，层次区分 -->
     <color name="ic_launcher_background_center">#FFFFFF</color>
     <color name="ic_launcher_background_edge">#F1F8E9</color>
     <color name="ic_launcher_bowl_stroke">#1B5E20</color>
     <color name="ic_launcher_bowl_fill">#E8F5E9</color>
     <color name="ic_launcher_leaf">#2E7D32</color>
+    <color name="ic_launcher_leaf_side">#388E3C</color>
     <color name="ic_launcher_rice">#FFF59D</color>
 </resources>
