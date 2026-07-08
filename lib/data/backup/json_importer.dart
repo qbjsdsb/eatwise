@@ -218,6 +218,9 @@ class JsonImporter {
         id: Value(_asInt(j['id'])),
         date: j['date'] as String,
         weightKg: _asDouble(j['weightKg']),
+        // M27 v2：读 impedance + bodyFatPct（兼容旧备份无此字段，null 写入 nullable 列）
+        impedance: Value(_asDoubleOrNull(j['impedance'])),
+        bodyFatPct: Value(_asDoubleOrNull(j['bodyFatPct'])),
       );
 
   InsightSummariesCompanion _insightFromJson(Map<String, dynamic> j) =>

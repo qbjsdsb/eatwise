@@ -10,10 +10,21 @@ class WeightLogRepository {
   WeightLogRepository(this._db);
 
   /// 插入体重记录（同一天多次记录各存一条，UI 取最新）
-  Future<int> insert({required String date, required double weightKg}) {
+  /// M27 v2：支持 impedance + bodyFatPercent（蓝牙体脂秤2，nullable）
+  Future<int> insert({
+    required String date,
+    required double weightKg,
+    double? impedance,
+    double? bodyFatPercent,
+  }) {
     return _db.into(_db.weightLogs).insert(WeightLogsCompanion.insert(
           date: date,
           weightKg: weightKg,
+          impedance:
+              impedance == null ? const Value.absent() : Value(impedance),
+          bodyFatPct: bodyFatPercent == null
+              ? const Value.absent()
+              : Value(bodyFatPercent),
         ));
   }
 
@@ -24,16 +35,23 @@ class WeightLogRepository {
   }
 
   /// 部分更新体重记录（[weightKg]/[date] 任一非 null 才更新该字段，null 跳过）
-  /// 用于编辑 dialog：用户可能只改体重值不改日期，或只改日期不改值
+  /// M27 v2：支持 impedance + bodyFatPercent
   Future<void> update({
     required int id,
     double? weightKg,
     String? date,
+    double? impedance,
+    double? bodyFatPercent,
   }) async {
     await (_db.weightLogs.update()..where((w) => w.id.equals(id))).write(
       WeightLogsCompanion(
         weightKg: weightKg == null ? const Value.absent() : Value(weightKg),
         date: date == null ? const Value.absent() : Value(date),
+        impedance:
+            impedance == null ? const Value.absent() : Value(impedance),
+        bodyFatPct: bodyFatPercent == null
+            ? const Value.absent()
+            : Value(bodyFatPercent),
       ),
     );
   }

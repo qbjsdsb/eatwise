@@ -33,7 +33,7 @@ class EatWiseDatabase extends _$EatWiseDatabase {
   final bool seedOnCreate;
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -65,6 +65,12 @@ class EatWiseDatabase extends _$EatWiseDatabase {
                 'UPDATE food_items SET fat_per100g = 0 WHERE fat_per100g > 100');
             await customStatement(
                 'UPDATE food_items SET calories_per100g = 0 WHERE calories_per100g > 900');
+          }
+          // v4 → v5：M27 v2 —— weight_log 表加 impedance + bodyFatPct 字段
+          // 蓝牙体脂秤2（XMTZC05HM）扩展，nullable 向后兼容
+          if (from < 5) {
+            await m.addColumn(weightLogs, weightLogs.impedance);
+            await m.addColumn(weightLogs, weightLogs.bodyFatPct);
           }
         },
         beforeOpen: (details) async {

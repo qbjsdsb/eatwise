@@ -28,6 +28,8 @@ class _HangingUpdateWeightRepo extends WeightLogRepository {
     required int id,
     double? weightKg,
     String? date,
+    double? impedance,
+    double? bodyFatPercent,
   }) {
     return Completer<void>().future;
   }

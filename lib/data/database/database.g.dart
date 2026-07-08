@@ -2833,8 +2833,30 @@ class $WeightLogsTable extends WeightLogs
     type: DriftSqlType.double,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _impedanceMeta = const VerificationMeta(
+    'impedance',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, date, weightKg];
+  late final GeneratedColumn<double> impedance = GeneratedColumn<double>(
+    'impedance',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _bodyFatPctMeta = const VerificationMeta(
+    'bodyFatPct',
+  );
+  @override
+  late final GeneratedColumn<double> bodyFatPct = GeneratedColumn<double>(
+    'body_fat_pct',
+    aliasedName,
+    true,
+    type: DriftSqlType.double,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, date, weightKg, impedance, bodyFatPct];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -2866,6 +2888,21 @@ class $WeightLogsTable extends WeightLogs
     } else if (isInserting) {
       context.missing(_weightKgMeta);
     }
+    if (data.containsKey('impedance')) {
+      context.handle(
+        _impedanceMeta,
+        impedance.isAcceptableOrUnknown(data['impedance']!, _impedanceMeta),
+      );
+    }
+    if (data.containsKey('body_fat_pct')) {
+      context.handle(
+        _bodyFatPctMeta,
+        bodyFatPct.isAcceptableOrUnknown(
+          data['body_fat_pct']!,
+          _bodyFatPctMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2887,6 +2924,14 @@ class $WeightLogsTable extends WeightLogs
         DriftSqlType.double,
         data['${effectivePrefix}weight_kg'],
       )!,
+      impedance: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}impedance'],
+      ),
+      bodyFatPct: attachedDatabase.typeMapping.read(
+        DriftSqlType.double,
+        data['${effectivePrefix}body_fat_pct'],
+      ),
     );
   }
 
@@ -2900,10 +2945,14 @@ class WeightLog extends DataClass implements Insertable<WeightLog> {
   final int id;
   final String date;
   final double weightKg;
+  final double? impedance;
+  final double? bodyFatPct;
   const WeightLog({
     required this.id,
     required this.date,
     required this.weightKg,
+    this.impedance,
+    this.bodyFatPct,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2911,6 +2960,12 @@ class WeightLog extends DataClass implements Insertable<WeightLog> {
     map['id'] = Variable<int>(id);
     map['date'] = Variable<String>(date);
     map['weight_kg'] = Variable<double>(weightKg);
+    if (!nullToAbsent || impedance != null) {
+      map['impedance'] = Variable<double>(impedance);
+    }
+    if (!nullToAbsent || bodyFatPct != null) {
+      map['body_fat_pct'] = Variable<double>(bodyFatPct);
+    }
     return map;
   }
 
@@ -2919,6 +2974,12 @@ class WeightLog extends DataClass implements Insertable<WeightLog> {
       id: Value(id),
       date: Value(date),
       weightKg: Value(weightKg),
+      impedance: impedance == null && nullToAbsent
+          ? const Value.absent()
+          : Value(impedance),
+      bodyFatPct: bodyFatPct == null && nullToAbsent
+          ? const Value.absent()
+          : Value(bodyFatPct),
     );
   }
 
@@ -2931,6 +2992,8 @@ class WeightLog extends DataClass implements Insertable<WeightLog> {
       id: serializer.fromJson<int>(json['id']),
       date: serializer.fromJson<String>(json['date']),
       weightKg: serializer.fromJson<double>(json['weightKg']),
+      impedance: serializer.fromJson<double?>(json['impedance']),
+      bodyFatPct: serializer.fromJson<double?>(json['bodyFatPct']),
     );
   }
   @override
@@ -2940,19 +3003,31 @@ class WeightLog extends DataClass implements Insertable<WeightLog> {
       'id': serializer.toJson<int>(id),
       'date': serializer.toJson<String>(date),
       'weightKg': serializer.toJson<double>(weightKg),
+      'impedance': serializer.toJson<double?>(impedance),
+      'bodyFatPct': serializer.toJson<double?>(bodyFatPct),
     };
   }
 
-  WeightLog copyWith({int? id, String? date, double? weightKg}) => WeightLog(
+  WeightLog copyWith({
+    int? id,
+    String? date,
+    double? weightKg,
+    double? impedance,
+    double? bodyFatPct,
+  }) => WeightLog(
     id: id ?? this.id,
     date: date ?? this.date,
     weightKg: weightKg ?? this.weightKg,
+    impedance: impedance ?? this.impedance,
+    bodyFatPct: bodyFatPct ?? this.bodyFatPct,
   );
   WeightLog copyWithCompanion(WeightLogsCompanion data) {
     return WeightLog(
       id: data.id.present ? data.id.value : this.id,
       date: data.date.present ? data.date.value : this.date,
       weightKg: data.weightKg.present ? data.weightKg.value : this.weightKg,
+      impedance: data.impedance.present ? data.impedance.value : this.impedance,
+      bodyFatPct: data.bodyFatPct.present ? data.bodyFatPct.value : this.bodyFatPct,
     );
   }
 
@@ -2961,46 +3036,60 @@ class WeightLog extends DataClass implements Insertable<WeightLog> {
     return (StringBuffer('WeightLog(')
           ..write('id: $id, ')
           ..write('date: $date, ')
-          ..write('weightKg: $weightKg')
+          ..write('weightKg: $weightKg, ')
+          ..write('impedance: $impedance, ')
+          ..write('bodyFatPct: $bodyFatPct')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, date, weightKg);
+  int get hashCode => Object.hash(id, date, weightKg, impedance, bodyFatPct);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is WeightLog &&
           other.id == this.id &&
           other.date == this.date &&
-          other.weightKg == this.weightKg);
+          other.weightKg == this.weightKg &&
+          other.impedance == this.impedance &&
+          other.bodyFatPct == this.bodyFatPct);
 }
 
 class WeightLogsCompanion extends UpdateCompanion<WeightLog> {
   final Value<int> id;
   final Value<String> date;
   final Value<double> weightKg;
+  final Value<double?> impedance;
+  final Value<double?> bodyFatPct;
   const WeightLogsCompanion({
     this.id = const Value.absent(),
     this.date = const Value.absent(),
     this.weightKg = const Value.absent(),
+    this.impedance = const Value.absent(),
+    this.bodyFatPct = const Value.absent(),
   });
   WeightLogsCompanion.insert({
     this.id = const Value.absent(),
     required String date,
     required double weightKg,
+    this.impedance = const Value.absent(),
+    this.bodyFatPct = const Value.absent(),
   }) : date = Value(date),
        weightKg = Value(weightKg);
   static Insertable<WeightLog> custom({
     Expression<int>? id,
     Expression<String>? date,
     Expression<double>? weightKg,
+    Expression<double>? impedance,
+    Expression<double>? bodyFatPct,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (date != null) 'date': date,
       if (weightKg != null) 'weight_kg': weightKg,
+      if (impedance != null) 'impedance': impedance,
+      if (bodyFatPct != null) 'body_fat_pct': bodyFatPct,
     });
   }
 
@@ -3008,11 +3097,15 @@ class WeightLogsCompanion extends UpdateCompanion<WeightLog> {
     Value<int>? id,
     Value<String>? date,
     Value<double>? weightKg,
+    Value<double?>? impedance,
+    Value<double?>? bodyFatPct,
   }) {
     return WeightLogsCompanion(
       id: id ?? this.id,
       date: date ?? this.date,
       weightKg: weightKg ?? this.weightKg,
+      impedance: impedance ?? this.impedance,
+      bodyFatPct: bodyFatPct ?? this.bodyFatPct,
     );
   }
 
@@ -3028,6 +3121,12 @@ class WeightLogsCompanion extends UpdateCompanion<WeightLog> {
     if (weightKg.present) {
       map['weight_kg'] = Variable<double>(weightKg.value);
     }
+    if (impedance.present) {
+      map['impedance'] = Variable<double>(impedance.value);
+    }
+    if (bodyFatPct.present) {
+      map['body_fat_pct'] = Variable<double>(bodyFatPct.value);
+    }
     return map;
   }
 
@@ -3036,7 +3135,9 @@ class WeightLogsCompanion extends UpdateCompanion<WeightLog> {
     return (StringBuffer('WeightLogsCompanion(')
           ..write('id: $id, ')
           ..write('date: $date, ')
-          ..write('weightKg: $weightKg')
+          ..write('weightKg: $weightKg, ')
+          ..write('impedance: $impedance, ')
+          ..write('bodyFatPct: $bodyFatPct')
           ..write(')'))
         .toString();
   }

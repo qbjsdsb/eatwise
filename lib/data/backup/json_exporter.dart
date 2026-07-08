@@ -107,6 +107,9 @@ class JsonExporter {
         'id': w.id,
         'date': w.date,
         'weightKg': w.weightKg,
+        // M27 v2：导出 impedance + bodyFatPct（蓝牙体脂秤2 扩展字段）
+        'impedance': w.impedance,
+        'bodyFatPct': w.bodyFatPct,
       };
 
   Map<String, dynamic> _insightToJson(InsightSummary i) => {
