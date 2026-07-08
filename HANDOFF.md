@@ -23,8 +23,8 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.33.0+46（pubspec.yaml）—— M27 v2 小米体脂秤2 + 体脂率 + BMR 自动升级已实现待 push；v0.31.0 为 M27 蓝牙体重秤同步（v1 协议 XMTZC04HM）；v0.30.1 为 APK 瘦身（abiFilters arm64-v8a，release 87→42.3MB 减 51%）；v0.29.0 为 M26 图标精修 + 餐次分布可读性 + 删最后一个食物复活 bug 修复；v0.28.0 为 AI 组分滑块影响热量（完全抛弃库参与热量计算）；v0.27.0 为 AI 推理热量与显示值不一致 P0 修复；v0.26.0 为 M26 第二轮 UI 审查 P1 修复（45 条）
-- **当前分支**：trae/agent-wX1X6Q（HEAD = b5d0019 已 push；tag v0.27.0 指向 b5d0019；v0.26.0 指向 c8809c3；v0.25.0 指向 4e2202e；v0.24.0 指向 a27b347；v0.23.0 tag 指向 d37cd4e；v0.18.5 tag 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
+- **当前版本**：0.33.0+46（pubspec.yaml）—— v0.33.0 = M27 图标重设计碗+萌芽 + M27 v2 小米体脂秤2 + 体脂率 + BMR 自动升级。已 push 到 trae/agent-wX1X6Q 分支，build_runner 修复完成（sqlparser 0.44.5 override），待打 tag v0.33.0 触发 GitHub Actions 构建。v0.31.0 为 M27 蓝牙体重秤同步（v1 协议 XMTZC04HM）；v0.30.1 为 APK 瘦身（abiFilters arm64-v8a，release 87→42.3MB 减 51%）；v0.29.0 为 M26 图标精修 + 餐次分布可读性 + 删最后一个食物复活 bug 修复；v0.28.0 为 AI 组分滑块影响热量（完全抛弃库参与热量计算）；v0.27.0 为 AI 推理热量与显示值不一致 P0 修复；v0.26.0 为 M26 第二轮 UI 审查 P1 修复（45 条）
+- **当前分支**：trae/agent-wX1X6Q（HEAD = 6c4b57d 已 push 到 remote；remote main 停留在 a27b347 v0.25.0 时期，未合并开发分支，长期建议合并同步；remote 最新 tag = v0.31.0 指向 43f570c；v0.30.1 指向 4fcf57b；v0.30.0 指向 0ce3228）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
   - `android/app/build.gradle.kts` 必须保持 `isMinifyEnabled=false` + `isShrinkResources=false`（否则 R8 剥掉 sentry/workmanager 反射类致启动崩溃）
@@ -66,7 +66,7 @@ BMR 自动升级：有 bodyFatPct→Katch-McArdle + formula='katch'；无→Miff
 
 设计文档：`docs/superpowers/specs/2026-07-08-bluetooth-scale-v2-body-composition-design.md`；实施计划：`docs/superpowers/plans/2026-07-08-bluetooth-scale-v2-body-composition.md`。
 
-沙箱环境问题：build_runner 因 drift_dev 2.34.0 与 sqlparser 0.44.6 不兼容（DartPlaceholder.when 失效）无法运行，database.g.dart 手动修改（参考 Profile 表 bodyFatPct nullable double 模式）。本地环境 build_runner 正常时建议重新生成覆盖手动改动。
+build_runner 修复（2026-07-09）：sqlparser 0.44.6 误发 breaking change（移除 `DartPlaceholder.when`，本应 major 却发成 patch）导致 drift_dev 2.34.0 build_runner 失败。0.45.0 是 re-release（同样 breaking），drift_dev 2.34.2+1 升级到 `^0.45.0` 但与 flutter_test SDK pin 的 test_api 0.7.11 + test 包 analyzer <13.0.0 约束冲突，版本求解失败。最终方案：保持 drift_dev 2.34.0 + `dependency_overrides: sqlparser: 0.44.5`（0.44.6 前的稳定版，无 breaking change）。build_runner 成功跑通 457 outputs，database.g.dart 重新生成（+59 -7，修复 copyWith `Value<double?>` 标准样式 + Manager 体系 impedance/bodyFatPct getter 两处偏差），analyze 0 issues / test 1172 passed 0 回归。等 Flutter SDK 更新 test_api pin 后可移除 override。
 
 最终验证：flutter analyze No issues / flutter test 1172 passed / 3 skipped / 0 failed（基线 1143 + 新增 29 测试 = 1172，0 回归）/ 6+1 硬约束满足。
 

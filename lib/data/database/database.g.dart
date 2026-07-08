@@ -2856,7 +2856,13 @@ class $WeightLogsTable extends WeightLogs
     requiredDuringInsert: false,
   );
   @override
-  List<GeneratedColumn> get $columns => [id, date, weightKg, impedance, bodyFatPct];
+  List<GeneratedColumn> get $columns => [
+    id,
+    date,
+    weightKg,
+    impedance,
+    bodyFatPct,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -3012,14 +3018,14 @@ class WeightLog extends DataClass implements Insertable<WeightLog> {
     int? id,
     String? date,
     double? weightKg,
-    double? impedance,
-    double? bodyFatPct,
+    Value<double?> impedance = const Value.absent(),
+    Value<double?> bodyFatPct = const Value.absent(),
   }) => WeightLog(
     id: id ?? this.id,
     date: date ?? this.date,
     weightKg: weightKg ?? this.weightKg,
-    impedance: impedance ?? this.impedance,
-    bodyFatPct: bodyFatPct ?? this.bodyFatPct,
+    impedance: impedance.present ? impedance.value : this.impedance,
+    bodyFatPct: bodyFatPct.present ? bodyFatPct.value : this.bodyFatPct,
   );
   WeightLog copyWithCompanion(WeightLogsCompanion data) {
     return WeightLog(
@@ -3027,7 +3033,9 @@ class WeightLog extends DataClass implements Insertable<WeightLog> {
       date: data.date.present ? data.date.value : this.date,
       weightKg: data.weightKg.present ? data.weightKg.value : this.weightKg,
       impedance: data.impedance.present ? data.impedance.value : this.impedance,
-      bodyFatPct: data.bodyFatPct.present ? data.bodyFatPct.value : this.bodyFatPct,
+      bodyFatPct: data.bodyFatPct.present
+          ? data.bodyFatPct.value
+          : this.bodyFatPct,
     );
   }
 
@@ -6906,12 +6914,16 @@ typedef $$WeightLogsTableCreateCompanionBuilder =
       Value<int> id,
       required String date,
       required double weightKg,
+      Value<double?> impedance,
+      Value<double?> bodyFatPct,
     });
 typedef $$WeightLogsTableUpdateCompanionBuilder =
     WeightLogsCompanion Function({
       Value<int> id,
       Value<String> date,
       Value<double> weightKg,
+      Value<double?> impedance,
+      Value<double?> bodyFatPct,
     });
 
 class $$WeightLogsTableFilterComposer
@@ -6935,6 +6947,16 @@ class $$WeightLogsTableFilterComposer
 
   ColumnFilters<double> get weightKg => $composableBuilder(
     column: $table.weightKg,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get impedance => $composableBuilder(
+    column: $table.impedance,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<double> get bodyFatPct => $composableBuilder(
+    column: $table.bodyFatPct,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -6962,6 +6984,16 @@ class $$WeightLogsTableOrderingComposer
     column: $table.weightKg,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<double> get impedance => $composableBuilder(
+    column: $table.impedance,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<double> get bodyFatPct => $composableBuilder(
+    column: $table.bodyFatPct,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$WeightLogsTableAnnotationComposer
@@ -6981,6 +7013,14 @@ class $$WeightLogsTableAnnotationComposer
 
   GeneratedColumn<double> get weightKg =>
       $composableBuilder(column: $table.weightKg, builder: (column) => column);
+
+  GeneratedColumn<double> get impedance =>
+      $composableBuilder(column: $table.impedance, builder: (column) => column);
+
+  GeneratedColumn<double> get bodyFatPct => $composableBuilder(
+    column: $table.bodyFatPct,
+    builder: (column) => column,
+  );
 }
 
 class $$WeightLogsTableTableManager
@@ -7017,16 +7057,28 @@ class $$WeightLogsTableTableManager
                 Value<int> id = const Value.absent(),
                 Value<String> date = const Value.absent(),
                 Value<double> weightKg = const Value.absent(),
-              }) => WeightLogsCompanion(id: id, date: date, weightKg: weightKg),
+                Value<double?> impedance = const Value.absent(),
+                Value<double?> bodyFatPct = const Value.absent(),
+              }) => WeightLogsCompanion(
+                id: id,
+                date: date,
+                weightKg: weightKg,
+                impedance: impedance,
+                bodyFatPct: bodyFatPct,
+              ),
           createCompanionCallback:
               ({
                 Value<int> id = const Value.absent(),
                 required String date,
                 required double weightKg,
+                Value<double?> impedance = const Value.absent(),
+                Value<double?> bodyFatPct = const Value.absent(),
               }) => WeightLogsCompanion.insert(
                 id: id,
                 date: date,
                 weightKg: weightKg,
+                impedance: impedance,
+                bodyFatPct: bodyFatPct,
               ),
           withReferenceMapper: (p0) => p0
               .map((e) => (e.readTable(table), BaseReferences(db, table, e)))

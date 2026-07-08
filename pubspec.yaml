@@ -64,7 +64,7 @@ dev_dependencies:
   flutter_lints: ^5.0.0
 
   # drift 代码生成 + 迁移工具
-  drift_dev: ^2.34.0  # 2.34.1 不存在，最新稳定版是 2.34.0（pub.dev 已核实）
+  drift_dev: ^2.34.0  # 2.34.2+1 修复了 sqlparser 但与 flutter_test analyzer pin 冲突，暂锁 2.34.0 + sqlparser 0.44.5（见 dependency_overrides）
   build_runner: ^2.15.0
 
   # 测试
@@ -72,6 +72,12 @@ dev_dependencies:
 
   # 测试 mock path_provider（transitive，显式声明避免 depend_on_referenced_packages 警告）
   path_provider_platform_interface: ^2.1.0
+
+dependency_overrides:
+  # sqlparser 0.44.6 误发 breaking change（移除 DartPlaceholder.when）导致 drift_dev 2.34.0 build_runner 失败。
+  # 0.45.0 是 re-release（同样 breaking），drift_dev 2.34.2+1 升级到 ^0.45.0 但与 flutter_test analyzer pin 冲突。
+  # 临时锁 0.44.5（0.44.6 前的稳定版，无 breaking change），等 Flutter SDK 更新 test_api pin 后可移除。
+  sqlparser: 0.44.5
 
 flutter:
   uses-material-design: true
