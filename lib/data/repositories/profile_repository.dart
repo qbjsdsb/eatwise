@@ -72,6 +72,9 @@ class ProfileRepository {
   /// 否则 DB 保留旧值，用户会困惑"清空后看到旧值"。
   /// （tdeeAdjustmentKcal 是 NOT NULL 字段，无此问题；String 字段用 'none' sentinel。）
   /// 如需支持显式置空，需引入 sentinel 对象或 Optional 包装，成本较高收益低，暂不实施。
+  ///
+  /// M27 v2 例外：bodyFatPct 已提供 clearBodyFatPct() 方法支持显式置空
+  /// （BMR 自动升级需在用户清空体脂率时回退 Mifflin 公式）。
   Future<void> update({
     double? heightCm,
     double? weightKg,
@@ -127,5 +130,15 @@ class ProfileRepository {
       updatedAt: Value(DateTime.now().millisecondsSinceEpoch),
     );
     await (_db.profiles.update()..where((p) => p.id.equals(1))).write(companion);
+  }
+
+  /// 显式置空 bodyFatPct（M27 v2：用户清空体脂率时调用）
+  ///
+  /// 因 update() 的 null=不更新（Value.absent）设计无法置空 nullable 字段，
+  /// 需专门方法。用户清空体脂率 → formula 应回退 mifflin。
+  /// 见 update() 的 M7 已知限制注释。
+  Future<void> clearBodyFatPct() async {
+    await (_db.profiles.update()..where((p) => p.id.equals(1)))
+        .write(const ProfilesCompanion(bodyFatPct: Value(null)));
   }
 }
