@@ -2102,7 +2102,7 @@ GoRoute(path: '/insight', builder: (context, state) => const InsightPage()),
 flutter analyze
 flutter test test/features/insight_provider_test.dart  # Fake 测试
 # 真实冒烟（用户 key）：
-flutter test test/smoke/glm_flash_smoke_test.dart --dart-define=GLM_API_KEY=656dc50783a14252a2c49639b6323c31.U0xZQeRXxspLuYAS
+flutter test test/smoke/glm_flash_smoke_test.dart --dart-define=GLM_API_KEY=YOUR_GLM_API_KEY
 ```
 
 - [ ] **Step 7: Commit**
@@ -2822,7 +2822,7 @@ flutter test test/ai/ test/data/ test/features/ test/integration/
 
 # GLM-4-Flash 真实冒烟
 flutter test test/smoke/glm_flash_smoke_test.dart \
-  --dart-define=GLM_API_KEY=656dc50783a14252a2c49639b6323c31.U0xZQeRXxspLuYAS
+  --dart-define=GLM_API_KEY=YOUR_GLM_API_KEY
 ```
 
 - [ ] **Step 3: Commit**
@@ -2904,7 +2904,7 @@ git commit -m "test: Sprint 2 端到端集成测试 + GLM-4-Flash 真实冒烟"
 **真实 API 冒烟（仅 T12）：**
 ```bash
 flutter test test/smoke/glm_flash_smoke_test.dart \
-  --dart-define=GLM_API_KEY=656dc50783a14252a2c49639b6323c31.U0xZQeRXxspLuYAS
+  --dart-define=GLM_API_KEY=YOUR_GLM_API_KEY
 ```
 
 **Sprint 2 完成标准（全部满足才算完成）：**

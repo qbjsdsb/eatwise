@@ -4,6 +4,32 @@
 
 ## [Unreleased]
 
+## [v0.33.1] - 2026-07-08
+
+### 全项目 14 维度审计 + P0/P1 修复
+
+对 EatWise v0.33.0 进行 14 维度全方位检查（D1 硬约束 / D2 数据库迁移 / D3 AI 兜底 / D4 体脂秤 / D5 安全 / D6 平台生命周期 / D7 测试质量 / D8 性能 / D9 UX 无障碍 / D10 架构 / D11 依赖 / D12 发布 / D13 文档 / D14 隐私），审计报告写入 `docs/audit/`。
+
+#### 修复的 P0 问题
+- **D5 P0：文档硬编码 GLM API key**：`docs/superpowers/plans/2026-07-02-sprint2-full-loop.md` 3 处真实 API key 替换为占位符（**仍需到智谱平台吊销轮换该 key**）
+- **D13 P0：README.md 8 处过时信息**：minSdk 26→31、版本 v0.24.0→v0.33.1、tests 1056→1172、体积 75MB→42MB、硬约束 6→6+1、目录结构修正、功能矩阵加蓝牙体脂秤、安全描述去掉虚假 AES 加密声明
+
+#### 修复的 P1 问题
+- **D8 P1：数据库无索引**：4 张高频查询表加 6 个索引（meal_logs.date / meal_logs.food_item_id / food_items.name / food_items.source / weight_logs.date / pending_recognitions.status），schema v5→v6 迁移自动创建
+- **D12 P1：release.yml 无质量门禁**：CI 构建前加 `flutter analyze` + `flutter test` 质量门禁步骤
+- **D14 P1：拍照 UI 无云端提示**：recognize_page 引导文案加"（照片将发送到云端 AI 识别）"透明告知
+- **D11 P2：uuid 依赖未使用**：pubspec.yaml 移除未使用的 `uuid: ^4.5.0`
+
+#### 修复的 P0 批 P1 bug（v0.33.0 遗留，d36b3b0 commit）
+- **P1-1 recognize_page 缺事务**：`writeCalibratedMealLog` 所有 DB 写操作（upsertAiRecognized / updatePer100g / insertMealLog）移入单个 `db.transaction()` 原子化
+- **P1-2 formula 切换状态不一致**：weight_page._save 在 formula mifflin↔katch 切换时重算 dailyCalorieTarget
+- **P1-3 v1 体脂秤体验回归**：MiScaleMeasurement 加 protocolVersion 字段区分 v1/v2，v1 stabilized 直接捕获
+
+#### 验证
+- flutter analyze: No issues
+- flutter test: 1172 passed, 3 skipped
+- build_runner: 457 outputs
+
 ## [v0.33.0] - 2026-07-09
 
 ### M27 图标重设计：碗+萌芽（修正颠倒 + 叶子归位）

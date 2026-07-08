@@ -33,7 +33,7 @@ class EatWiseDatabase extends _$EatWiseDatabase {
   final bool seedOnCreate;
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -71,6 +71,24 @@ class EatWiseDatabase extends _$EatWiseDatabase {
           if (from < 5) {
             await m.addColumn(weightLogs, weightLogs.impedance);
             await m.addColumn(weightLogs, weightLogs.bodyFatPct);
+          }
+          // v5 → v6：D8 性能优化 —— 给高频查询列加索引
+          // meal_logs.date（每日查询/趋势图）、meal_logs.food_item_id（中位数份量查询）
+          // food_items.name（查库命中 findByNameOrAlias）、food_items.source（过滤 ai_recognized）
+          // weight_logs.date（趋势图）、pending_recognitions.status（后台回补取 pending）
+          if (from < 6) {
+            await customStatement(
+                'CREATE INDEX IF NOT EXISTS idx_meal_logs_date ON meal_logs(date)');
+            await customStatement(
+                'CREATE INDEX IF NOT EXISTS idx_meal_logs_food_item_id ON meal_logs(food_item_id)');
+            await customStatement(
+                'CREATE INDEX IF NOT EXISTS idx_food_items_name ON food_items(name)');
+            await customStatement(
+                'CREATE INDEX IF NOT EXISTS idx_food_items_source ON food_items(source)');
+            await customStatement(
+                'CREATE INDEX IF NOT EXISTS idx_weight_logs_date ON weight_logs(date)');
+            await customStatement(
+                'CREATE INDEX IF NOT EXISTS idx_pending_recognitions_status ON pending_recognitions(status)');
           }
         },
         beforeOpen: (details) async {

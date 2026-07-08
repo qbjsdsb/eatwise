@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 /// 体重记录表
+@TableIndex(name: 'idx_weight_logs_date', columns: {#date})
 class WeightLogs extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get date => text()(); // 'YYYY-MM-DD' 本地时区自然日

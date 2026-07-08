@@ -5213,6 +5213,30 @@ abstract class _$EatWiseDatabase extends GeneratedDatabase {
       $RecognitionFeedbacksTable(this);
   late final $RecommendationFeedbacksTable recommendationFeedbacks =
       $RecommendationFeedbacksTable(this);
+  late final Index idxFoodItemsName = Index(
+    'idx_food_items_name',
+    'CREATE INDEX idx_food_items_name ON food_items (name)',
+  );
+  late final Index idxFoodItemsSource = Index(
+    'idx_food_items_source',
+    'CREATE INDEX idx_food_items_source ON food_items (source)',
+  );
+  late final Index idxMealLogsDate = Index(
+    'idx_meal_logs_date',
+    'CREATE INDEX idx_meal_logs_date ON meal_logs (date)',
+  );
+  late final Index idxMealLogsFoodItemId = Index(
+    'idx_meal_logs_food_item_id',
+    'CREATE INDEX idx_meal_logs_food_item_id ON meal_logs (food_item_id)',
+  );
+  late final Index idxWeightLogsDate = Index(
+    'idx_weight_logs_date',
+    'CREATE INDEX idx_weight_logs_date ON weight_logs (date)',
+  );
+  late final Index idxPendingRecognitionsStatus = Index(
+    'idx_pending_recognitions_status',
+    'CREATE INDEX idx_pending_recognitions_status ON pending_recognitions (status)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -5226,6 +5250,12 @@ abstract class _$EatWiseDatabase extends GeneratedDatabase {
     insightSummaries,
     recognitionFeedbacks,
     recommendationFeedbacks,
+    idxFoodItemsName,
+    idxFoodItemsSource,
+    idxMealLogsDate,
+    idxMealLogsFoodItemId,
+    idxWeightLogsDate,
+    idxPendingRecognitionsStatus,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([

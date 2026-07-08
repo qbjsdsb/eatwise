@@ -48,6 +48,14 @@ jobs:
       - name: Generate drift code (build_runner)
         run: dart run build_runner build --delete-conflicting-outputs
 
+      - name: Static analysis (quality gate)
+        # 质量门禁：analyze 0 issues 才允许构建
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run tests (quality gate)
+        # 质量门禁：测试全通过才允许构建
+        run: flutter test
+
       - name: 注入 release keystore（从 GitHub Secrets）
         # M16 应用内更新：从 secrets 解码 keystore 到 android/app/，生成 key.properties
         # 未配置 secret 时回退 debug 签名（不阻塞 CI，但 CI build 无法覆盖安装旧版）

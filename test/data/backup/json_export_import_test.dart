@@ -155,7 +155,7 @@ void main() {
   test('导出 JSON 包含 schemaVersion 和 exportedAt', () async {
     await seedData(srcDb);
     final data = await JsonExporter(srcDb).export();
-    expect(data['schemaVersion'], 5);
+    expect(data['schemaVersion'], 6);
     expect(data['exportedAt'], isA<int>());
     expect(data['tables'], isA<Map>());
     expect((data['tables'] as Map).keys.toSet(), {

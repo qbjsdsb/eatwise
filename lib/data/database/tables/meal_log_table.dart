@@ -2,6 +2,8 @@ import 'package:drift/drift.dart';
 import 'food_item_table.dart';
 
 /// 餐次记录表
+@TableIndex(name: 'idx_meal_logs_date', columns: {#date})
+@TableIndex(name: 'idx_meal_logs_food_item_id', columns: {#foodItemId})
 class MealLogs extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get date => text()(); // 'YYYY-MM-DD' 本地时区自然日

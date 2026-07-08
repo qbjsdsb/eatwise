@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'food_item_table.dart';
 
 /// 离线识别队列表
+@TableIndex(name: 'idx_pending_recognitions_status', columns: {#status})
 class PendingRecognitions extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get imagePath => text()();

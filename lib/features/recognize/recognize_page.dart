@@ -307,7 +307,8 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 32),
                           child: Text(
-                            'AI 自动识别菜品 + 估算营养，也可选相册图片',
+                            'AI 自动识别菜品 + 估算营养，也可选相册图片\n'
+                            '（照片将发送到云端 AI 识别）',
                             textAlign: TextAlign.center,
                             style: tt.bodyMedium
                                 ?.copyWith(color: cs.onSurfaceVariant),

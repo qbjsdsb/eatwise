@@ -1,7 +1,7 @@
 name: eatwise
 description: 拍照识别食物热量 + 营养记录 + AI 汇总建议（个人自用）
 publish_to: 'none'
-version: 0.33.0+46
+version: 0.33.1+47
 
 environment:
   sdk: ^3.10.0  # drift 2.34.0 要求 Min Dart SDK 3.10（pub.dev 已核实）
@@ -43,7 +43,6 @@ dependencies:
   # 工具
   path_provider: ^2.1.0
   path: ^1.9.0
-  uuid: ^4.5.0
 
   # 错误监控（Sprint 3 T17）
   sentry_flutter: ^9.22.0

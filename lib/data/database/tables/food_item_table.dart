@@ -1,6 +1,8 @@
 import 'package:drift/drift.dart';
 
 /// 食物库表（含识别入库和手动入库）
+@TableIndex(name: 'idx_food_items_name', columns: {#name})
+@TableIndex(name: 'idx_food_items_source', columns: {#source})
 class FoodItems extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get name => text()();
