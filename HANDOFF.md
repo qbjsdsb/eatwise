@@ -23,7 +23,7 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.30.1+43（pubspec.yaml）—— 已发版 v0.30.1 GitHub Release（APK 体积优化：abiFilters arm64-v8a + release.yml --target-platform android-arm64，release 87→42.3MB 减 51%，debug 180→110.2MB 减 39%）；v0.30.0 为 abiFilters 初版（build.gradle.kts 改动但被 Flutter plugin 覆盖未生效）；v0.29.0 为 M26 图标精修 + 餐次分布可读性 + 删最后一个食物复活 bug 修复；v0.28.0 为 AI 组分滑块影响热量（完全抛弃库参与热量计算）；v0.27.0 为 AI 推理热量与显示值不一致 P0 修复；v0.26.0 为 M26 第二轮 UI 审查 P1 修复（45 条）
+- **当前版本**：0.32.0+45（pubspec.yaml）—— M27 v2 小米体脂秤2 + 体脂率 + BMR 自动升级已实现待 push；v0.31.0 为 M27 蓝牙体重秤同步（v1 协议 XMTZC04HM）；v0.30.1 为 APK 瘦身（abiFilters arm64-v8a，release 87→42.3MB 减 51%）；v0.29.0 为 M26 图标精修 + 餐次分布可读性 + 删最后一个食物复活 bug 修复；v0.28.0 为 AI 组分滑块影响热量（完全抛弃库参与热量计算）；v0.27.0 为 AI 推理热量与显示值不一致 P0 修复；v0.26.0 为 M26 第二轮 UI 审查 P1 修复（45 条）
 - **当前分支**：trae/agent-wX1X6Q（HEAD = b5d0019 已 push；tag v0.27.0 指向 b5d0019；v0.26.0 指向 c8809c3；v0.25.0 指向 4e2202e；v0.24.0 指向 a27b347；v0.23.0 tag 指向 d37cd4e；v0.18.5 tag 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
@@ -34,7 +34,41 @@
 
 ## 2. 当前状态（每次会话结束更新）
 
-**最后更新**：2026-07-08
+**最后更新**：2026-07-09
+
+**v0.32.0 M27 v2 小米体脂秤2 + 体脂率 + BMR 自动升级（2026-07-09，已提交待 push）—— 接入小米体脂秤2（XMTZC05HM）v2 协议**：用户发现买的是体脂秤2（XMTZC05HM，v2 协议），与 v0.31.0 实现的体重秤2（XMTZC04HM，v1 协议）完全不同，协议不兼容。深度调研后实施 v2 协议 + 体脂率计算 + BMR 自动升级。
+
+协议关键差异（v1→v2）：
+- payload 10→13 字节；UUID 0x181D→0x181B
+- 2 个 control byte（v1=1 个）；jin flag byte0 bit4→byte1 bit6
+- weight raw byte[1-2]→byte[11-12]；新增 impedance byte[9-10]
+- 新增 measurementComplete（byte1 bit1，阻抗就绪）
+
+体脂率公式（openScale MiScaleLib 逆向 BIA，双源验证 + 3 回归夹具）：
+- lbmCoeff = 0.0009058×h² + 0.32×w + 12.226 − 0.0068×imp − 0.0542×age
+- lbmSub: 男=0.8；女≤49=9.25；女>49=7.25
+- coeff: 男<61kg=0.98；女>60kg=0.96(h>160则×1.03)；女<50kg=1.02(h>160则×1.03)
+- bodyFat% = (1 − ((lbmCoeff − lbmSub) × coeff) / weight) × 100
+- clamp: >63→75（哨兵），[5, 75] 上下限
+
+BMR 自动升级：有 bodyFatPct→Katch-McArdle + formula='katch'；无→Mifflin + formula='mifflin'。formula 切换时重置 tdeeAdjustmentKcal=0（防跨公式污染）。
+
+6 个 commit：
+- `c55eaf6` BodyFatCalculator 体脂率公式（openScale BIA 逆向）+ 14 测试
+- `8225d86` MiScaleParser parseV2（XMTZC05HM 13字节 v2 协议）+ 8 测试
+- `3e30314` MiScaleScanner 双 UUID 路由 + isClosed 守卫 + onError 日志
+- `795a447` 数据层扩展 weight_log 加 impedance + bodyFatPct（schema v5）
+- `4546134` ProfileRepository clearBodyFatPct（支持显式置空体脂率）
+- `1fbe9b6` BMR 自动升级（Katch + formula 切换重置 tdeeAdjustmentKcal）+ 8 测试
+- `4fdbdc9` weight_page 接入 v2（impedance 捕获 + startScan 时序修复 + 系统定位 + 30s 冷却 + 体脂率 UI + _save 同步）
+
+新增文件：`lib/nutrition/body_fat_calculator.dart` + `test/nutrition/body_fat_calculator_test.dart` + `test/features/profile_save_formula_switch_test.dart` + `test/nutrition/tdee_calibrator_formula_branch_test.dart`。
+
+设计文档：`docs/superpowers/specs/2026-07-08-bluetooth-scale-v2-body-composition-design.md`；实施计划：`docs/superpowers/plans/2026-07-08-bluetooth-scale-v2-body-composition.md`。
+
+沙箱环境问题：build_runner 因 drift_dev 2.34.0 与 sqlparser 0.44.6 不兼容（DartPlaceholder.when 失效）无法运行，database.g.dart 手动修改（参考 Profile 表 bodyFatPct nullable double 模式）。本地环境 build_runner 正常时建议重新生成覆盖手动改动。
+
+最终验证：flutter analyze No issues / flutter test 1172 passed / 3 skipped / 0 failed（基线 1143 + 新增 29 测试 = 1172，0 回归）/ 6+1 硬约束满足。
 
 **v0.31.0 M27 蓝牙体重秤同步（2026-07-08，已 push 未打 tag）—— 接入小米体重秤 2（XMTZC04HM）BLE 被动扫描**：用户要求"接入蓝牙，每次量体重软件上面就会同步信息"。4 轮深度调研后确定 v4 设计：纯被动 BLE 扫描（不建 GATT 连接）→ Dart 层软过滤 serviceData UUID 0x181D → bitmask 解析 v1 协议（学 ble_monitor）→ 预填 weight_page 输入框 → 复用现有 _save() 写库。零改动数据层。
 

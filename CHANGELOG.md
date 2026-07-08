@@ -4,6 +4,36 @@
 
 ## [Unreleased]
 
+## [v0.32.0] - 2026-07-09
+
+### M27 v2 小米体脂秤2 + 体脂率 + BMR 自动升级
+
+接入小米体脂秤2（XMTZC05HM）v2 协议，自动计算体脂率并升级 BMR 公式。
+
+#### 新增
+- 支持小米体脂秤2（XMTZC05HM）v2 协议（UUID 0x181B / 13字节，保留 v1 XMTZC04HM 兼容）
+- 体脂率自动计算（openScale MiScaleLib 逆向 BIA 公式，双源验证 + 3 回归夹具）
+- BMR 自动升级：有体脂率用 Katch-McArdle（基于瘦体重，对精瘦人群更准），无则 Mifflin-St Jeor
+- 体重记录卡片 + 图表 tooltip 显示体脂率
+
+#### 修复
+- startScan 时序 bug（flutter_blue_plus startScan 开始时返回非结束时，"未找到"toast 误弹）
+- 国产 ROM 系统定位开关检查（华为系 HarmonyOS/EMUI 静默无结果）
+- AOSP 30秒/4次 扫描节流保护（新增 30秒短窗冷却）
+- scanner _controller isClosed 守卫（防 dispose 竞态崩溃）
+- v2 impedance 捕获时机（优先等 measurementComplete，超时 stabilized 兜底）
+- formula 切换时重置 tdeeAdjustmentKcal（防跨公式污染 P0）
+- bodyFatPct 显式置空支持（ProfileRepository.clearBodyFatPct 方法）
+
+#### 数据层
+- weight_log 表加 impedance + bodyFatPct 字段（schemaVersion v4→v5）
+- backup 导入导出支持新字段（兼容旧备份）
+
+#### 验证
+- flutter analyze No issues
+- flutter test 1172 passed / 3 skipped / 0 failed（基线 1143 + 新增 29 测试，0 回归）
+- 6+1 硬约束全部满足
+
 ## [v0.31.0] - 2026-07-08
 
 ### 新增：M27 蓝牙体重秤同步
