@@ -23,8 +23,8 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.33.0+46（pubspec.yaml）—— v0.33.0 = M27 图标重设计碗+萌芽 + M27 v2 小米体脂秤2 + 体脂率 + BMR 自动升级。已 push 到 trae/agent-wX1X6Q 分支，build_runner 修复完成（sqlparser 0.44.5 override），待打 tag v0.33.0 触发 GitHub Actions 构建。v0.31.0 为 M27 蓝牙体重秤同步（v1 协议 XMTZC04HM）；v0.30.1 为 APK 瘦身（abiFilters arm64-v8a，release 87→42.3MB 减 51%）；v0.29.0 为 M26 图标精修 + 餐次分布可读性 + 删最后一个食物复活 bug 修复；v0.28.0 为 AI 组分滑块影响热量（完全抛弃库参与热量计算）；v0.27.0 为 AI 推理热量与显示值不一致 P0 修复；v0.26.0 为 M26 第二轮 UI 审查 P1 修复（45 条）
-- **当前分支**：trae/agent-wX1X6Q（HEAD = 6c4b57d 已 push 到 remote；remote main 停留在 a27b347 v0.25.0 时期，未合并开发分支，长期建议合并同步；remote 最新 tag = v0.31.0 指向 43f570c；v0.30.1 指向 4fcf57b；v0.30.0 指向 0ce3228）
+- **当前版本**：0.33.1+47（pubspec.yaml）—— v0.33.1 = 全项目 14 维度审计 + P0/P1 修复。v0.33.0 = M27 图标重设计碗+萌芽 + M27 v2 小米体脂秤2 + 体脂率 + BMR 自动升级。v0.31.0 为 M27 蓝牙体重秤同步（v1 协议 XMTZC04HM）；v0.30.1 为 APK 瘦身（abiFilters arm64-v8a，release 87→42.3MB 减 51%）；v0.29.0 为 M26 图标精修 + 餐次分布可读性 + 删最后一个食物复活 bug 修复；v0.28.0 为 AI 组分滑块影响热量（完全抛弃库参与热量计算）；v0.27.0 为 AI 推理热量与显示值不一致 P0 修复；v0.26.0 为 M26 第二轮 UI 审查 P1 修复（45 条）
+- **当前分支**：trae/agent-wX1X6Q（HEAD = 42609f0 已 push 到 remote；remote main 停留在 a27b347 v0.25.0 时期，未合并开发分支，长期建议合并同步；remote 最新 tag = v0.33.1 指向 42609f0，GitHub Actions Run #53 success）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
   - `android/app/build.gradle.kts` 必须保持 `isMinifyEnabled=false` + `isShrinkResources=false`（否则 R8 剥掉 sentry/workmanager 反射类致启动崩溃）
