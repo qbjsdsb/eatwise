@@ -139,12 +139,18 @@ class TdeeCalibrator {
           : profile.goal == 'bulk'
               ? Goal.bulk
               : Goal.maintain;
-      final bmr = NutritionCalculator.bmrMifflin(
-        weightKg: profile.weightKg,
-        heightCm: profile.heightCm,
-        age: profile.age,
-        gender: genderEnum,
-      );
+      // M27 v2：读 profile.formula 分支选 BMR（有体脂率用 Katch，否则 Mifflin）
+      final bmr = (profile.formula == 'katch' &&
+              profile.bodyFatPct != null &&
+              profile.bodyFatPct! > 0)
+          ? NutritionCalculator.bmrKatch(
+              weightKg: profile.weightKg, bodyFatPct: profile.bodyFatPct!)
+          : NutritionCalculator.bmrMifflin(
+              weightKg: profile.weightKg,
+              heightCm: profile.heightCm,
+              age: profile.age,
+              gender: genderEnum,
+            );
       final tdee = NutritionCalculator.tdee(
           bmr: bmr, activityLevel: profile.activityLevel);
       final newTarget = NutritionCalculator.dailyCalorieTarget(

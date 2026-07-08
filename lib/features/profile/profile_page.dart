@@ -452,13 +452,18 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               ? Goal.bulk
               : Goal.maintain;
 
-      // 重算目标（MVP：始终用 mifflin，有体脂率时也用 mifflin 除非用户显式选 katch——Sprint 2 简化）
-      final bmr = NutritionCalculator.bmrMifflin(
-        weightKg: weight,
-        heightCm: height,
-        age: age,
-        gender: genderEnum,
-      );
+      // M27 v2：有体脂率 → Katch-McArdle（基于瘦体重，对精瘦人群更准）；
+      // 无 → Mifflin-St Jeor（向后兼容）。formula 字段同步写入实际使用的公式。
+      final hasBodyFat = bodyFat != null && bodyFat > 0;
+      final bmr = hasBodyFat
+          ? NutritionCalculator.bmrKatch(weightKg: weight, bodyFatPct: bodyFat)
+          : NutritionCalculator.bmrMifflin(
+              weightKg: weight,
+              heightCm: height,
+              age: age,
+              gender: genderEnum,
+            );
+      final formula = hasBodyFat ? 'katch' : 'mifflin';
       final tdee = NutritionCalculator.tdee(bmr: bmr, activityLevel: _activity);
       final target = NutritionCalculator.dailyCalorieTarget(
         tdee: tdee,
@@ -516,6 +521,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         if (confirmed != true) return; // 用户取消
       }
 
+      // M27 v2：读取旧 formula 检测是否切换（切换需重置 tdeeAdjustmentKcal）
+      final oldFormula = existing.formula;
+      final formulaChanged = oldFormula != formula;
+
       await repo.update(
         heightCm: height,
         weightKg: weight,
@@ -525,7 +534,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         activityLevel: _activity,
         goal: _goal, // String 写库
         goalRateKgPerWeek: goalRate,
-        formula: 'mifflin',
+        formula: formula, // M27 v2：用实际公式而非硬编码 'mifflin'
         dailyCalorieTarget: target,
         proteinGPerKg: proteinGPerKg,
         fatGPerKg: fatGPerKg,
@@ -533,8 +542,23 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         specialCondition: _specialCondition, // v2：写特殊人群字段
         dietPreference: _dietPreference,
         healthCondition: _healthCondition,
-        // 不传 tdeeAdjustmentKcal：保留 DB 存储值，不被 goalRate 重算覆盖
+        // M27 v2：formula 切换时重置 tdeeAdjustmentKcal（防跨公式污染）
+        tdeeAdjustmentKcal: formulaChanged ? 0 : existing.tdeeAdjustmentKcal,
       );
+
+      // M27 v2：bodyFatPct 显式置空（用户清空体脂率时，update 的 null=不更新无法置空）
+      if (bodyFat == null) {
+        await repo.clearBodyFatPct();
+      }
+
+      // M27 v2：formula 切换提示
+      if (formulaChanged && mounted) {
+        showAppToast(
+          context,
+          '已切换到 ${formula == 'katch' ? 'Katch' : 'Mifflin'} 公式，'
+          'TDEE 校准累积值已重置，将在下次记录体重后重新校准',
+        );
+      }
 
       if (mounted) {
         // SnackBar 显示目标 + 特殊人群调整说明（若有）
