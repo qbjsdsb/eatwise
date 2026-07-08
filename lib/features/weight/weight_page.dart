@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import '../../data/bluetooth/mi_scale_parser.dart';
 import '../../data/bluetooth/mi_scale_scanner.dart';
 import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/weight_log_repository.dart';
+import '../../nutrition/body_fat_calculator.dart';
 import '../../nutrition/tdee_calibrator.dart';
 import '../recognize/providers.dart' as recognize;
 
@@ -52,6 +54,11 @@ class WeightPageState extends ConsumerState<WeightPage>
   StreamSubscription<MiScaleMeasurement>? _scanSub;
   // 扫描冷却：5 分钟内 ≤3 次 startScan（MIUI 熔断阈值）
   final List<DateTime> _scanTimestamps = [];
+
+  // M27 v2：v2 协议阻抗捕获时机
+  MiScaleMeasurement? _pendingStabilized; // v2 稳定但阻抗未完成时暂存
+  double? _pendingBodyFat;                 // 捕获时算好的体脂率
+  int? _pendingImpedance;                  // 捕获时的阻抗值
 
   @override
   void initState() {
@@ -128,18 +135,36 @@ class WeightPageState extends ConsumerState<WeightPage>
       return;
     }
 
-    // 4. 权限 OK → 标记已开启 + 启动扫描
+    // 4. 权限 OK → 标记已开启
     if (!mounted) return;
     setState(() => _bleEnabled = true);
+
+    // M27 v2：系统定位开关检查（华为系 HarmonyOS/EMUI 强依赖）
+    final locationServiceStatus = await Permission.location.serviceStatus;
+    if (locationServiceStatus != ServiceStatus.enabled) {
+      if (!mounted) return;
+      showAppToast(context, '请先开启系统定位开关（蓝牙扫描需要）');
+      await openAppSettings();
+      return;
+    }
+
     await _startBleScan();
   }
 
   /// M27：启动 BLE 扫描
   Future<void> _startBleScan() async {
-    // 扫描冷却：5 分钟内 ≤3 次（MIUI 熔断阈值）
+    // 扫描冷却：5分钟/3次（MIUI 熔断）+ 30秒/4次（AOSP 节流）
     final now = DateTime.now();
     _scanTimestamps.removeWhere((t) => now.difference(t).inMinutes >= 5);
     if (_scanTimestamps.length >= 3) {
+      if (!mounted) return;
+      showAppToast(context, '5分钟内扫描次数过多，请稍后再试');
+      return;
+    }
+    // M27 v2：30秒短窗（AOSP 5次/30秒 节流保护）
+    final recentCount =
+        _scanTimestamps.where((t) => now.difference(t).inSeconds < 30).length;
+    if (recentCount >= 4) {
       if (!mounted) return;
       showAppToast(context, '扫描过于频繁，请稍后再试');
       return;
@@ -148,13 +173,19 @@ class WeightPageState extends ConsumerState<WeightPage>
 
     // 检查蓝牙适配器状态
     if (FlutterBluePlus.adapterStateNow != BluetoothAdapterState.on) {
-      // 蓝牙关闭 → Android 主动弹系统对话框
-      try {
-        await FlutterBluePlus.turnOn();
-      } catch (_) {
-        // 用户拒绝开启蓝牙
+      // 蓝牙关闭 → Android 主动弹系统对话框（iOS 无此 API）
+      if (Platform.isAndroid) {
+        try {
+          await FlutterBluePlus.turnOn();
+        } catch (_) {
+          if (!mounted) return;
+          setState(() => _bleState = _BleState.error);
+          return;
+        }
+      } else {
         if (!mounted) return;
         setState(() => _bleState = _BleState.error);
+        showAppToast(context, '请开启蓝牙');
         return;
       }
       // 等待适配器开启（最多 30 秒）
@@ -185,6 +216,9 @@ class WeightPageState extends ConsumerState<WeightPage>
       await _bleScanner!.startScan(
         timeout: const Duration(seconds: 15),
       );
+      // M27 v2 修复：startScan 在扫描开始时即返回，需显式等待扫描结束
+      // 否则"未找到"toast 会立即误弹（扫描才刚开始）
+      await FlutterBluePlus.isScanning.where((v) => v == false).first;
     } catch (e) {
       debugPrint('BLE 扫描启动失败: $e');
       if (mounted) {
@@ -192,11 +226,17 @@ class WeightPageState extends ConsumerState<WeightPage>
       }
     }
 
-    // 扫描超时后如未捕获，回到 idle
+    // 扫描真正结束后如未捕获，检查 _pendingStabilized 兜底
     if (mounted && _bleState == _BleState.scanning) {
-      setState(() => _bleState = _BleState.idle);
-      if (!mounted) return;
-      showAppToast(context, '未找到体重秤，请确认秤已开机');
+      if (_pendingStabilized != null) {
+        // v2 超时未拿到 impedance，用 stabilized 帧兜底（只有 weight）
+        _handleCapture(_pendingStabilized!);
+        _pendingStabilized = null;
+      } else {
+        setState(() => _bleState = _BleState.idle);
+        if (!mounted) return;
+        showAppToast(context, '未找到体重秤，请确认秤已开机');
+      }
     }
   }
 
@@ -213,17 +253,63 @@ class WeightPageState extends ConsumerState<WeightPage>
   /// M27：收到有效测量值 → 预填输入框
   void _onMeasurement(MiScaleMeasurement m) {
     if (!mounted) return;
+
+    // M27 v2：v2 协议优先等 measurementComplete（拿到 impedance）
+    // v1 协议 measurementComplete 恒 false，直接用 stabilized
+    final isV2WithImpedance = m.measurementComplete || m.impedance != null;
+    if (!isV2WithImpedance && m.isStabilized) {
+      // v2 稳定但阻抗未完成：暂存，继续扫描等 impedance
+      // 超时（15s）未拿到 impedance 则用此帧兜底
+      _pendingStabilized = m;
+      return;
+    }
+
+    _handleCapture(m);
+  }
+
+  /// M27 v2：处理捕获（计算体脂率 + 预填 + 停止扫描）
+  void _handleCapture(MiScaleMeasurement m) {
+    // 计算体脂率（需 profile 的性别/年龄/身高，异步获取）
+    _computeBodyFatAndCapture(m);
+  }
+
+  Future<void> _computeBodyFatAndCapture(MiScaleMeasurement m) async {
+    double? bodyFat;
+    if (m.impedance != null) {
+      try {
+        final profileRepo =
+            await ref.read(recognize.profileRepoProvider.future);
+        final profile = await profileRepo.get();
+        final isMale = profile.gender == 'male';
+        bodyFat = BodyFatCalculator.calcBodyFat(
+          isMale: isMale,
+          age: profile.age,
+          heightCm: profile.heightCm,
+          weightKg: m.weightKg,
+          impedance: m.impedance!.toDouble(),
+        );
+      } catch (e) {
+        debugPrint('体脂率计算失败: $e');
+      }
+    }
+
+    if (!mounted) return;
     setState(() {
       _weightCtrl.text = m.weightKg.toStringAsFixed(1);
       _weightError = null;
       _bleState = _BleState.captured;
-      // 预填视为用户输入，标记 dirty（PopScope 未保存确认）
+      _pendingBodyFat = bodyFat;
+      _pendingImpedance = m.impedance;
       _dirty = true;
     });
     // 停止扫描（已捕获，省电）
-    // 不调 _stopBleScan（它会设 idle 覆盖 captured），直接调 scanner.stopScan
     _bleScanner?.stopScan();
-    showAppToast(context, '已捕获 ${m.weightKg.toStringAsFixed(1)} kg，请确认');
+
+    // toast（impedance 无效只显示体重）
+    final msg = bodyFat != null
+        ? '已捕获 ${m.weightKg.toStringAsFixed(1)} kg，体脂 ${bodyFat.toStringAsFixed(1)}%'
+        : '已捕获 ${m.weightKg.toStringAsFixed(1)} kg，请确认';
+    showAppToast(context, msg);
   }
 
   Future<void> _load() async {
@@ -517,10 +603,14 @@ class WeightPageState extends ConsumerState<WeightPage>
                   return touchedSpots.map((spot) {
                     final idx = spot.spotIndex;
                     final log = _logs[idx];
+                    // M27 v2：有体脂率加到 tooltip
+                    final bodyFatText = log.bodyFatPct != null
+                        ? '\n体脂 ${log.bodyFatPct!.toStringAsFixed(1)}%'
+                        : '';
                     // barIndex 0 = 热量，1 = 体重
                     final valueText = spot.barIndex == 0
                         ? '${_dailyCalories[log.date]?.round() ?? 0} kcal'
-                        : '${log.weightKg.toStringAsFixed(1)} kg';
+                        : '${log.weightKg.toStringAsFixed(1)} kg$bodyFatText';
                     return LineTooltipItem(
                       '${log.date}\n$valueText',
                       TextStyle(
@@ -623,15 +713,35 @@ class WeightPageState extends ConsumerState<WeightPage>
     try {
       final repo = await ref.read(recognize.weightLogRepoProvider.future);
       final today = todayYmd();
-      await repo.insert(date: today, weightKg: weight);
+      // 1. 写 weight_log（M27 v2：含 impedance + bodyFatPct）
+      await repo.insert(
+        date: today,
+        weightKg: weight,
+        impedance: _pendingImpedance?.toDouble(),
+        bodyFatPercent: _pendingBodyFat,
+      );
 
-      // 同步 profile.weightKg：让 dashboard 宏量目标（proteinGPerKg * weightKg）
-      // 随最新体重变化。原代码只写 weight_logs 表，profile.weightKg 不变，
-      // 导致即使主页刷新，宏量目标仍用旧体重算。
+      // 2. 同步 profile（M27 v2：weightKg + bodyFatPct + formula 联动）
+      // 让 dashboard 宏量目标（proteinGPerKg * weightKg）随最新体重变化。
       // 注意：不重算 dailyCalorieTarget（BMR 重算只在用户主动编辑档案时做，
       // 日常体重波动通过 TDEE 校准 adjustmentKcal 微调）
       final profileRepo = await ref.read(recognize.profileRepoProvider.future);
-      await profileRepo.update(weightKg: weight);
+      final oldProfile = await profileRepo.get();
+      final oldFormula = oldProfile.formula;
+      final hasBodyFat = _pendingBodyFat != null && _pendingBodyFat! > 0;
+      final newFormula = hasBodyFat ? 'katch' : 'mifflin';
+      final formulaChanged = oldFormula != newFormula;
+      await profileRepo.update(
+        weightKg: weight,
+        bodyFatPct: _pendingBodyFat,
+        formula: newFormula,
+        // formula 切换时重置 tdeeAdjustmentKcal（防跨公式污染）
+        tdeeAdjustmentKcal: formulaChanged ? 0 : null,
+      );
+      // bodyFatPct 显式置空（用户清空体脂率时，update 的 null=不更新无法置空）
+      if (_pendingBodyFat == null) {
+        await profileRepo.clearBodyFatPct();
+      }
 
       // 触发 TDEE 自适应校准（Sprint 3 T22）
       try {
@@ -650,6 +760,10 @@ class WeightPageState extends ConsumerState<WeightPage>
       }
 
       _weightCtrl.clear();
+      // M27 v2：清理捕获暂存
+      _pendingBodyFat = null;
+      _pendingImpedance = null;
+      _pendingStabilized = null;
       await _load();
       // 通知 dashboard/records/insight 等监听 RefreshBus 的页面刷新
       // 修复：原代码只刷新本页（_load），主页宏量目标/目标热量不更新
@@ -694,7 +808,10 @@ class WeightPageState extends ConsumerState<WeightPage>
       onDismissed: (_) => _deleteWeight(log),
       child: ListTile(
         leading: const LeadingIconContainer(Icons.monitor_weight_outlined),
-        title: Text('${log.weightKg.toStringAsFixed(1)} kg',
+        // M27 v2：有体脂率加到 title
+        title: Text(log.bodyFatPct != null
+            ? '${log.weightKg.toStringAsFixed(1)} kg · 体脂 ${log.bodyFatPct!.toStringAsFixed(1)}%'
+            : '${log.weightKg.toStringAsFixed(1)} kg',
             style: TextStyle(
                 fontFeatures: const [FontFeature.tabularFigures()])),
         subtitle: Text(log.date),
