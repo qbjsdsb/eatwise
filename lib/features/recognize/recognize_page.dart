@@ -45,6 +45,7 @@ class RecognizePage extends ConsumerStatefulWidget {
   /// 返回 actualCalories（用于 toast 显示）；返回 null 表示无营养数据未记录。
   @visibleForTesting
   static Future<double?> writeCalibratedMealLog({
+    required EatWiseDatabase db,
     required FoodItemRepository foodRepo,
     required MealLogRepository mealRepo,
     required VisionRecognitionResult result,
@@ -60,126 +61,132 @@ class RecognizePage extends ConsumerStatefulWidget {
     String? imagePath,
     NutritionResult? aiFallbackNutrition,
   }) async {
-    // 获取 foodItemId：单品用查库命中，复合菜创建 ai_recognized 记录
-    // 必须有有效 food_item_id（meal_log.food_item_id 是非空 FK，
-    // Task 2 已启用 PRAGMA foreign_keys = ON，id=0 会触发外键约束违规）
-    int foodItemId;
     // v2 改动 E：actualXxx 始终用 onConfirm 传入值（calibration_page 已用
     // _applyUserOverrides 算好——用户手动编辑优先，否则 AI 估算值）。
     // 不再重算覆盖，确保"显示值 = 记录值 + 用户手动兜底生效"。
     // per100g 仍由 CalibratedNutritionCalculator 算（用于 upsertAiRecognized /
     // updatePer100g 保持库数据一致性），但 actualXxx 是独立维度（用户编辑
     // 是一次性校准，不反向污染库——下次识别同食物仍用 AI 估算）。
-    double actualCalories = calories;
-    double actualProteinG = protein;
-    double actualFatG = fat;
-    double actualCarbsG = carbs;
-    if (singleNutrition != null) {
-      final n = singleNutrition;
-      if (n.foodItemId == 0) {
-        // v1.4：单品库未命中，AI 估算兜底 → 创建 ai_recognized food_item
-        // M16.6 Task 3：用 CalibratedNutritionCalculator 统一计算 per100g，
-        // 保证 food_item.caloriesPer100g 与 meal_log.actualCalories 数据一致
-        // per100g 基于 mid 反算（硬约束 #4）
-        // CalibratedNutritionCalculator 内部已处理包装 OCR 优先级 + 品类校准，
-        // 与 offline_queue_controller 三路径行为一致
-        final calibrated = CalibratedNutritionCalculator.compute(
-          recognitionResult: result,
-          aiFallback: n,
-          servingG: servingG,
-        );
-        // 校准日志（包装路径是精确值无需校准，仅 AI 估算路径打印）
-        if (!result.hasPackageNutrition) {
-          final mid = result.estimatedWeightGMid;
-          final rawCalPer100 = mid > 0 ? n.calories * 100.0 / mid : 0.0;
-          if (calibrated.caloriesPer100g != rawCalPer100) {
+    final actualCalories = calories;
+    final actualProteinG = protein;
+    final actualFatG = fat;
+    final actualCarbsG = carbs;
+
+    // 事务包裹：upsert food_item + updatePer100g + insert meal_log 原子化，
+    // 任一失败整体回滚，避免 upsert 成功但 insert 失败留下脏 food_item（P1-1 修复）
+    // repo 内部持有同一 db 实例，drift 自动在事务连接上执行
+    // 必须有有效 food_item_id（meal_log.food_item_id 是非空 FK，
+    // Task 2 已启用 PRAGMA foreign_keys = ON，id=0 会触发外键约束违规）
+    return db.transaction(() async {
+      // 获取 foodItemId：单品用查库命中，复合菜创建 ai_recognized 记录
+      int foodItemId;
+      if (singleNutrition != null) {
+        final n = singleNutrition;
+        if (n.foodItemId == 0) {
+          // v1.4：单品库未命中，AI 估算兜底 → 创建 ai_recognized food_item
+          // M16.6 Task 3：用 CalibratedNutritionCalculator 统一计算 per100g，
+          // 保证 food_item.caloriesPer100g 与 meal_log.actualCalories 数据一致
+          // per100g 基于 mid 反算（硬约束 #4）
+          // CalibratedNutritionCalculator 内部已处理包装 OCR 优先级 + 品类校准，
+          // 与 offline_queue_controller 三路径行为一致
+          final calibrated = CalibratedNutritionCalculator.compute(
+            recognitionResult: result,
+            aiFallback: n,
+            servingG: servingG,
+          );
+          // 校准日志（包装路径是精确值无需校准，仅 AI 估算路径打印）
+          if (!result.hasPackageNutrition) {
+            final mid = result.estimatedWeightGMid;
+            final rawCalPer100 = mid > 0 ? n.calories * 100.0 / mid : 0.0;
+            if (calibrated.caloriesPer100g != rawCalPer100) {
+              debugPrint(
+                  '[FoodCategoryDefaults] ${result.dishName}(${result.foodCategory}) '
+                  'AI per100g=$rawCalPer100 偏离品类默认值，校准为 ${calibrated.caloriesPer100g}');
+            }
+          } else {
             debugPrint(
-                '[FoodCategoryDefaults] ${result.dishName}(${result.foodCategory}) '
-                'AI per100g=$rawCalPer100 偏离品类默认值，校准为 ${calibrated.caloriesPer100g}');
+                '[PackageOCR] ${result.dishName} 使用包装营养表换算 per100g=${calibrated.caloriesPer100g} '
+                '(serving=${result.packageServingG}g/${result.packageServingKj}kJ/${result.packageServingKcal}kcal)');
           }
+          foodItemId = await foodRepo.upsertAiRecognized(
+            name: result.dishName,
+            brand: result.brand,
+            caloriesPer100g: calibrated.caloriesPer100g,
+            proteinPer100g: calibrated.proteinPer100g,
+            fatPer100g: calibrated.fatPer100g,
+            carbsPer100g: calibrated.carbsPer100g,
+            confidence: result.confidence,
+          );
+          // v2 改动 E：actualXxx 用 onConfirm 传入值（calibration_page 已算好，
+          // 含用户手动编辑覆盖），不再用 calibrated.actualXxx 重算覆盖
         } else {
-          debugPrint(
-              '[PackageOCR] ${result.dishName} 使用包装营养表换算 per100g=${calibrated.caloriesPer100g} '
-              '(serving=${result.packageServingG}g/${result.packageServingKj}kJ/${result.packageServingKcal}kcal)');
+          foodItemId = n.foodItemId;
+          // M16.8 Task 4：查库命中 + 有 AI 兜底估算 → 差异检测决定信任 AI 还是库
+          // 偏差 > 50% 用 AI 反算 per100g 写库 + 用 AI 值记 meal_log
+          // （修复 reasoning 显示 AI 估算但记录用库值致脱节）
+          // 偏差 ≤ 50% 用库值（actualXxx 保持 onConfirm 传入值，已基于 DB per100g）
+          // 未传 aiFallbackNutrition 时保持原行为（向后兼容）
+          // v2 改动 E：actualXxx 用 onConfirm 传入值（含用户编辑覆盖），不重算覆盖
+          if (aiFallbackNutrition != null) {
+            final calibrated = CalibratedNutritionCalculator.compute(
+              recognitionResult: result,
+              aiFallback: aiFallbackNutrition,
+              servingG: servingG,
+              lookupHitNutrition: n,
+            );
+            // 偏差大时用 AI 反算 per100g 纠正脏库（actualXxx 仍用传入值）
+            if (calibrated.shouldUpdateFoodItem) {
+              await foodRepo.updatePer100g(
+                foodItemId: calibrated.foodItemId,
+                caloriesPer100g: calibrated.caloriesPer100g,
+                proteinPer100g: calibrated.proteinPer100g,
+                fatPer100g: calibrated.fatPer100g,
+                carbsPer100g: calibrated.carbsPer100g,
+              );
+            }
+          }
         }
+      } else if (compositeNutrition != null) {
+        // 复合菜：存入 food_item（source=ai_recognized，components_json 存组分快照）
+        // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），
+        // per100g 用包装换算值（替代 0），actualCalories 在 CalibrationPage 按包装换算
+        final packagePer100 = result.hasPackageNutrition
+            ? result.computePackageNutritionPer100g(
+                estimatedProteinG: result.estimatedProteinG,
+                estimatedFatG: result.estimatedFatG,
+                estimatedCarbsG: result.estimatedCarbsG,
+              )
+            : null;
         foodItemId = await foodRepo.upsertAiRecognized(
           name: result.dishName,
           brand: result.brand,
-          caloriesPer100g: calibrated.caloriesPer100g,
-          proteinPer100g: calibrated.proteinPer100g,
-          fatPer100g: calibrated.fatPer100g,
-          carbsPer100g: calibrated.carbsPer100g,
+          caloriesPer100g: packagePer100?.$1 ?? 0,
+          proteinPer100g: packagePer100?.$2 ?? 0,
+          fatPer100g: packagePer100?.$3 ?? 0,
+          carbsPer100g: packagePer100?.$4 ?? 0,
           confidence: result.confidence,
+          componentsJson: componentsSnapshot,
         );
-        // v2 改动 E：actualXxx 用 onConfirm 传入值（calibration_page 已算好，
-        // 含用户手动编辑覆盖），不再用 calibrated.actualXxx 重算覆盖
       } else {
-        foodItemId = n.foodItemId;
-        // M16.8 Task 4：查库命中 + 有 AI 兜底估算 → 差异检测决定信任 AI 还是库
-        // 偏差 > 50% 用 AI 反算 per100g 写库 + 用 AI 值记 meal_log
-        // （修复 reasoning 显示 AI 估算但记录用库值致脱节）
-        // 偏差 ≤ 50% 用库值（actualXxx 保持 onConfirm 传入值，已基于 DB per100g）
-        // 未传 aiFallbackNutrition 时保持原行为（向后兼容）
-        // v2 改动 E：actualXxx 用 onConfirm 传入值（含用户编辑覆盖），不重算覆盖
-        if (aiFallbackNutrition != null) {
-          final calibrated = CalibratedNutritionCalculator.compute(
-            recognitionResult: result,
-            aiFallback: aiFallbackNutrition,
-            servingG: servingG,
-            lookupHitNutrition: n,
-          );
-          // 偏差大时用 AI 反算 per100g 纠正脏库（actualXxx 仍用传入值）
-          if (calibrated.shouldUpdateFoodItem) {
-            await foodRepo.updatePer100g(
-              foodItemId: calibrated.foodItemId,
-              caloriesPer100g: calibrated.caloriesPer100g,
-              proteinPer100g: calibrated.proteinPer100g,
-              fatPer100g: calibrated.fatPer100g,
-              carbsPer100g: calibrated.carbsPer100g,
-            );
-          }
-        }
+        // 无营养数据（查库未命中），不记录
+        return null;
       }
-    } else if (compositeNutrition != null) {
-      // 复合菜：存入 food_item（source=ai_recognized，components_json 存组分快照）
-      // v1.9：复合菜有包装营养表数据时（预包装速冻食品等），
-      // per100g 用包装换算值（替代 0），actualCalories 在 CalibrationPage 按包装换算
-      final packagePer100 = result.hasPackageNutrition
-          ? result.computePackageNutritionPer100g(
-              estimatedProteinG: result.estimatedProteinG,
-              estimatedFatG: result.estimatedFatG,
-              estimatedCarbsG: result.estimatedCarbsG,
-            )
-          : null;
-      foodItemId = await foodRepo.upsertAiRecognized(
-        name: result.dishName,
-        brand: result.brand,
-        caloriesPer100g: packagePer100?.$1 ?? 0,
-        proteinPer100g: packagePer100?.$2 ?? 0,
-        fatPer100g: packagePer100?.$3 ?? 0,
-        carbsPer100g: packagePer100?.$4 ?? 0,
-        confidence: result.confidence,
-        componentsJson: componentsSnapshot,
-      );
-    } else {
-      // 无营养数据（查库未命中），不记录
-      return null;
-    }
 
-    await mealRepo.insertMealLog(
-      date: todayYmd(),
-      mealType: mealType,
-      foodItemId: foodItemId,
-      actualServingG: servingG,
-      actualCalories: actualCalories,
-      actualProteinG: actualProteinG,
-      actualFatG: actualFatG,
-      actualCarbsG: actualCarbsG,
-      originalImagePath: imagePath,
-      recognitionConfidence: result.confidence,
-      componentsSnapshotJson: componentsSnapshot,
-    );
-    return actualCalories;
+      await mealRepo.insertMealLog(
+        date: todayYmd(),
+        mealType: mealType,
+        foodItemId: foodItemId,
+        actualServingG: servingG,
+        actualCalories: actualCalories,
+        actualProteinG: actualProteinG,
+        actualFatG: actualFatG,
+        actualCarbsG: actualCarbsG,
+        originalImagePath: imagePath,
+        recognitionConfidence: result.confidence,
+        componentsSnapshotJson: componentsSnapshot,
+      );
+      return actualCalories;
+    });
   }
 }
 
@@ -606,9 +613,11 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
     required double carbs,
     String? componentsSnapshot,
   }) async {
+    final db = await ref.read(databaseProvider.future);
     final mealRepo = await ref.read(mealLogRepoProvider.future);
     final foodRepo = await ref.read(foodItemRepoProvider.future);
     final actualCalories = await RecognizePage.writeCalibratedMealLog(
+      db: db,
       foodRepo: foodRepo,
       mealRepo: mealRepo,
       result: result,
@@ -757,6 +766,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
                 carbs, {
                 componentsSnapshot,
               }) async {
+                final db = await ref.read(databaseProvider.future);
                 final mealRepo = await ref.read(mealLogRepoProvider.future);
                 final foodRepo = await ref.read(
                   foodItemRepoProvider.future,
@@ -765,6 +775,7 @@ class _RecognizePageState extends ConsumerState<RecognizePage>
                 // 补齐 recognitionConfidence + componentsSnapshotJson 字段
                 // （原直接调 insertMealLog 缺这两字段，致 meal_log 记录不完整）
                 final actualCalories = await RecognizePage.writeCalibratedMealLog(
+                  db: db,
                   foodRepo: foodRepo,
                   mealRepo: mealRepo,
                   result: resultForCalibration,

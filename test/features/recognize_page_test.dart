@@ -70,6 +70,7 @@ void main() {
     );
 
     final actualCalories = await RecognizePage.writeCalibratedMealLog(
+      db: db,
       foodRepo: foodRepo,
       mealRepo: mealRepo,
       result: result,
@@ -158,6 +159,7 @@ void main() {
     );
 
     final actualCalories = await RecognizePage.writeCalibratedMealLog(
+      db: db,
       foodRepo: foodRepo,
       mealRepo: mealRepo,
       result: r,
@@ -243,6 +245,7 @@ void main() {
     );
 
     final actualCalories = await RecognizePage.writeCalibratedMealLog(
+      db: db,
       foodRepo: foodRepo,
       mealRepo: mealRepo,
       result: r,
@@ -327,6 +330,7 @@ void main() {
     const componentsSnapshot = '[{"name":"番茄","weight":100}]';
 
     await RecognizePage.writeCalibratedMealLog(
+      db: db,
       foodRepo: foodRepo,
       mealRepo: mealRepo,
       result: r,

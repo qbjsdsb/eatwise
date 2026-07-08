@@ -60,6 +60,7 @@ class MiScaleParser {
       isStabilized: isStabilized,
       weightRemoved: weightRemoved,
       packetId: packetId,
+      protocolVersion: 1,
     );
   }
 
@@ -125,6 +126,7 @@ class MiScaleParser {
       packetId: packetId,
       impedance: impedance,
       measurementComplete: measurementComplete,
+      protocolVersion: 2,
     );
   }
 }
@@ -153,6 +155,10 @@ class MiScaleMeasurement {
   /// 阻抗测量是否完成（v2 byte1 bit1）；v1 恒 false
   final bool measurementComplete;
 
+  /// 协议版本：1 = v1（XMTZC04HM，10字节，无阻抗）；2 = v2（XMTZC05HM，13字节，含阻抗）
+  /// 用于 weight_page 区分 v1 stabilized 直接捕获 vs v2 等阻抗完成
+  final int protocolVersion;
+
   const MiScaleMeasurement({
     required this.weightKg,
     required this.unit,
@@ -161,6 +167,7 @@ class MiScaleMeasurement {
     required this.packetId,
     this.impedance,
     this.measurementComplete = false,
+    this.protocolVersion = 1,
   });
 
   /// 是否为有效测量：稳定 && 未下秤（学 ble_monitor 双重保护）

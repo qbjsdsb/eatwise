@@ -18,6 +18,7 @@ import '../../data/repositories/meal_log_repository.dart';
 import '../../data/repositories/weight_log_repository.dart';
 import '../../nutrition/body_fat_calculator.dart';
 import '../../nutrition/tdee_calibrator.dart';
+import '../profile/nutrition_calculator.dart';
 import '../recognize/providers.dart' as recognize;
 
 /// 体重记录页：录入体重 + fl_chart 折线趋势图
@@ -254,8 +255,15 @@ class WeightPageState extends ConsumerState<WeightPage>
   void _onMeasurement(MiScaleMeasurement m) {
     if (!mounted) return;
 
-    // M27 v2：v2 协议优先等 measurementComplete（拿到 impedance）
-    // v1 协议 measurementComplete 恒 false，直接用 stabilized
+    // v1 协议（XMTZC04HM）：无阻抗，stabilized 即完整测量，直接捕获
+    // v2 协议（XMTZC05HM）：优先等 measurementComplete（拿到 impedance），
+    //   stabilized 但阻抗未完成时暂存，超时（15s）未拿到 impedance 则用此帧兜底
+    if (m.protocolVersion == 1) {
+      if (m.isStabilized) _handleCapture(m);
+      return;
+    }
+
+    // v2：等 impedance 就绪
     final isV2WithImpedance = m.measurementComplete || m.impedance != null;
     if (!isV2WithImpedance && m.isStabilized) {
       // v2 稳定但阻抗未完成：暂存，继续扫描等 impedance
@@ -723,20 +731,54 @@ class WeightPageState extends ConsumerState<WeightPage>
 
       // 2. 同步 profile（M27 v2：weightKg + bodyFatPct + formula 联动）
       // 让 dashboard 宏量目标（proteinGPerKg * weightKg）随最新体重变化。
-      // 注意：不重算 dailyCalorieTarget（BMR 重算只在用户主动编辑档案时做，
-      // 日常体重波动通过 TDEE 校准 adjustmentKcal 微调）
+      // formula 切换时 BMR 公式变了，旧 dailyCalorieTarget 失效，需重算
+      // （参照 profile_page._save 的重算逻辑）；formula 未变时不重算 target
+      // （日常体重波动通过 TDEE 校准 adjustmentKcal 微调）
       final profileRepo = await ref.read(recognize.profileRepoProvider.future);
       final oldProfile = await profileRepo.get();
       final oldFormula = oldProfile.formula;
       final hasBodyFat = _pendingBodyFat != null && _pendingBodyFat! > 0;
       final newFormula = hasBodyFat ? 'katch' : 'mifflin';
       final formulaChanged = oldFormula != newFormula;
+
+      int? newDailyCalorieTarget;
+      if (formulaChanged) {
+        // formula 切换：BMR 公式变了（mifflin↔katch），重算 dailyCalorieTarget
+        final genderEnum =
+            oldProfile.gender == 'male' ? Gender.male : Gender.female;
+        final goalEnum = oldProfile.goal == 'cut'
+            ? Goal.cut
+            : oldProfile.goal == 'bulk'
+                ? Goal.bulk
+                : Goal.maintain;
+        final bmr = hasBodyFat
+            ? NutritionCalculator.bmrKatch(
+                weightKg: weight, bodyFatPct: _pendingBodyFat!)
+            : NutritionCalculator.bmrMifflin(
+                weightKg: weight,
+                heightCm: oldProfile.heightCm,
+                age: oldProfile.age,
+                gender: genderEnum,
+              );
+        final tdee = NutritionCalculator.tdee(
+            bmr: bmr, activityLevel: oldProfile.activityLevel);
+        newDailyCalorieTarget = NutritionCalculator.dailyCalorieTarget(
+          tdee: tdee,
+          goal: goalEnum,
+          tdeeAdjustmentKcal: 0, // formula 切换已重置
+          goalRateKgPerWeek: oldProfile.goalRateKgPerWeek,
+          gender: genderEnum,
+          specialCondition: oldProfile.specialCondition,
+        );
+      }
+
       await profileRepo.update(
         weightKg: weight,
         bodyFatPct: _pendingBodyFat,
         formula: newFormula,
-        // formula 切换时重置 tdeeAdjustmentKcal（防跨公式污染）
+        // formula 切换时重置 tdeeAdjustmentKcal（防跨公式污染）+ 重算 dailyCalorieTarget
         tdeeAdjustmentKcal: formulaChanged ? 0 : null,
+        dailyCalorieTarget: newDailyCalorieTarget,
       );
       // bodyFatPct 显式置空（用户清空体脂率时，update 的 null=不更新无法置空）
       if (_pendingBodyFat == null) {
