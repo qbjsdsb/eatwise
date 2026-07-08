@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import 'mi_scale_parser.dart';
@@ -23,8 +24,10 @@ class MiScaleScanner {
       StreamController<MiScaleMeasurement>.broadcast();
   String? _lastPacketId; // packet_id 去重
 
-  /// 权重秤 Service UUID（v1 协议）
-  static final Guid _weightScaleUuid = Guid('181D');
+  /// v1 权重秤 Service UUID（XMTZC04HM 体重秤2）
+  static final Guid _v1Uuid = Guid('181D');
+  /// v2 体成分 Service UUID（XMTZC05HM 体脂秤2 / XMTZC02HM 体脂秤1代）
+  static final Guid _v2Uuid = Guid('181B');
 
   /// 有效测量值流（stabilized && !removed）
   /// 调用方 listen 此流，收到值后预填输入框
@@ -51,7 +54,8 @@ class MiScaleScanner {
       _handleScanResults,
       onError: (Object e) {
         // scanResults/onScanResults 是唯一会发 error 的流
-        // 错误通常无害（如短暂权限撤销），不中断扫描
+        // 医疗场景不留静默，记录日志便于排查
+        debugPrint('MiScaleScanner onScanResults error: $e');
       },
     );
 
@@ -78,11 +82,16 @@ class MiScaleScanner {
   void _handleScanResults(List<ScanResult> results) {
     for (final r in results) {
       final sd = r.advertisementData.serviceData;
-      final payload = sd[_weightScaleUuid];
-      // 软过滤：UUID 0x181D 且长度 10（v1 协议）
-      if (payload == null || payload.length != 10) continue;
 
-      final m = MiScaleParser.parseV1(payload);
+      // 双 UUID 路由：v1(0x181D/10B) 或 v2(0x181B/13B)
+      MiScaleMeasurement? m;
+      final v1Payload = sd[_v1Uuid];
+      final v2Payload = sd[_v2Uuid];
+      if (v1Payload != null && v1Payload.length == 10) {
+        m = MiScaleParser.parseV1(v1Payload);
+      } else if (v2Payload != null && v2Payload.length == 13) {
+        m = MiScaleParser.parseV2(v2Payload);
+      }
       if (m == null) continue;
 
       // 有效性过滤：stabilized && !removed
@@ -91,6 +100,9 @@ class MiScaleScanner {
       // packet_id 去重（学 ble_monitor）
       if (m.packetId == _lastPacketId) continue;
       _lastPacketId = m.packetId;
+
+      // isClosed 守卫（防 dispose 竞态崩溃）
+      if (_controller.isClosed) return;
 
       // 推送给调用方
       _controller.add(m);
