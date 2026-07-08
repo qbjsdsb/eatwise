@@ -23,7 +23,7 @@
 
 - **项目名**：慢慢吃（EatWise）—— 拍照识别食物热量 + 营养记录 + AI 汇总建议
 - **技术栈**：Flutter 3.44.4 / Dart / Riverpod / drift (SQLite) / Material 3 Expressive
-- **当前版本**：0.32.0+45（pubspec.yaml）—— M27 v2 小米体脂秤2 + 体脂率 + BMR 自动升级已实现待 push；v0.31.0 为 M27 蓝牙体重秤同步（v1 协议 XMTZC04HM）；v0.30.1 为 APK 瘦身（abiFilters arm64-v8a，release 87→42.3MB 减 51%）；v0.29.0 为 M26 图标精修 + 餐次分布可读性 + 删最后一个食物复活 bug 修复；v0.28.0 为 AI 组分滑块影响热量（完全抛弃库参与热量计算）；v0.27.0 为 AI 推理热量与显示值不一致 P0 修复；v0.26.0 为 M26 第二轮 UI 审查 P1 修复（45 条）
+- **当前版本**：0.33.0+46（pubspec.yaml）—— M27 v2 小米体脂秤2 + 体脂率 + BMR 自动升级已实现待 push；v0.31.0 为 M27 蓝牙体重秤同步（v1 协议 XMTZC04HM）；v0.30.1 为 APK 瘦身（abiFilters arm64-v8a，release 87→42.3MB 减 51%）；v0.29.0 为 M26 图标精修 + 餐次分布可读性 + 删最后一个食物复活 bug 修复；v0.28.0 为 AI 组分滑块影响热量（完全抛弃库参与热量计算）；v0.27.0 为 AI 推理热量与显示值不一致 P0 修复；v0.26.0 为 M26 第二轮 UI 审查 P1 修复（45 条）
 - **当前分支**：trae/agent-wX1X6Q（HEAD = b5d0019 已 push；tag v0.27.0 指向 b5d0019；v0.26.0 指向 c8809c3；v0.25.0 指向 4e2202e；v0.24.0 指向 a27b347；v0.23.0 tag 指向 d37cd4e；v0.18.5 tag 指向 d37cd4e；v0.18.4 指向 f00333e；v0.18.3 tag 指向 85e8c64；v0.18.2 未打 tag；v0.18.1 tag 指向 fa9b7a8；v0.18.0 tag 指向 bfa54e6；v0.17.0 tag 指向 4d35805；v0.16.0 tag 指向 e6ae182）
 - **关键约束**：
   - `meal_log.food_item_id` 是非空外键，PRAGMA foreign_keys=ON，foodItemId=0 哨兵写库前必须替换为真实 id
@@ -69,6 +69,27 @@ BMR 自动升级：有 bodyFatPct→Katch-McArdle + formula='katch'；无→Miff
 沙箱环境问题：build_runner 因 drift_dev 2.34.0 与 sqlparser 0.44.6 不兼容（DartPlaceholder.when 失效）无法运行，database.g.dart 手动修改（参考 Profile 表 bodyFatPct nullable double 模式）。本地环境 build_runner 正常时建议重新生成覆盖手动改动。
 
 最终验证：flutter analyze No issues / flutter test 1172 passed / 3 skipped / 0 failed（基线 1143 + 新增 29 测试 = 1172，0 回归）/ 6+1 硬约束满足。
+
+### v0.33.0（2026-07-09）：M27 图标重设计碗+萌芽
+
+**用户反馈**：M26 图标"颠倒"+"叶子突兀"。
+
+**根因（cairosvg 实测验证）**：M26 碗 path `M39,51 A15,15 0 0 1 69,51 Z` 的 `sweep-flag=1` 在 y-down 坐标系实际渲染为弧线在上方（碗口朝下倒扣），注释"sweep=1 = 下方半圆"是错误判断。正确应为 `sweep=0`。米粒 y=55-60 落在倒扣碗的下方背景区，实际不在碗内。
+
+**重设计（方向 B 碗+萌芽）**：
+- 碗 sweep 1→0 修正颠倒
+- 米粒 3→2 粒碗底对称（让位萌芽焦点）
+- 删除 M26 右上飘叶（突兀无连接）
+- 新增茎（碗中央底部 (54,61) → 碗口上方 (54,38)，主绿 1.5dp）
+- 新增顶叶（茎尖右上 30°，主绿 #2E7D32）
+- 新增侧叶（茎中部左上 30°，中绿 #388E3C 比顶叶浅一阶）
+- 语义升级：碗(食物)+萌芽双叶(健康/成长)=健康饮食生命力
+
+**新增陷阱**：
+- Android vector `sweep-flag` 在 y-down 坐标系：sweep=0 弧线在下（碗口朝上），sweep=1 弧线在上（碗口朝下）。注释别凭直觉写，要 cairosvg 实测验证。
+- `scripts/render_icon_png.py` 之前是 M15 叉刀硬编码几何（与实际 PNG 不符），M27 重写为 cairosvg 从 XML 渲染，避免脚本与 XML 脱节。
+
+**验证**：cairosvg 像素采样全通过 / flutter analyze No issues / flutter test 1172 passed 0 回归 / 6+1 硬约束满足。
 
 **v0.31.0 M27 蓝牙体重秤同步（2026-07-08，已 push 未打 tag）—— 接入小米体重秤 2（XMTZC04HM）BLE 被动扫描**：用户要求"接入蓝牙，每次量体重软件上面就会同步信息"。4 轮深度调研后确定 v4 设计：纯被动 BLE 扫描（不建 GATT 连接）→ Dart 层软过滤 serviceData UUID 0x181D → bitmask 解析 v1 协议（学 ble_monitor）→ 预填 weight_page 输入框 → 复用现有 _save() 写库。零改动数据层。
 

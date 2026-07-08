@@ -4,6 +4,33 @@
 
 ## [Unreleased]
 
+## [v0.33.0] - 2026-07-09
+
+### M27 图标重设计：碗+萌芽（修正颠倒 + 叶子归位）
+
+用户反馈 M26 图标"颠倒"+"叶子突兀"。根因：M26 碗 path `sweep-flag=1` 在 y-down 坐标系实际渲染为碗口朝下（注释判断错误）；右上飘叶与碗无视觉连接。
+
+#### 改动
+- `ic_launcher_foreground.xml`：
+  - 碗 `sweep-flag` 1→0（修正颠倒，碗口朝上、碗底朝下）
+  - 米粒 3→2 粒碗底对称（让位萌芽焦点）
+  - 删除 M26 右上飘叶（突兀无连接）
+  - 新增茎（碗中央底部→碗口上方，主绿 1.5dp）
+  - 新增顶叶（茎尖右上 30°，主绿）
+  - 新增侧叶（茎中部左上 30°，中绿 Green 600 比顶叶浅一阶）
+- `colors.xml`：新增 `ic_launcher_leaf_side` `#388E3C`（侧叶色）
+- `scripts/render_icon_png.py`：重写为 cairosvg 从 XML 渲染（替代 M15 叉刀硬编码）
+- 重新生成 5 密度 PNG fallback
+
+#### 语义升级
+碗(食物) + 萌芽双叶(健康/成长) = 健康饮食的生命力意象（vs M26 碗+飘叶的自然×食物）
+
+#### 验证
+- cairosvg 像素采样：碗口朝上/碗底朝下/茎/顶叶/侧叶/2粒米全部正确
+- flutter analyze No issues
+- flutter test 1172 passed / 3 skipped / 0 failed（0 回归）
+- 6+1 硬约束全部满足（未触碰 build.gradle.kts / AndroidManifest）
+
 ## [v0.32.0] - 2026-07-09
 
 ### M27 v2 小米体脂秤2 + 体脂率 + BMR 自动升级
