@@ -54,6 +54,18 @@ class RecommendationSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SectionTitle('智能推荐'),
+        // 隐私提示：AI 推荐会将档案与饮食数据发送到智谱 AI（D14 P1）
+        // 轻量持久提示，不弹窗打扰；详细信息在设置页"隐私政策"
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: Text(
+            'AI 推荐会将档案与饮食数据发送到智谱 AI，详见隐私政策',
+            style: textTheme.bodySmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontSize: 11,
+            ),
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Card(

@@ -39,6 +39,9 @@ void main() {
 
   Future<void> pumpDashboard(WidgetTester tester, ProviderContainer container,
       {EatWiseDatabase? db}) async {
+    // 放大视口：Dashboard 是 CustomScrollView 懒加载，推荐区加隐私提示行后
+    // 空态"今日还没有记录"会超出默认 800×600 视口未被 build
+    await tester.binding.setSurfaceSize(const Size(800, 1200));
     await tester.pumpWidget(
       UncontrolledProviderScope(
         container: container,

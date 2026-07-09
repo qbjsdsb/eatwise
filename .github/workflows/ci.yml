@@ -2,7 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # 触发所有分支：发版分支（trae/agent-* / release-*）也需 CI 保护，
+    # 避免 origin/main 停滞时发版分支未经 CI 验证（D12 P1-1）
+    branches: ['**']
   pull_request:
     branches: [main]
 
@@ -15,7 +17,9 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          # 固定版本与 release.yml 对齐（D12 P1-2）：
+          # 避免 CI 用 stable 最新版、发版用 3.44.4 的环境漂移
+          flutter-version: '3.44.4'
           cache: true
 
       - name: Show Flutter version

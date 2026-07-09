@@ -752,6 +752,15 @@ class _InsightPageState extends ConsumerState<InsightPage> {
                 : const Icon(Icons.auto_awesome),
             label: Text(_summary == null ? '生成$periodLabel汇总' : '重新生成'),
           ),
+          // 隐私提示：AI 汇总会将统计数据发送到智谱 AI（D14 P1）
+          const SizedBox(height: 8),
+          Text(
+            'AI 汇总会将热量与体重统计数据发送到智谱 AI，详见隐私政策',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontSize: 11,
+                ),
+          ),
         ],
       ),
     );
