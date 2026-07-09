@@ -28,8 +28,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   String? _lastBackupTime;
   bool _loading = true;
   int? _monthlyCount;
+  int? _monthlyApiCalls;
   double? _estimatedCost;
-  static const _costPerRecognition = 0.001;  // 估算：单次约 0.001 元（500 token × 0.15/百万）
+  // 估算单价：Qwen3-VL-Flash 输入 0.375 元/百万 + 输出 2.998 元/百万
+  // 单次约 1500 输入 token（图片+prompt）+ 500 输出 token ≈ 0.002 元
+  // （有免费额度时实际为 0；此处按无免费额度估算，偏保守上限）
+  static const _costPerApiCall = 0.002;
   static const _costWarningThreshold = 5.0;  // 5 元/月提示
   int _imageRetentionDays = 30;  // T48 保留期
   bool _backupOverdue = false;  // T55：14 天未备份提示
@@ -88,12 +92,14 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
       final store = ref.read(secureConfigStoreProvider);
       _monthlyCount = await store.getCurrentMonthCount();
-      _estimatedCost = _monthlyCount! * _costPerRecognition;
+      _monthlyApiCalls = await store.getCurrentMonthApiCalls();
+      _estimatedCost = _monthlyApiCalls! * _costPerApiCall;
       _imageRetentionDays = await store.getImageRetentionDays();
     } catch (_) {
       // 防御性兜底：沙箱/真机异常均不传播（真机正常路径不进此分支）
       _lastBackupTime = null;
       _monthlyCount = 0;
+      _monthlyApiCalls = 0;
       _estimatedCost = 0.0;
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -240,7 +246,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ListTile(
                   leading: const LeadingIconContainer(Icons.analytics_outlined),
                   title: const Text('本月识别次数'),
+                  subtitle: const Text('成功识别的次数（用户视角）'),
                   trailing: Text('$_monthlyCount 次',
+                      style: const TextStyle(
+                          fontFeatures: [FontFeature.tabularFigures()])),
+                ),
+                GroupCard.divider(context),
+                ListTile(
+                  leading: const LeadingIconContainer(Icons.cloud_queue),
+                  title: const Text('本月 API 调用次数'),
+                  subtitle: const Text('实际消耗的付费视觉 API 次数（含重试/容灾）'),
+                  trailing: Text('$_monthlyApiCalls 次',
                       style: const TextStyle(
                           fontFeatures: [FontFeature.tabularFigures()])),
                 ),
@@ -248,6 +264,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
                 ListTile(
                   leading: const LeadingIconContainer(Icons.payments_outlined),
                   title: const Text('估算花费'),
+                  subtitle: const Text('基于 API 调用次数 × 0.002 元（Qwen3-VL-Flash）'),
                   trailing: Text('${_estimatedCost!.toStringAsFixed(3)} 元',
                       style: const TextStyle(
                           fontFeatures: [FontFeature.tabularFigures()])),

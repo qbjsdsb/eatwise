@@ -91,6 +91,18 @@ class OfflineQueueController {
   /// 停止监听
   void stop() => _sub?.cancel();
 
+  /// 付费 API 调用计数 +1（best-effort，失败不影响主流程）
+  /// 每次视觉 API 调用成功后调用：主调用 / L2 切备
+  Future<void> _incrementApiCalls() async {
+    if (_secureConfigStore == null) return;
+    try {
+      final now = DateTime.now();
+      await _secureConfigStore.incrementMonthlyApiCalls(now.year, now.month);
+    } catch (_) {
+      // best-effort：计数失败不影响回补流程
+    }
+  }
+
   /// 处理所有 pending 记录
   /// 公开方法：测试可手动触发（沙箱无法模拟真实网络切换）
   ///
@@ -155,11 +167,15 @@ class OfflineQueueController {
         result = await _visionProvider
             .recognize(imageBase64)
             .timeout(const Duration(seconds: 60));
+        // 付费 API 调用计数 +1（主调用成功）
+        await _incrementApiCalls();
       } catch (e) {
         if (_fallbackProvider == null) rethrow;
         result = await _fallbackProvider
             .recognize(imageBase64)
             .timeout(const Duration(seconds: 60));
+        // 付费 API 调用计数 +1（L2 切备成功，GLM-4V-Plus 付费）
+        await _incrementApiCalls();
       }
 
       // T37 断路器：视觉调用成功记录成功（halfOpen → closed）

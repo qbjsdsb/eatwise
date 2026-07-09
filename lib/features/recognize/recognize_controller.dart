@@ -157,6 +157,19 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
     state = state.copyWith(imagePath: persistentPath);
   }
 
+  /// 付费 API 调用计数 +1（best-effort，失败不影响主流程）
+  /// 每次视觉 API 调用成功后调用：主调用 / 429 重试 / L2 切备 / 校验重试
+  /// GLM-4-Flash（免费）的调用不计入
+  Future<void> _incrementApiCalls() async {
+    if (_secureConfigStore == null) return;
+    try {
+      final now = DateTime.now();
+      await _secureConfigStore.incrementMonthlyApiCalls(now.year, now.month);
+    } catch (_) {
+      // best-effort：计数失败不影响识别流程
+    }
+  }
+
   /// 拍照入口
   /// Sprint 2 T0：新增 mealType 参数（breakfast/lunch/dinner/snack）
   /// Sprint 2 T14：网络异常时若有 onOfflineEnqueue 则入队，否则报错
@@ -257,6 +270,8 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
       VisionRecognitionResult result;
       try {
         result = await _primaryProvider.recognize(imageBase64);
+        // 付费 API 调用计数 +1（主调用成功）
+        await _incrementApiCalls();
       } on VisionRecognitionException catch (e) {
         // 🚨 T36 关键设计（第2轮 Self-Review 修正）：
         // - retryable 错误（网络/超时/5xx/429 重试失败）必须 rethrow 走【外层 catch 离线入队】
@@ -268,12 +283,16 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
           await Future.delayed(e.retryAfter!);
           try {
             result = await _primaryProvider.recognize(imageBase64);
+            // 付费 API 调用计数 +1（429 重试成功）
+            await _incrementApiCalls();
             // L1 重试成功
           } catch (_) {
             // L1 重试失败 → L2 切备（无备则 rethrow 走外层离线入队）
             if (_fallbackProvider == null) rethrow;
             try {
               result = await _fallbackProvider.recognize(imageBase64);
+              // 付费 API 调用计数 +1（L2 切备成功，GLM-4V-Plus 付费）
+              await _incrementApiCalls();
             } catch (_) {
               rethrow; // L2 失败 → 外层离线入队（429 稍后恢复，入队重试合理）
             }
@@ -287,6 +306,8 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
           if (_fallbackProvider == null) rethrow;
           try {
             result = await _fallbackProvider.recognize(imageBase64);
+            // 付费 API 调用计数 +1（L2 切备成功，GLM-4V-Plus 付费）
+            await _incrementApiCalls();
           } catch (_) {
             rethrow; // L2 失败 → 外层离线入队（保留 Sprint 2 T14）
           }
@@ -490,6 +511,8 @@ class RecognizeController extends StateNotifier<RecognizeUiState> {
 
     try {
       final retryResult = await _primaryProvider.recognize(imageBase64);
+      // 付费 API 调用计数 +1（校验重试成功）
+      await _incrementApiCalls();
       // 重试结果也走完整后处理（修复 bug：原代码重试跳过密度换算）
       final processedRetry = RecognitionPostProcessor.process(retryResult);
       final retryValidation = RecognitionValidator.validate(processedRetry);

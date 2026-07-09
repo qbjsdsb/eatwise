@@ -36,6 +36,32 @@
 
 **最后更新**：2026-07-09
 
+**计费双指标修复（2026-07-09，已实现未提交）—— 方案 2 双指标：识别次数 + API 调用次数**：用户问"计费系统正常吗，计费准确吗"。深度调查发现 3 个少计问题（重试/L2 切备/校验重试未计数）+ 估算单价错误（原 0.001 元注释 500 token×0.15/百万，但 Qwen3-VL-Flash 无 0.15/百万价位，实际输入 0.375 + 输出 2.998 元/百万）。用户选方案 2（双指标，最准确但改动最大）。
+
+**双指标语义**：
+- 识别次数（`monthly_count_YYYYMM`，原 T43）：用户视角成功识别次数（不变）
+- API 调用次数（`monthly_api_calls_YYYYMM`，新增）：计费视角实际消耗付费视觉 API 次数（含重试/L2 切备/校验重试）。GLM-4-Flash（免费）不计入
+- 估算费用基于 API 调用次数 × 0.002 元（Qwen3-VL-Flash，1500 输入 + 500 输出 token 估算，有免费额度时实际为 0）
+
+**7 个计数点**（每次成功视觉 API 调用后 +1，best-effort try-catch 不影响主流程）：
+- `recognize_controller.dart` 5 处：主调用成功 / 429 重试成功 / L2 切备成功×2（429 路径 + 非 429 路径）/ 校验重试成功
+- `offline_queue_controller.dart` 2 处：主调用成功 / L2 切备成功
+
+**改动文件**（4 源 + 3 测试，未提交）：
+- `lib/core/config/secure_config_store.dart`：新增 `getMonthlyApiCalls` / `incrementMonthlyApiCalls` / `getCurrentMonthApiCalls`
+- `lib/features/recognize/recognize_controller.dart`：新增 `_incrementApiCalls()` + 5 处计数点
+- `lib/features/offline/offline_queue_controller.dart`：新增 `_incrementApiCalls()` + 2 处计数点
+- `lib/features/settings/settings_page.dart`：UI 3 个 ListTile（识别次数/API 调用次数/估算花费）+ `_costPerApiCall=0.002` + `_costWarningThreshold=5.0`（5 元/月提示）
+- `test/features/monthly_cost_test.dart`：+4 个 api_calls 单元测试 + widget 测试断言更新（'0.002 元' / `findsNWidgets(2)` 两行 '1 次' / 新增 '本月 API 调用次数'）
+- `test/features/settings_backup_overdue_test.dart`：补 `getCurrentMonthApiCalls` mock（否则 mocktail 抛 MissingStubError）
+- `test/features/offline_queue_test.dart`：M11 3 个测试补 api_calls 断言（成功 +1 / 失败 +0 / 多条 +N），双指标契约守护
+
+**验证**：flutter analyze No issues / flutter test 1175 passed / 3 skipped / 1 failed（`github_release_smoke_test` GitHub CDN HEAD 请求，沙箱网络 flake，与计费改动无关）/ 0 计费回归。
+
+**已知遗留（P1-3，未修）**：跨 isolate 计数竞态——主 isolate（前台）+ 后台 isolate（background_dispatcher）并发调 incrementMonthlyCount/incrementMonthlyApiCalls 是 read-modify-write 非原子操作。成本高收益低（个人自用，并发概率极低），暂不修。
+
+**v0.33.1（2026-07-09）：14 维度审计 + P0/P1 修复（已发布）**
+
 **v0.32.0 M27 v2 小米体脂秤2 + 体脂率 + BMR 自动升级（2026-07-09，已提交待 push）—— 接入小米体脂秤2（XMTZC05HM）v2 协议**：用户发现买的是体脂秤2（XMTZC05HM，v2 协议），与 v0.31.0 实现的体重秤2（XMTZC04HM，v1 协议）完全不同，协议不兼容。深度调研后实施 v2 协议 + 体脂率计算 + BMR 自动升级。
 
 协议关键差异（v1→v2）：

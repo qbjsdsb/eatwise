@@ -51,6 +51,7 @@ void main() {
     when(() => mockStore.getThemeSeed()).thenAnswer((_) async => 0xFF5B8C7B);
     when(() => mockStore.getUseDynamicColor()).thenAnswer((_) async => false);
     when(() => mockStore.getCurrentMonthCount()).thenAnswer((_) async => 0);
+    when(() => mockStore.getCurrentMonthApiCalls()).thenAnswer((_) async => 0);
     when(() => mockStore.getImageRetentionDays()).thenAnswer((_) async => 30);
   });
 

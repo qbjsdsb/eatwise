@@ -50,15 +50,50 @@ void main() {
     expect(await store.getMonthlyCount(2026, 6), 1);
   });
 
-  testWidgets('T44：设置页显示本月识别次数', (tester) async {
+  // --- 付费 API 调用计数（与识别次数独立存储，估算费用基于本指标）---
+  // 双指标契约：识别次数 = 用户视角成功识别；API 调用次数 = 计费视角实际消耗
+  // （含重试/L2 切备/校验重试）。GLM-4-Flash（免费）不计入。
+  test('API 调用计数初始为 0', () async {
+    final apiCalls = await store.getMonthlyApiCalls(2026, 7);
+    expect(apiCalls, 0);
+  });
+
+  test('incrementApiCalls 后计数 +1', () async {
+    await store.incrementMonthlyApiCalls(2026, 7);
+    expect(await store.getMonthlyApiCalls(2026, 7), 1);
+    await store.incrementMonthlyApiCalls(2026, 7);
+    expect(await store.getMonthlyApiCalls(2026, 7), 2);
+  });
+
+  test('API 调用计数与识别次数独立存储（key 隔离）', () async {
+    // 识别次数 +2，API 调用 +1（模拟 1 次识别含 1 次重试）
+    await store.incrementMonthlyCount(2026, 7);
+    await store.incrementMonthlyCount(2026, 7);
+    await store.incrementMonthlyApiCalls(2026, 7);
+    expect(await store.getMonthlyCount(2026, 7), 2);
+    expect(await store.getMonthlyApiCalls(2026, 7), 1);
+  });
+
+  test('API 调用计数不同月份独立', () async {
+    await store.incrementMonthlyApiCalls(2026, 7);
+    await store.incrementMonthlyApiCalls(2026, 6);
+    await store.incrementMonthlyApiCalls(2026, 6);
+    expect(await store.getMonthlyApiCalls(2026, 7), 1);
+    expect(await store.getMonthlyApiCalls(2026, 6), 2);
+  });
+
+  testWidgets('T44：设置页显示本月识别次数 + API 调用次数 + 估算花费', (tester) async {
     // SettingsPage._loadSettings 依次 await：
     //   1. ref.read(appConfigProvider.future) → 内部读 secureConfigStoreProvider
     //   2. AutoBackup.lastBackupTime() → 调 getApplicationDocumentsDirectory
-    //   3. store.getCurrentMonthCount()
+    //   3. store.getCurrentMonthCount() + store.getCurrentMonthApiCalls()
     // override secureConfigStoreProvider 即可让 appConfigProvider 走真实路径
     // （store 已带 FlutterSecureStorage 内存 mock）。path_provider 也需 mock，
     // 否则 lastBackupTime 的平台通道会挂起。
+    // 双指标：模拟 1 次成功识别（无重试）→ 识别次数 +1，API 调用 +1
+    // 估算费用 = 1 × 0.002 = 0.002 元
     await store.incrementMonthlyCount(2026, 7);
+    await store.incrementMonthlyApiCalls(2026, 7);
 
     PathProviderPlatform.instance = _MemoryPathProvider('/tmp/monthly_cost_test');
 
@@ -86,9 +121,13 @@ void main() {
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
     expect(find.byType(CircularProgressIndicator), findsNothing);
+    // 双指标标题均存在
     expect(find.text('本月识别次数'), findsOneWidget);
-    expect(find.text('1 次'), findsOneWidget);
+    expect(find.text('本月 API 调用次数'), findsOneWidget);
     expect(find.text('估算花费'), findsOneWidget);
-    expect(find.text('0.001 元'), findsOneWidget);
+    // 两行 trailing 都是 '1 次'（识别次数=1 且 API 调用次数=1）
+    expect(find.text('1 次'), findsNWidgets(2));
+    // 估算费用基于 API 调用次数：1 × 0.002 = 0.002 元
+    expect(find.text('0.002 元'), findsOneWidget);
   }, timeout: const Timeout(Duration(seconds: 30)));
 }

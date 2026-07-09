@@ -127,6 +127,34 @@ class SecureConfigStore {
     return getMonthlyCount(now.year, now.month);
   }
 
+  // --- 付费 API 调用计数（按月归档，key: monthly_api_calls_YYYYMM）---
+  // 与"识别次数"区分：识别次数 = 用户视角成功识别次数；
+  // API 调用次数 = 计费视角实际消耗的付费视觉 API 次数（含重试/L2 切备/校验重试）。
+  // 估算费用基于本指标。GLM-4-Flash（免费）的调用不计入。
+  static const _monthlyApiCallsPrefix = 'monthly_api_calls_';
+
+  /// 读取某月付费 API 调用次数
+  Future<int> getMonthlyApiCalls(int year, int month) async {
+    final key =
+        '$_monthlyApiCallsPrefix$year${month.toString().padLeft(2, '0')}';
+    final v = await readRaw(key);
+    return int.tryParse(v ?? '0') ?? 0;
+  }
+
+  /// 增加某月付费 API 调用次数（+1）
+  Future<void> incrementMonthlyApiCalls(int year, int month) async {
+    final key =
+        '$_monthlyApiCallsPrefix$year${month.toString().padLeft(2, '0')}';
+    final current = await getMonthlyApiCalls(year, month);
+    await writeRaw(key, (current + 1).toString());
+  }
+
+  /// 读取本月付费 API 调用次数
+  Future<int> getCurrentMonthApiCalls() async {
+    final now = DateTime.now();
+    return getMonthlyApiCalls(now.year, now.month);
+  }
+
   // --- 辅助 ---
   Future<void> _writeOrDelete(String key, String? value) async {
     if (value == null || value.isEmpty) {

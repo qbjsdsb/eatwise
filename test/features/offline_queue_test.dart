@@ -238,6 +238,11 @@ void main() {
   //   incrementMonthlyCount，设置页"本月识别次数"偏低，T43 计数与实际 token 消耗脱节。
   // 修复：构造器加可选 SecureConfigStore，markDone 前 best-effort 计数
   //   （try-catch 不影响主流程，与 recognize_controller 模式一致）。
+  //
+  // 双指标扩展：回补成功时同时调 incrementMonthlyCount（识别次数）和
+  //   incrementMonthlyApiCalls（API 调用次数，每次成功视觉调用 +1）。
+  //   识别次数 = 用户视角成功识别；API 调用次数 = 计费视角实际消耗。
+  //   估算费用基于 API 调用次数 × 0.002 元（Qwen3-VL-Flash）。
   group('M11 后台回补计入月度识别次数', () {
     late SecureConfigStore store;
 
@@ -247,7 +252,8 @@ void main() {
       store = SecureConfigStore();
     });
 
-    test('M11-RED: 回补成功时调 incrementMonthlyCount（计数 +1）', () async {
+    test('M11-RED: 回补成功时调 incrementMonthlyCount + incrementMonthlyApiCalls（双指标 +1）',
+        () async {
       await seedApple(); // 苹果已入库，Fake provider 会识别为苹果
       final imgPath = await writeFakeImage('apple_m11');
       await pendingRepo.enqueue(
@@ -263,11 +269,17 @@ void main() {
 
       // pending 应清空（回补成功）
       expect(await pendingRepo.countPending(), 0);
-      // M11 关键断言：月度计数 +1（与前台 recognize_controller 一致）
+      // M11 关键断言：双指标均 +1
+      // 识别次数：用户视角成功识别 1 次
+      // API 调用次数：主调用成功 1 次（无重试/L2 切备）
       final now = DateTime.now();
       final count = await store.getMonthlyCount(now.year, now.month);
+      final apiCalls = await store.getMonthlyApiCalls(now.year, now.month);
       expect(count, 1,
           reason: '后台回补成功应计入月度识别次数，否则设置页计数偏低');
+      expect(apiCalls, 1,
+          reason: '后台回补成功应计入 API 调用次数（计费视角），'
+              '否则估算费用偏低');
     });
 
     test('M11: 不传 secureConfigStore 时向后兼容（不计数也不崩溃）', () async {
@@ -290,7 +302,8 @@ void main() {
       expect(meals.length, 1);
     });
 
-    test('M11: 回补失败时 不调 incrementMonthlyCount（与前台一致）', () async {
+    test('M11: 回补失败时 不调 incrementMonthlyCount 也不调 incrementMonthlyApiCalls',
+        () async {
       // 前台 recognize_controller：离线入队/L3 转手动不计数
       // 后台回补失败（识别异常）也不应计数，否则计数偏高
       final imgPath = await writeFakeImage('fail_m11');
@@ -307,14 +320,17 @@ void main() {
 
       // 回补失败（retryCount +1，仍 pending）
       expect(await pendingRepo.countPending(), 1);
-      // M11 关键断言：失败时计数不增加
+      // M11 关键断言：失败时双指标均不增加
       final now = DateTime.now();
       final count = await store.getMonthlyCount(now.year, now.month);
+      final apiCalls = await store.getMonthlyApiCalls(now.year, now.month);
       expect(count, 0,
           reason: '回补失败不应计数（与前台 recognize_controller 一致）');
+      expect(apiCalls, 0,
+          reason: '回补失败不应计入 API 调用次数（视觉调用未成功，未消耗付费 API）');
     });
 
-    test('M11: 多条 pending 全部成功时计数 +N（每条计一次）', () async {
+    test('M11: 多条 pending 全部成功时双指标均 +N（每条计一次）', () async {
       await seedApple();
       final imgPath = await writeFakeImage('apple_multi');
       await pendingRepo.enqueue(
@@ -336,11 +352,12 @@ void main() {
       expect(await pendingRepo.countPending(), 0);
       final meals = await db.mealLogs.select().get();
       expect(meals.length, 3);
-      // M11 关键断言：计数 +3（每条计一次）
+      // M11 关键断言：双指标均 +3（每条计一次）
       final now = DateTime.now();
       final count = await store.getMonthlyCount(now.year, now.month);
-      expect(count, 3,
-          reason: '3 条 pending 全部成功应计数 +3');
+      final apiCalls = await store.getMonthlyApiCalls(now.year, now.month);
+      expect(count, 3, reason: '3 条 pending 全部成功应识别次数 +3');
+      expect(apiCalls, 3, reason: '3 条 pending 全部成功应 API 调用次数 +3');
     });
   });
 
